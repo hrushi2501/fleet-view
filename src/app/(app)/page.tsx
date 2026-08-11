@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { fleetUsage } from "@/lib/fleet-usage";
 import { StatCard, Card, SectionTitle, Badge, Progress } from "@/components/ui";
 import { TrendArea, MultiBar, Donut } from "@/components/charts";
 import { inr, num, timeAgo, ASSET_CLASS_LABEL, SEVERITY_COLOR, healthColor } from "@/lib/utils";
@@ -17,6 +18,9 @@ export default async function Dashboard() {
     db.costTransaction.findMany(),
     db.alert.findMany({ orderBy: { createdAt: "desc" }, take: 6, include: { asset: true } }),
   ]);
+
+  // Measured from OEM telemetry rather than from what anyone typed in.
+  const telemetry = await fleetUsage(30);
 
   const totalAssets = assets.length;
   const activeCount = assets.filter((a) => a.status === "Active").length;
@@ -106,6 +110,39 @@ export default async function Dashboard() {
         <StatCard label="Under Maintenance" value={num(statusGroups.find((s) => s.status === "Under-Maintenance")?._count ?? 0)} sub="In workshop" accent="brand" icon={<Wrench className="h-5 w-5" />} />
         <StatCard label="Breakdowns" value={num(statusGroups.find((s) => s.status === "Breakdown")?._count ?? 0)} sub="Down now" accent="rose" icon={<TriangleAlert className="h-5 w-5" />} />
       </div>
+
+      {telemetry.totals.vehiclesReporting > 0 && (
+        <section className="mt-6">
+          <SectionTitle
+            title="Measured from Telemetry — Last 30 Days"
+            subtitle={`${telemetry.totals.vehiclesReporting} vehicle${telemetry.totals.vehiclesReporting === 1 ? "" : "s"} reporting · odometer and tank readings straight from the OEM feed`}
+          />
+          <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard label="Distance Covered" value={`${num(telemetry.totals.distanceKm)} km`} sub="Odometer delta" accent="brand" icon={<Activity className="h-5 w-5" />} />
+            <StatCard label="Diesel Burned" value={`${num(telemetry.totals.litresBurned)} L`} sub={`${num(telemetry.totals.litresFilled)} L filled`} accent="amber" icon={<Fuel className="h-5 w-5" />} />
+            <StatCard
+              label="Fleet Efficiency"
+              value={telemetry.totals.avgKmPerL != null ? `${telemetry.totals.avgKmPerL} km/L` : "—"}
+              sub="Total distance ÷ total burn"
+              accent={telemetry.perAsset.some((a) => a.belowNorm) ? "rose" : "emerald"}
+              icon={<Activity className="h-5 w-5" />}
+            />
+            <StatCard
+              label="Unaccounted Diesel"
+              value={`${num(telemetry.totals.litresUnaccounted)} L`}
+              sub={telemetry.totals.litresUnaccounted > 0 ? `${inr(telemetry.totals.valueUnaccounted, { compact: true })} at risk` : "Nothing unexplained"}
+              accent={telemetry.totals.litresUnaccounted > 0 ? "rose" : "emerald"}
+              icon={<TriangleAlert className="h-5 w-5" />}
+            />
+          </div>
+          {telemetry.totals.worstGapHours > 1 && (
+            <p className="mt-2 text-[11px] text-slate-500">
+              Longest gap between samples in this window: {telemetry.totals.worstGapHours} h. Sparse sampling
+              cannot separate a siphon from a hard shift — treat unaccounted diesel as a prompt to look, not a finding.
+            </p>
+          )}
+        </section>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">

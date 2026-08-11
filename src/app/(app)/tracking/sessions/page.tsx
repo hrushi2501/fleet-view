@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { fleetUsage } from "@/lib/fleet-usage";
 import { Card, SectionTitle, Badge, StatCard } from "@/components/ui";
 import { ReleaseSessionButton, CloseStaleButton, IssueQrButton, SeedProvidersButton, TelematicsForm, ScanFuelButton } from "@/components/TrackingForms";
 import { SESSION_STALE_HOURS } from "@/lib/telematics";
@@ -22,6 +23,8 @@ export default async function SessionsPage() {
     db.telematicsProvider.findMany({ orderBy: { name: "asc" } }),
     db.telemetryReading.count({ where: { recordedAt: { gte: since } } }),
   ]);
+
+  const telemetry = await fleetUsage(30);
 
   // eslint-disable-next-line react-hooks/purity
   const nowMs = Date.now();
@@ -78,6 +81,66 @@ export default async function SessionsPage() {
           </div>
         </div>
       </Card>
+
+      {telemetry.perAsset.length > 0 && (
+        <Card className="p-0">
+          <div className="p-5 pb-3">
+            <SectionTitle
+              title="Usage & Efficiency — Last 30 Days"
+              subtitle="Distance and diesel measured between consecutive telemetry samples, not from manual entries"
+            />
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px] text-sm">
+              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th className="px-5 py-3 font-medium">Vehicle</th>
+                  <th className="px-5 py-3 font-medium">Distance</th>
+                  <th className="px-5 py-3 font-medium">Diesel burned</th>
+                  <th className="px-5 py-3 font-medium">Efficiency</th>
+                  <th className="px-5 py-3 font-medium">Norm</th>
+                  <th className="px-5 py-3 font-medium">Unaccounted</th>
+                  <th className="px-5 py-3 font-medium">Tank</th>
+                  <th className="px-5 py-3 font-medium">Last reported</th>
+                </tr>
+              </thead>
+              <tbody>
+                {telemetry.perAsset.map((a) => (
+                  <tr key={a.assetId} className="border-t border-slate-100 hover:bg-brand-50/30">
+                    <td className="px-5 py-3">
+                      <Link href={`/fleet/${a.assetId}`} className="font-semibold text-brand-700 hover:underline">{a.code}</Link>
+                      <p className="text-[11px] text-slate-500">{a.registrationNo ?? a.name}</p>
+                    </td>
+                    <td className="px-5 py-3 text-slate-700">{num(a.usage.distanceKm)} km</td>
+                    <td className="px-5 py-3 text-slate-700">{num(a.usage.litresBurned)} L</td>
+                    <td className="px-5 py-3">
+                      {a.usage.avgKmPerL != null ? (
+                        <span className={`font-semibold ${a.belowNorm ? "text-rose-600" : "text-emerald-700"}`}>
+                          {a.usage.avgKmPerL} km/L
+                        </span>
+                      ) : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-5 py-3 text-slate-500">{a.norm ? `${a.norm.low}–${a.norm.high}` : "—"}</td>
+                    <td className="px-5 py-3">
+                      {a.usage.litresUnaccounted > 0
+                        ? <span className="font-semibold text-rose-600">{a.usage.litresUnaccounted} L</span>
+                        : <span className="text-slate-400">none</span>}
+                    </td>
+                    <td className="px-5 py-3 text-slate-700">
+                      {a.fuelLevelPct != null ? `${a.fuelLevelPct.toFixed(0)}%` : "—"}
+                    </td>
+                    <td className="px-5 py-3 text-slate-500">{a.lastSeen ? timeAgo(a.lastSeen) : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="px-5 pb-4 pt-1 text-[11px] text-slate-500">
+            Efficiency is distance ÷ diesel burned over the window. &ldquo;Unaccounted&rdquo; is fuel that left the
+            tank beyond what the journey and idling explain — a prompt to investigate, not proof of loss.
+          </p>
+        </Card>
+      )}
 
       <Card className="p-0">
         <div className="p-5 pb-3"><SectionTitle title="Sessions" subtitle="Active first" /></div>

@@ -350,6 +350,16 @@ async function raiseFuelAnomaly(
   });
 
   const segment = analyseSegment(previous, current, norm, tankCapacityL, idle?.normHigh ?? null);
+
+  // A tank that rises was filled. Record it as a fuel issue so it appears in
+  // Fuel Management, Reconciliation and the cost reports like any other fill —
+  // the fact that a sensor noticed it rather than a clerk typing it is a
+  // provenance detail, not a reason to keep it in a separate silo.
+  if (segment.event === "REFUEL" && segment.fuelDeltaL && segment.fuelDeltaL > 0) {
+    await recordSensorRefuel(asset, current, segment.fuelDeltaL, segment.hours);
+    return false;
+  }
+
   if (segment.event !== "STATIONARY_DROP" && segment.event !== "EXCESS_CONSUMPTION") return false;
 
   const score = riskScore(segment, tankCapacityL);
@@ -380,6 +390,86 @@ async function raiseFuelAnomaly(
   });
 
   return true;
+}
+
+/** How far either side of a sensor-detected fill to look for its paperwork. */
+const PAPERWORK_WINDOW_MS = 3 * 60 * 60_000;
+
+/**
+ * Turns a detected tank rise into a fuel issue record.
+ *
+ * Two cases, and the difference matters to the client:
+ *
+ *  - Paperwork already exists → attach the measured rise to it. That is exactly
+ *    what the fuel-verification screens compare against the claimed quantity,
+ *    and it is the difference between "the clerk says 150 L" and "150 L
+ *    actually entered the tank".
+ *  - No paperwork → record the fill anyway, from the sensor. Diesel entering a
+ *    tank with no issue slip behind it is worth seeing, not discarding.
+ */
+async function recordSensorRefuel(
+  asset: ResolvedAsset,
+  reading: AnalyticsReading,
+  litres: number,
+  windowHours: number,
+): Promise<void> {
+  const at = reading.recordedAt;
+  const rate = await dieselRate();
+  const rounded = Math.round(litres * 10) / 10;
+
+  const claimed = await db.fuelTransaction.findFirst({
+    where: {
+      assetId: asset.id,
+      type: "ISSUE",
+      captureMethod: { not: "SENSOR" },
+      sensorRise: 0,
+      date: { gte: new Date(at.getTime() - PAPERWORK_WINDOW_MS), lte: new Date(at.getTime() + PAPERWORK_WINDOW_MS) },
+    },
+    orderBy: { date: "desc" },
+    select: { id: true, quantity: true },
+  });
+
+  if (claimed) {
+    const variancePct = claimed.quantity > 0 ? ((claimed.quantity - rounded) / claimed.quantity) * 100 : 0;
+    await db.fuelTransaction.update({
+      where: { id: claimed.id },
+      data: {
+        sensorRise: rounded,
+        variancePct: Math.round(variancePct * 10) / 10,
+        // Diesel paid for that never reached the tank is the loss worth
+        // catching; a small over-read is sensor tolerance.
+        anomaly: variancePct > 10,
+      },
+    });
+    return;
+  }
+
+  // Guard against re-recording the same fill if a sync is replayed.
+  const already = await db.fuelTransaction.findFirst({
+    where: { assetId: asset.id, date: at, captureMethod: "SENSOR" },
+    select: { id: true },
+  });
+  if (already) return;
+
+  await db.fuelTransaction.create({
+    data: {
+      type: "ISSUE",
+      assetId: asset.id,
+      quantity: rounded,
+      sensorRise: rounded,
+      rate,
+      amount: Math.round(rounded * rate),
+      meterValue: reading.odometerKm ?? 0,
+      lat: reading.lat,
+      lng: reading.lng,
+      date: at,
+      captureMethod: "SENSOR",
+      // A fill seen across a 15-minute window is a tight observation; one
+      // inferred across hours could be two fills, or a fill and a siphon.
+      captureConfidence: windowHours <= 0.5 ? 0.9 : windowHours <= 2 ? 0.6 : 0.3,
+      source: "RETAIL",
+    },
+  });
 }
 
 async function dieselRate(): Promise<number> {

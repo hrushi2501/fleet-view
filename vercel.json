@@ -3,6 +3,6 @@
   "regions": ["bom1"],
   "crons": [
     { "path": "/api/push/cron", "schedule": "0 3 * * *" },
-    { "path": "/api/telematics/sync", "schedule": "0 4 * * *" }
+    { "path": "/api/telematics/sync", "schedule": "*/15 * * * *" }
   ]
 }

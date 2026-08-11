@@ -26,7 +26,7 @@ export default async function FuelPage() {
 
   const fleet = analyzeFleet(
     assets.map((a) => ({ id: a.id, code: a.code, name: a.name, assetClass: a.assetClass, category: a.category, primaryMeter: a.primaryMeter, fuelCapacity: a.fuelCapacity })),
-    issues.map((t) => ({ id: t.id, assetId: t.assetId, quantity: t.quantity, meterValue: t.meterValue, rate: t.rate, amount: t.amount, date: t.date, odometerPhoto: t.odometerPhoto, pumpPhoto: t.pumpPhoto, sensorRise: t.sensorRise, anomaly: t.anomaly, variancePct: t.variancePct, geofenceOk: t.geofenceOk, lat: t.lat, lng: t.lng }))
+    issues.map((t) => ({ id: t.id, assetId: t.assetId, quantity: t.quantity, meterValue: t.meterValue, rate: t.rate, amount: t.amount, date: t.date, odometerPhoto: t.odometerPhoto, pumpPhoto: t.pumpPhoto, sensorRise: t.sensorRise, anomaly: t.anomaly, captureMethod: t.captureMethod, captureConfidence: t.captureConfidence, variancePct: t.variancePct, geofenceOk: t.geofenceOk, lat: t.lat, lng: t.lng }))
   );
 
   const dieselRate = await getDieselRate();
@@ -144,6 +144,7 @@ export default async function FuelPage() {
                 <th className="px-5 py-3 font-medium">Date</th>
                 <th className="px-5 py-3 font-medium">Vehicle</th>
                 <th className="px-5 py-3 font-medium">Litres</th>
+                <th className="px-5 py-3 font-medium">Recorded by</th>
                 <th className="px-5 py-3 font-medium">Odometer</th>
                 <th className="px-5 py-3 font-medium">Rate ₹/L</th>
                 <th className="px-5 py-3 font-medium">Amount</th>
@@ -164,6 +165,18 @@ export default async function FuelPage() {
                     <td className="px-5 py-3 text-slate-600">{fmtDate(f.date)}</td>
                     <td className="px-5 py-3">{a ? <Link href={`/fleet/${a.id}`} className="font-semibold text-brand-700 hover:underline">{a.code}</Link> : "—"}</td>
                     <td className="px-5 py-3 font-medium text-ink-900">{num(f.quantity)} L</td>
+                    <td className="px-5 py-3">
+                      {f.captureMethod === "SENSOR" ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200">
+                          Tank sensor
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-inset ring-slate-200">
+                          {f.captureMethod === "IMAGE" ? "Gauge photo" : "Entered by hand"}
+                          {f.sensorRise > 0 && " · sensor confirmed"}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-5 py-3 text-slate-600">{f.meterValue ? `${num(f.meterValue)}` : "—"}</td>
                     <td className="px-5 py-3 text-slate-600">₹{f.rate}</td>
                     <td className="px-5 py-3 text-slate-600">{inr(f.amount, { compact: true })}</td>
