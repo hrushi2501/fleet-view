@@ -658,6 +658,22 @@ export async function syncTataFleetEdge(): Promise<TataSyncResult> {
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+
+    // Fleet Edge allows one call a minute. Polling close to that ceiling means
+    // the occasional 429 is expected traffic shaping, not a broken integration
+    // — the next run is two minutes away and will simply succeed. Recording it
+    // as an ERROR would leave the provider showing red most of the day and
+    // train whoever watches it to ignore a status that eventually matters.
+    if (err instanceof TataFleetEdgeError && err.status === 429) {
+      if (provider) {
+        await db.telematicsProvider.update({
+          where: { id: provider.id },
+          data: { lastSyncStatus: "RATE_LIMITED", lastSyncError: null },
+        });
+      }
+      return { ...base, ok: true, skipped: "Rate limited by Fleet Edge — retrying on the next run." };
+    }
+
     if (provider) {
       await db.telematicsProvider.update({
         where: { id: provider.id },

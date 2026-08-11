@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { fleetUsage } from "@/lib/fleet-usage";
 import { StatCard, Card, SectionTitle, Badge, Progress } from "@/components/ui";
 import { SimpleBar } from "@/components/charts";
 import { FuelEntry, FuelEdit } from "@/components/EntryForms";
@@ -28,6 +29,29 @@ export default async function FuelPage() {
     assets.map((a) => ({ id: a.id, code: a.code, name: a.name, assetClass: a.assetClass, category: a.category, primaryMeter: a.primaryMeter, fuelCapacity: a.fuelCapacity })),
     issues.map((t) => ({ id: t.id, assetId: t.assetId, quantity: t.quantity, meterValue: t.meterValue, rate: t.rate, amount: t.amount, date: t.date, odometerPhoto: t.odometerPhoto, pumpPhoto: t.pumpPhoto, sensorRise: t.sensorRise, anomaly: t.anomaly, captureMethod: t.captureMethod, captureConfidence: t.captureConfidence, variancePct: t.variancePct, geofenceOk: t.geofenceOk, lat: t.lat, lng: t.lng }))
   );
+
+  // Measured from the OEM feed. Manual fuel entries answer "what did we buy";
+  // telemetry answers "what actually moved and what actually burned", and the
+  // second is available before anyone has typed a single fuel slip.
+  const telemetry = await fleetUsage(30);
+  const openAnomalies = await db.fuelAnomaly.findMany({
+    where: { status: "OPEN" },
+    select: { litres: true, valueAtRisk: true, severity: true },
+  });
+  const anomalyLitres = openAnomalies.reduce((s, a) => s + a.litres, 0);
+  const anomalyValue = openAnomalies.reduce((s, a) => s + a.valueAtRisk, 0);
+  const highFlagCount = fleet.highFlags.length + openAnomalies.filter((a) => a.severity === "HIGH").length;
+  const allFlagCount = fleet.allFlags.length + openAnomalies.length;
+
+  const measuredKm = telemetry.totals.distanceKm > 0 ? telemetry.totals.distanceKm : fleet.totalKm;
+  const measuredKmpl = telemetry.totals.avgKmPerL ?? (fleet.avgFleetKmpl || null);
+  const usingTelemetry = telemetry.totals.distanceKm > 0;
+
+  // Ranked by measured efficiency when telemetry exists, since fuel slips may
+  // not have been entered yet.
+  const rankable = telemetry.perAsset.filter((a) => a.usage.avgKmPerL != null);
+  const telBest = [...rankable].sort((a, b) => b.usage.avgKmPerL! - a.usage.avgKmPerL!).slice(0, 5);
+  const telWorst = [...rankable].sort((a, b) => a.usage.avgKmPerL! - b.usage.avgKmPerL!).slice(0, 5);
 
   const dieselRate = await getDieselRate();
   const assetById = new Map(assets.map((a) => [a.id, a]));
@@ -59,10 +83,10 @@ export default async function FuelPage() {
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
         <StatCard label="Total Diesel Spend" value={inr(fleet.totalSpend, { compact: true })} accent="brand" icon={<IndianRupee className="h-5 w-5" />} />
         <StatCard label="Diesel Issued" value={`${num(fleet.totalLitres)} L`} accent="violet" icon={<Droplets className="h-5 w-5" />} />
-        <StatCard label="Avg Fleet Mileage" value={`${fleet.avgFleetKmpl.toFixed(2)} km/L`} sub="road vehicles" accent="emerald" icon={<Gauge className="h-5 w-5" />} />
-        <StatCard label="Distance Covered" value={`${num(fleet.totalKm)} km`} accent="brand" icon={<TrendingUp className="h-5 w-5" />} />
-        <StatCard label="Theft Alerts" value={num(fleet.highFlags.length)} sub={`${fleet.allFlags.length} total flags`} accent="rose" icon={<ShieldAlert className="h-5 w-5" />} />
-        <StatCard label="₹ at Risk" value={inr(atRisk, { compact: true })} sub={`${num(flaggedLitres)} L flagged`} accent="rose" icon={<TriangleAlert className="h-5 w-5" />} />
+        <StatCard label="Avg Fleet Mileage" value={measuredKmpl != null ? `${measuredKmpl.toFixed(2)} km/L` : "—"} sub={usingTelemetry ? "measured from telemetry" : "road vehicles"} accent={telemetry.perAsset.some((a) => a.belowNorm) ? "rose" : "emerald"} icon={<Gauge className="h-5 w-5" />} />
+        <StatCard label="Distance Covered" value={`${num(measuredKm)} km`} sub={usingTelemetry ? "odometer delta" : undefined} accent="brand" icon={<TrendingUp className="h-5 w-5" />} />
+        <StatCard label="Theft Alerts" value={num(highFlagCount)} sub={`${allFlagCount} total flags`} accent="rose" icon={<ShieldAlert className="h-5 w-5" />} />
+        <StatCard label="₹ at Risk" value={inr(atRisk + anomalyValue, { compact: true })} sub={`${num(Math.round((flaggedLitres + anomalyLitres) * 10) / 10)} L flagged`} accent="rose" icon={<TriangleAlert className="h-5 w-5" />} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -117,7 +141,13 @@ export default async function FuelPage() {
                 <span className="font-bold text-emerald-600">{r.efficiency!.toFixed(2)} km/L</span>
               </div>
             ))}
-            {fleet.best.length === 0 && <p className="text-sm text-slate-400">Not enough data yet.</p>}
+            {fleet.best.length === 0 && telBest.map((a) => (
+              <div key={a.assetId} className="flex items-center justify-between text-sm">
+                <Link href={`/fleet/${a.assetId}`} className="font-medium text-brand-700 hover:underline">{a.code}</Link>
+                <span className="font-bold text-emerald-600">{a.usage.avgKmPerL!.toFixed(2)} km/L</span>
+              </div>
+            ))}
+            {fleet.best.length === 0 && telBest.length === 0 && <p className="text-sm text-slate-400">Not enough data yet.</p>}
           </div>
         </Card>
         <Card>
@@ -129,7 +159,16 @@ export default async function FuelPage() {
                 <span className="font-bold text-rose-600">{r.efficiency!.toFixed(2)} km/L</span>
               </div>
             ))}
-            {fleet.worst.length === 0 && <p className="text-sm text-slate-400">Not enough data yet.</p>}
+            {fleet.worst.length === 0 && telWorst.map((a) => (
+              <div key={a.assetId} className="flex items-center justify-between text-sm">
+                <div>
+                  <Link href={`/fleet/${a.assetId}`} className="font-medium text-brand-700 hover:underline">{a.code}</Link>
+                  {a.norm && <span className="ml-2 text-[11px] text-slate-500">norm {a.norm.low}–{a.norm.high}</span>}
+                </div>
+                <span className={`font-bold ${a.belowNorm ? "text-rose-600" : "text-slate-700"}`}>{a.usage.avgKmPerL!.toFixed(2)} km/L</span>
+              </div>
+            ))}
+            {fleet.worst.length === 0 && telWorst.length === 0 && <p className="text-sm text-slate-400">Not enough data yet.</p>}
           </div>
         </Card>
       </div>
