@@ -1,0 +1,139 @@
+import { db } from "@/lib/db";
+import { getSession } from "@/lib/auth";
+import { toCsv } from "@/lib/reporting";
+import { NextResponse } from "next/server";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * CSV export. These files contain the client's commercial data — vendor rates,
+ * fuel spend, staff records — so they are gated on the `reports.export`
+ * permission, not merely on being signed in. Exports are written to the audit
+ * log because "who took a copy of the vendor rates" is a question that gets
+ * asked after someone leaves.
+ */
+export async function GET(req: Request, ctx: { params: Promise<{ key: string }> }) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+
+  // Falls back to the legacy role string when roles have not been installed yet,
+  // so the export keeps working for Admin during setup.
+  const user = await db.user.findUnique({ where: { id: session.id }, include: { roleRef: true } });
+  const perms = user?.roleRef?.permissions.split("\n").filter(Boolean) ?? [];
+  const allowed = perms.includes("*") || perms.includes("reports.export") || (perms.length === 0 && user?.role === "Admin");
+  if (!allowed) {
+    return NextResponse.json({ error: "Your role does not permit data export." }, { status: 403 });
+  }
+
+  const { key } = await ctx.params;
+  let rows: Record<string, unknown>[] = [];
+
+  switch (key) {
+    case "fuel_issues": {
+      const d = await db.fuelTransaction.findMany({ where: { type: "ISSUE" }, include: { asset: true, project: true }, orderBy: { date: "desc" }, take: 5000 });
+      rows = d.map((x) => ({
+        Date: x.date, Asset: x.asset?.code ?? "", Registration: x.asset?.registrationNo ?? "", Project: x.project?.code ?? "",
+        Litres: x.quantity, Rate: x.rate, Amount: x.amount, Meter: x.meterValue, Source: x.source,
+        Latitude: x.lat ?? "", Longitude: x.lng ?? "", Anomaly: x.anomaly ? "YES" : "",
+      }));
+      break;
+    }
+    case "fuel_reconciliation": {
+      const d = await db.fuelReconciliation.findMany({ include: { tank: true }, orderBy: { periodEnd: "desc" } });
+      rows = d.map((x) => ({
+        Tank: x.tank.name, PeriodStart: x.periodStart, PeriodEnd: x.periodEnd, OpeningDip: x.openingDip,
+        Received: x.receiptsL, Issued: x.issuesL, Expected: x.expectedClosing, Actual: x.actualClosing,
+        VarianceLitres: x.varianceL, VariancePct: x.variancePct.toFixed(2), Status: x.status, Notes: x.notes ?? "",
+      }));
+      break;
+    }
+    case "production": {
+      const d = await db.productionLog.findMany({ include: { asset: true, project: true, driver: true }, orderBy: { date: "desc" }, take: 5000 });
+      rows = d.map((x) => ({
+        Date: x.date, Shift: x.shift, Asset: x.asset.code, Project: x.project?.code ?? "", Operator: x.driver?.name ?? "",
+        Material: x.material ?? "", Trips: x.trips, Tonnes: x.tonnage, CubicMetres: x.volumeM3, Cycles: x.cycles,
+        WorkedHours: x.workedHours, IdleHours: x.idleHours, Km: x.distanceKm, LeadKm: x.leadKm, Source: x.source,
+      }));
+      break;
+    }
+    case "compliance": {
+      const d = await db.complianceDoc.findMany({ include: { asset: true }, orderBy: { expiryDate: "asc" } });
+      rows = d.map((x) => ({
+        Asset: x.asset.code, Registration: x.asset.registrationNo ?? "", Document: x.docType, Number: x.number,
+        Issued: x.issueDate, Expires: x.expiryDate, Status: x.status, Cost: x.cost, Vendor: x.vendor ?? "",
+        DaysToExpiry: Math.floor((x.expiryDate.getTime() - Date.now()) / 86400000),
+      }));
+      break;
+    }
+    case "loss_cases": {
+      const d = await db.fraudCase.findMany({ include: { asset: true }, orderBy: { openedAt: "desc" } });
+      rows = d.map((x) => ({
+        CaseNo: x.caseNo, Opened: x.openedAt, Domain: x.domain, Severity: x.severity, Score: x.score, Title: x.title,
+        Asset: x.asset?.code ?? "", Vendor: x.vendor ?? "", AtRisk: x.amountAtRisk, Recovered: x.amountRecovered,
+        Status: x.status, RootCause: x.rootCause ?? "", Disposition: x.disposition ?? "", Closed: x.closedAt ?? "",
+      }));
+      break;
+    }
+    case "maintenance": {
+      const d = await db.workOrder.findMany({ include: { asset: true }, orderBy: { reportedAt: "desc" } });
+      rows = d.map((x) => ({
+        WorkOrder: x.woNo, Asset: x.asset.code, Type: x.type, Priority: x.priority, Status: x.status,
+        Description: x.description, Labour: x.laborCost, Parts: x.partsCost, Total: x.totalCost,
+        DowntimeHours: x.downtimeHrs, Technician: x.technician ?? "", Reported: x.reportedAt, Completed: x.completedAt ?? "",
+      }));
+      break;
+    }
+    case "weighbridge": {
+      const d = await db.weighbridgeTicket.findMany({ include: { asset: true }, orderBy: { date: "desc" }, take: 5000 });
+      rows = d.map((x) => ({
+        Date: x.date, Ticket: x.ticketNo, Kind: x.kind, PairedWith: x.pairedTicketNo ?? "", Material: x.material,
+        Asset: x.asset?.code ?? "", GrossKg: x.grossKg, TareKg: x.tareKg, NetKg: x.netKg, BilledKg: x.billedKg,
+        From: x.fromLocation ?? "", To: x.toLocation ?? "", Rate: x.rate, Amount: x.amount,
+      }));
+      break;
+    }
+    case "attendance": {
+      const d = await db.attendance.findMany({ include: { driver: true, project: true }, orderBy: { date: "desc" }, take: 5000 });
+      rows = d.map((x) => ({
+        Date: x.date, Person: x.driver.name, EmpCode: x.driver.empCode, Status: x.status, Shift: x.shift,
+        Hours: x.hours, Project: x.project?.code ?? "", MarkedBy: x.markedBy ?? "",
+      }));
+      break;
+    }
+    case "cost_per_asset": {
+      const [assets, fuel, wo] = await Promise.all([
+        db.asset.findMany({ orderBy: { code: "asc" } }),
+        db.fuelTransaction.groupBy({ by: ["assetId"], where: { type: "ISSUE" }, _sum: { amount: true, quantity: true } }),
+        db.workOrder.groupBy({ by: ["assetId"], _sum: { totalCost: true, downtimeHrs: true } }),
+      ]);
+      const f = new Map(fuel.map((x) => [x.assetId ?? "", x._sum]));
+      const w = new Map(wo.map((x) => [x.assetId, x._sum]));
+      rows = assets.map((a) => ({
+        Asset: a.code, Registration: a.registrationNo ?? "", Class: a.assetClass, Ownership: a.ownershipType,
+        AcquisitionCost: a.acquisitionCost, BookMethod: a.depMethod, Odometer: a.meterValue, HourMeter: a.hourMeterValue,
+        FuelSpend: f.get(a.id)?.amount ?? 0, FuelLitres: f.get(a.id)?.quantity ?? 0,
+        MaintenanceCost: w.get(a.id)?.totalCost ?? 0, DowntimeHours: w.get(a.id)?.downtimeHrs ?? 0,
+      }));
+      break;
+    }
+    default:
+      return NextResponse.json({ error: "Unknown report" }, { status: 404 });
+  }
+
+  await db.auditEvent.create({
+    data: {
+      actorId: session.id, actorName: session.name, actorRole: session.role,
+      action: "EXPORT", module: "REPORTS", entity: key,
+      summary: `Exported ${rows.length} rows of ${key}`,
+    },
+  });
+
+  const csv = toCsv(rows);
+  const stamp = new Date().toISOString().slice(0, 10);
+  return new NextResponse(csv, {
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="fleetview-${key}-${stamp}.csv"`,
+    },
+  });
+}

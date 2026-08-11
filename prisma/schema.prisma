@@ -1,0 +1,1445 @@
+// FleetView ERP — data model (PostgreSQL)
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  role      String   // legacy string role, kept so existing logins keep working
+  password  String   // bcrypt hashed
+  createdAt DateTime @default(now())
+  // ---- M0 ----
+  roleId    String?
+  roleRef   Role?    @relation(fields: [roleId], references: [id])
+  active    Boolean  @default(true)
+  lastLogin DateTime?
+  /// Explicit link to the person record. Matching a login to a person by name
+  /// is brittle — "Demo Driver" and "Demo" are the same human and different
+  /// strings — so the driver app resolves through this, falling back to a name
+  /// match only for accounts created before the link existed.
+  driverId  String?  @unique
+  driverRef Driver?  @relation(fields: [driverId], references: [id])
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  location    String
+  client      String
+  status      String   @default("Active")
+  budget      Float    @default(0)
+  spent       Float    @default(0)
+  lat         Float    @default(0)
+  lng         Float    @default(0)
+  startDate   DateTime @default(now())
+  assets      Asset[]
+  trips       Trip[]
+  fuelTxns    FuelTransaction[]
+  workOrders  WorkOrder[]
+  costs       CostTransaction[]
+  fuelTanks   FuelTank[]
+  fraudCases  FraudCase[]
+  production  ProductionLog[]
+  revenues    ProjectRevenue[]
+  weighTickets WeighbridgeTicket[]
+  attendance  Attendance[]
+  sites       Site[]
+  tripSessions TripSession[]
+  equipPlans  EquipmentPlan[]
+  allocations Allocation[]
+  mobIn       MobilizationOrder[] @relation("MobToProject")
+  warehouses  InventoryWarehouse[]
+}
+
+
+model Asset {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  registrationNo  String?
+  name            String
+  assetClass      String   // DUMPER, EXCAVATOR, GRADER, ROLLER, CRANE, TIPPER, TRANSIT_MIXER, WATER_TANKER, TRUCK, PICKUP, BACKHOE
+  category        String   // VEHICLE | EQUIPMENT
+  ownershipType   String   // OWNED | LEASED | HIRED | CONTRACTOR
+  make            String
+  model           String
+  yearMfg         Int
+  primaryMeter    String   // ODOMETER | SMU
+  meterValue      Float    @default(0)
+  fuelCapacity    Float    @default(0)
+  status          String   @default("Active") // Active, Idle, Under-Maintenance, In-Transit, Breakdown, Off-hired
+  healthScore     Int      @default(90)
+  utilization     Int      @default(0)
+  lat             Float    @default(0)
+  lng             Float    @default(0)
+  speed           Float    @default(0)
+  lastSeen        DateTime @default(now())
+  acquisitionCost Float    @default(0)
+  serviceDueDate  DateTime?
+  lastServiceDate DateTime?
+  projectId       String?
+  project         Project? @relation(fields: [projectId], references: [id])
+  driverId        String?
+  driver          Driver?  @relation(fields: [driverId], references: [id])
+  trips           Trip[]
+  fuelTxns        FuelTransaction[]
+  workOrders      WorkOrder[]
+  compliance      ComplianceDoc[]
+  alerts          Alert[]
+  costs           CostTransaction[]
+  hireContracts   HireContract[]
+  fraudCases      FraudCase[]
+  production      ProductionLog[]
+  pmSchedules     MaintenanceSchedule[]
+  tyres           Tyre[]
+  components      MajorComponent[]
+  violations      Violation[]
+  weighTickets    WeighbridgeTicket[]
+  meterReadings   MeterReading[]
+  lifecycle       AssetLifecycleEvent[]
+  allocations     Allocation[]
+  mobilizations   MobilizationOrder[]
+  telemetry       TelemetryReading[]
+  fuelLevels      FuelLevelReading[]
+  tripSessions    TripSession[]
+  // ---- M9/M10 telematics & QR ----
+  /// Permanent token encoded in the cabin QR sticker. Never reused.
+  qrToken            String?  @unique
+  telematicsProviderId String?
+  telematicsProvider TelematicsProvider? @relation(fields: [telematicsProviderId], references: [id])
+  /// Provider-side device/vehicle identifier.
+  deviceId           String?
+  /// False for machines with no fuel sensor — those use the photo workflow.
+  hasFuelSensor      Boolean  @default(false)
+  fuelLevelPct       Float?
+  fuelLevelAt        DateTime?
+  // ---- M1 master data ----
+  /// Second meter. `meterValue` remains the primary; machines with both carry
+  /// odometer in one and engine-hours in the other.
+  hourMeterValue  Float    @default(0)
+  chassisNo       String?
+  engineNo        String?
+  insuredValue    Float    @default(0)
+  commissionedOn  DateTime?
+  decommissionedOn DateTime?
+  // ---- M7 depreciation ----
+  depMethod       String   @default("SLM") // SLM | WDV
+  usefulLifeYears Int      @default(8)
+  salvageValue    Float    @default(0)
+  inServiceDate   DateTime?
+  createdAt       DateTime @default(now())
+}
+
+model Driver {
+  id               String   @id @default(cuid())
+  empCode          String   @unique
+  name             String
+  phone            String
+  type             String   // DRIVER | OPERATOR
+  licenseNo        String
+  licenseExpiry    DateTime
+  certifications   String   @default("")
+  safetyScore      Int      @default(80)
+  performanceScore Int      @default(80)
+  status           String   @default("Active")
+  attendance       Int      @default(95) // % this month
+  assets           Asset[]
+  trips            Trip[]
+  alerts           Alert[]
+  fraudCases       FraudCase[]
+  production       ProductionLog[]
+  competencies     Competency[]
+  violations       Violation[]
+  weighTickets     WeighbridgeTicket[]
+  attendanceLog    Attendance[]
+  documents        PersonDocument[]
+  tripSessions     TripSession[]
+  fuelLevels       FuelLevelReading[]
+  loginAccount     User?
+  // ---- M2 master data ----
+  employmentType   String   @default("OWN") // OWN | CONTRACTOR
+  contractorName   String?
+  joinDate         DateTime?
+  bloodGroup       String?
+  emergencyContact String?
+}
+
+model Trip {
+  id           String   @id @default(cuid())
+  assetId      String
+  asset        Asset    @relation(fields: [assetId], references: [id])
+  driverId     String?
+  driver       Driver?  @relation(fields: [driverId], references: [id])
+  projectId    String?
+  project      Project? @relation(fields: [projectId], references: [id])
+  startTime    DateTime
+  endTime      DateTime?
+  distanceKm   Float    @default(0)
+  engineHours  Float    @default(0)
+  idleHours    Float    @default(0)
+  tonnage      Float    @default(0)
+  gpsVerified  Boolean  @default(true)
+  status       String   @default("Completed")
+}
+
+model FuelTank {
+  id           String   @id @default(cuid())
+  name         String
+  location     String
+  capacity     Float
+  currentLevel Float
+  // ---- M5 ----
+  code         String?  @unique
+  projectId    String?
+  project      Project? @relation(fields: [projectId], references: [id])
+  openingLevel Float    @default(0)
+  minLevel     Float    @default(0) // reorder threshold
+  status       String   @default("Active") // Active | Inactive
+  receipts     FuelReceipt[]
+  dips         TankDip[]
+  issues       FuelTransaction[]
+  recons       FuelReconciliation[]
+  createdAt    DateTime @default(now())
+}
+
+/// Bulk diesel delivered into a site tank (the "source" end of the closed loop).
+model FuelReceipt {
+  id           String   @id @default(cuid())
+  tankId       String
+  tank         FuelTank @relation(fields: [tankId], references: [id], onDelete: Cascade)
+  supplier     String
+  invoiceNo    String?
+  qtyInvoiced  Float    // litres on the supplier invoice
+  qtyReceived  Float    // litres actually dipped/metered into the tank
+  rate         Float    @default(0)
+  amount       Float    @default(0)
+  // corroborating evidence — short delivery is a classic leakage point
+  flowMeterStart Float  @default(0)
+  flowMeterEnd   Float  @default(0)
+  weighbridgeNet Float  @default(0) // kg, if the tanker was weighed
+  tankerNo     String?
+  invoicePhoto String?
+  receivedBy   String?
+  shortfall    Float    @default(0) // qtyInvoiced - qtyReceived, computed on save
+  date         DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@index([tankId, date])
+}
+
+/// Physical dipstick / level-gauge reading. The ground truth reconciliation is measured against.
+model TankDip {
+  id        String   @id @default(cuid())
+  tankId    String
+  tank      FuelTank @relation(fields: [tankId], references: [id], onDelete: Cascade)
+  level     Float    // litres measured in tank
+  readBy    String?
+  photo     String?
+  note      String?
+  date      DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([tankId, date])
+}
+
+/// Configurable expected-consumption band. Replaces hard-coded benchmarks.
+/// Either assetClass-wide or overridden for a single asset.
+model ConsumptionNorm {
+  id         String  @id @default(cuid())
+  assetClass String?
+  assetId    String? @unique
+  unit       String  // KMPL | LPH
+  normLow    Float
+  normHigh   Float
+  tolerancePct Float @default(15) // variance beyond this raises an anomaly
+  updatedAt  DateTime @updatedAt
+
+  @@unique([assetClass, unit])
+}
+
+/// A closed reconciliation period for one tank:
+/// openingDip + receipts - issues = expectedClosing, compared against actual closing dip.
+model FuelReconciliation {
+  id              String   @id @default(cuid())
+  tankId          String
+  tank            FuelTank @relation(fields: [tankId], references: [id], onDelete: Cascade)
+  periodStart     DateTime
+  periodEnd       DateTime
+  openingDip      Float
+  receiptsL       Float
+  issuesL         Float
+  expectedClosing Float
+  actualClosing   Float
+  varianceL       Float    // actual - expected (negative = missing fuel)
+  variancePct     Float
+  status          String   @default("OPEN") // OPEN | EXPLAINED | ESCALATED | CLOSED
+  notes           String?
+  closedBy        String?
+  createdAt       DateTime @default(now())
+
+  @@index([tankId, periodEnd])
+}
+
+/// Scope-based dynamic reconciliation thresholds (GLOBAL | TANK | PROJECT)
+model FuelReconConfig {
+  id               String   @id @default(cuid())
+  scope            String   // GLOBAL | TANK | PROJECT
+  scopeId          String?  // tankId or projectId (null for GLOBAL)
+  dipToleranceL    Float    @default(25)
+  shrinkagePctWarn Float    @default(0.5)
+  shrinkagePctCrit Float    @default(2.0)
+  capacityPctWarn  Float    @default(2.0)
+  seasonalFactor   Float    @default(1.0)
+  maxDipIntervalH  Int      @default(168)
+  updatedAt        DateTime @updatedAt
+  updatedBy        String?
+
+  @@unique([scope, scopeId])
+}
+
+/// Unified spatial-temporal correlated fuel anomaly cases
+model UnifiedAnomaly {
+  id                 String   @id @default(cuid())
+  caseNo             String   @unique
+  primaryDomain      String   // FUEL_THEFT | SUPPLIER_SHORTFALL | METER_TAMPERING | TANK_LEAK
+  severity           String   @default("MEDIUM") // HIGH | MEDIUM | LOW
+  score              Int      @default(0)        // 0-100 risk score
+  litresAtRisk       Float    @default(0)
+  valueAtRisk        Float    @default(0)
+  confidence         Float    @default(1.0)
+  signals            String   // JSON stringified array of contributing signals
+  assetId            String?
+  tankId             String?
+  driverId           String?
+  supplier           String?
+  status             String   @default("OPEN")  // OPEN | INVESTIGATING | RECOVERED | FALSE_POSITIVE | CLOSED
+  assignedTo         String?
+  resolution         String?
+  recoveredInr       Float    @default(0)
+  detectedAt         DateTime @default(now())
+  resolvedAt         DateTime?
+
+  @@index([status, severity])
+  @@index([assetId, detectedAt])
+}
+
+/// Rolling feature store records for risk engine and ML inference hooks
+model FeatureStoreRecord {
+  id          String   @id @default(cuid())
+  entityType  String   // ASSET | DRIVER | TANK | SUPPLIER
+  entityId    String
+  featureKey  String
+  value       Float
+  updatedAt   DateTime @updatedAt
+
+  @@unique([entityType, entityId, featureKey])
+}
+
+
+/* ========== M9/M10 — Telematics, image fuel capture & QR trip sessions ========== */
+
+/// A GPS/telematics vendor the fleet buys tracking from. Credentials live in
+/// environment variables keyed by `apiKeyEnv`, never in the database.
+model TelematicsProvider {
+  id            String   @id @default(cuid())
+  code          String   @unique // MAPMYINDIA | LOCONAV | WHEELSEYE | GENERIC
+  name          String
+  apiBaseUrl    String?
+  /// Name of the env var holding this provider's key, e.g. LOCONAV_API_KEY.
+  apiKeyEnv     String?
+  active        Boolean  @default(true)
+  syncIntervalMin Int    @default(15)
+  lastSyncAt    DateTime?
+  lastSyncStatus String?
+  lastSyncError String?
+  assets        Asset[]
+  readings      TelemetryReading[]
+  createdAt     DateTime @default(now())
+}
+
+/// One telemetry sample. Kept as history rather than overwriting the asset, so a
+/// trip can be reconstructed and a fuel drop can be located in time and place.
+/// This is the table that grows — see the retention note in the scaling plan.
+model TelemetryReading {
+  id           String   @id @default(cuid())
+  assetId      String
+  asset        Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  recordedAt   DateTime @default(now())
+  lat          Float?
+  lng          Float?
+  speedKph     Float?
+  headingDeg   Float?
+  odometerKm   Float?
+  engineHours  Float?
+  /// Tank level as a percentage, and in litres where the provider reports it.
+  fuelLevelPct Float?
+  fuelLevelL   Float?
+  ignitionOn   Boolean?
+  /// GPS_API = pulled from a provider, DEVICE = pushed by a tracker,
+  /// MOBILE = the driver's phone, IMAGE = derived from a verified gauge photo.
+  source       String   @default("DEVICE")
+  providerId   String?
+  provider     TelematicsProvider? @relation(fields: [providerId], references: [id])
+  sessionId    String?
+  session      TripSession? @relation(fields: [sessionId], references: [id])
+  /// The provider's untouched payload. Fleet Edge sends 34 fields per vehicle
+  /// and the typed columns above cover nine of them; keeping the original means
+  /// AdBlue level, battery voltages, gear and satellite count are not lost to a
+  /// schema decision made before anyone knew which of them mattered.
+  raw          Json?
+  createdAt    DateTime @default(now())
+
+  @@index([assetId, recordedAt])
+  @@index([sessionId, recordedAt])
+}
+
+/// A fuel level read from a photograph of the gauge, for vehicles with no fuel
+/// sensor. Stored alongside sensor data but never trusted blindly: it carries a
+/// confidence score and, below the threshold, waits for a human to confirm.
+model FuelLevelReading {
+  id             String   @id @default(cuid())
+  assetId        String
+  asset          Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  driverId       String?
+  driver         Driver?  @relation(fields: [driverId], references: [id])
+  sessionId      String?
+  session        TripSession? @relation(fields: [sessionId], references: [id])
+  capturedAt     DateTime @default(now())
+  /// What the model read.
+  levelPct       Float?
+  levelL         Float?
+  odometerKm     Float?
+  /// 0–1. Below the verification threshold the reading is held for review.
+  confidence     Float    @default(0)
+  /// The model's own account of what it saw — kept for disputes.
+  reasoning      String?
+  gaugeType      String?  // ANALOG_NEEDLE | DIGITAL_BAR | DIGITAL_NUMERIC
+  imageUrl       String?
+  lat            Float?
+  lng            Float?
+  status         String   @default("PENDING") // PENDING | VERIFIED | CORRECTED | REJECTED
+  /// Set when a human overrides the machine's reading.
+  correctedPct   Float?
+  verifiedBy     String?
+  verifiedAt     DateTime?
+  note           String?
+  createdAt      DateTime @default(now())
+
+  @@index([assetId, capturedAt])
+  @@index([status])
+}
+
+/// A driver bound to a vehicle by scanning its cabin QR code. This is the live
+/// binding — who is on which machine right now — and the spine every trip event
+/// hangs off, so a fuel entry or a position always has an accountable person.
+model TripSession {
+  id            String   @id @default(cuid())
+  assetId       String
+  asset         Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  driverId      String
+  driver        Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  /// The login that scanned, so the session is tied to an authenticated session
+  /// and not merely to a person record someone selected from a list.
+  userId        String?
+  projectId     String?
+  project       Project? @relation(fields: [projectId], references: [id])
+  startedAt     DateTime @default(now())
+  endedAt       DateTime?
+  status        String   @default("ACTIVE") // ACTIVE | COMPLETED | ABANDONED
+  /// GPS = provider telemetry, MOBILE = driver's phone, NONE = neither available.
+  trackingSource String  @default("NONE")
+  startLat      Float?
+  startLng      Float?
+  endLat        Float?
+  endLng        Float?
+  startOdometer Float?
+  endOdometer   Float?
+  distanceKm    Float    @default(0)
+  /// How the binding ended: DRIVER = explicit checkout, AUTO = stale timeout,
+  /// ADMIN = forced release.
+  endedBy       String?
+  scanMethod    String   @default("QR") // QR | MANUAL
+  notes         String?
+  readings      TelemetryReading[]
+  fuelReadings  FuelLevelReading[]
+  fuelTxns      FuelTransaction[]
+  createdAt     DateTime @default(now())
+
+  @@index([assetId, status])
+  @@index([driverId, startedAt])
+  @@index([status, startedAt])
+}
+
+/* ============ M4 — Project & Site Master ============ */
+
+/// A physical location inside a project — quarry, camp, batching plant, a stretch
+/// of chainage. The geofence radius is what makes "was the machine actually
+/// there?" answerable rather than a matter of trust.
+model Site {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  code      String
+  name      String
+  type      String   @default("WORK_FRONT") // QUARRY | CAMP | PLANT | STORE | WORK_FRONT | WEIGHBRIDGE
+  lat       Float    @default(0)
+  lng       Float    @default(0)
+  radiusM   Float    @default(500) // geofence radius in metres
+  address   String?
+  active    Boolean  @default(true)
+  allocations Allocation[]
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, code])
+  @@index([projectId, active])
+}
+
+/// What the project *said* it needed, so plan can be compared with what is
+/// actually standing on site. Over-allocation is cost; under-allocation is delay.
+model EquipmentPlan {
+  id           String   @id @default(cuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assetClass   String
+  plannedCount Int      @default(1)
+  fromDate     DateTime
+  toDate       DateTime?
+  budgetPerDay Float    @default(0)
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  @@unique([projectId, assetClass])
+  @@index([projectId])
+}
+
+/* ============ M11 — Fleet Operations ============ */
+
+/// A machine committed to a project for a period. Overlapping allocations of the
+/// same asset are a real finding: two projects cannot both be billed for it.
+model Allocation {
+  id          String   @id @default(cuid())
+  assetId     String
+  asset       Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  siteId      String?
+  site        Site?    @relation(fields: [siteId], references: [id])
+  fromDate    DateTime
+  toDate      DateTime?
+  status      String   @default("PLANNED") // PLANNED | ACTIVE | RELEASED | CANCELLED
+  purpose     String?
+  ratePerDay  Float    @default(0)
+  allocatedBy String?
+  releasedOn  DateTime?
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  @@index([assetId, fromDate])
+  @@index([projectId, status])
+}
+
+/// Moving a machine between sites. Low-bed transport is expensive and slow, so
+/// the days a machine spends in transit are days nobody is producing with it.
+model MobilizationOrder {
+  id            String   @id @default(cuid())
+  assetId       String
+  asset         Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  fromProjectId String?
+  toProjectId   String?
+  toProject     Project? @relation("MobToProject", fields: [toProjectId], references: [id])
+  requestedDate DateTime @default(now())
+  dispatchDate  DateTime?
+  arrivalDate   DateTime?
+  transportMode String   @default("SELF_DRIVE") // SELF_DRIVE | LOW_BED | TRAILER | CRANE
+  transporter   String?
+  distanceKm    Float    @default(0)
+  cost          Float    @default(0)
+  status        String   @default("REQUESTED") // REQUESTED | APPROVED | IN_TRANSIT | ARRIVED | CANCELLED
+  requestedBy   String?
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  @@index([assetId, requestedDate])
+  @@index([status])
+}
+
+/* ==================== M1 — Asset Master ==================== */
+
+/// Every meter reading ever taken, from whatever source. The demo carried a
+/// single `meterValue` on the asset, which meant a wrong entry silently
+/// overwrote the truth and a rollback could only be inferred from fuel entries.
+/// A machine can carry both an odometer and an hour-meter — a backhoe does — so
+/// the type is explicit rather than assumed from the asset class.
+model MeterReading {
+  id         String   @id @default(cuid())
+  assetId    String
+  asset      Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  meterType  String   // ODOMETER | HOURS
+  value      Float
+  date       DateTime @default(now())
+  source     String   @default("MANUAL") // MANUAL | FUEL | SERVICE | GPS | PRODUCTION
+  refId      String?  // originating record, when captured automatically
+  recordedBy String?
+  note       String?
+  /// Set when the reading is lower than the previous one for the same meter.
+  isRollback Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([assetId, meterType, date])
+}
+
+/// Commissioning, transfers, status changes and disposal — the asset's own history.
+model AssetLifecycleEvent {
+  id        String   @id @default(cuid())
+  assetId   String
+  asset     Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  kind      String   // COMMISSIONED | TRANSFERRED | STATUS_CHANGE | OFF_HIRED | DECOMMISSIONED | DISPOSED
+  date      DateTime @default(now())
+  fromValue String?
+  toValue   String?
+  amount    Float    @default(0) // disposal proceeds, transfer cost
+  note      String?
+  by        String?
+  createdAt DateTime @default(now())
+
+  @@index([assetId, date])
+}
+
+/* ==================== M2 — Personnel Master ==================== */
+
+/// Daily attendance. Drives payroll sanity, and answers "was this operator even
+/// on site on the day that machine logged 9 hours?"
+model Attendance {
+  id        String   @id @default(cuid())
+  driverId  String
+  driver    Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  date      DateTime
+  status    String   @default("PRESENT") // PRESENT | ABSENT | LEAVE | HALF_DAY | REST
+  shift     String   @default("DAY")     // DAY | NIGHT
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id])
+  hours     Float    @default(8)
+  markedBy  String?
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@unique([driverId, date, shift])
+  @@index([driverId, date])
+  @@index([projectId, date])
+}
+
+/// Personal documents with expiry — the people equivalent of M13's vehicle papers.
+model PersonDocument {
+  id          String   @id @default(cuid())
+  driverId    String
+  driver      Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  docType     String   // LICENSE | AADHAAR | MEDICAL | POLICE_VERIFICATION | TRAINING | CONTRACT
+  number      String?
+  issueDate   DateTime?
+  expiryDate  DateTime?
+  documentUrl String?
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  @@index([driverId])
+  @@index([expiryDate])
+}
+
+/* ============ M0 — Identity, RBAC, Audit & Configuration ============ */
+
+/// A role is a named bundle of permissions. Stored as data so the client can
+/// create roles without a redeploy; system roles are protected from deletion.
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  label       String
+  description String?
+  isSystem    Boolean  @default(false)
+  /// Newline-separated permission codes (module.action).
+  permissions String   @default("")
+  /// Rupee ceiling this role may approve without escalation. 0 = no approval rights.
+  approvalLimit Float  @default(0)
+  users       User[]
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+}
+
+/// Tamper-evident record of who did what. Append-only by convention: nothing in
+/// the app updates or deletes these rows, which is what makes the log worth having.
+model AuditEvent {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actorName  String?
+  actorRole  String?
+  action     String   // CREATE | UPDATE | DELETE | APPROVE | LOGIN | LOGOUT | EXPORT | CONFIG
+  module     String   // FUEL | HIRE | MAINTENANCE | COMPLIANCE | ADMIN | ...
+  entity     String?  // model name
+  entityId   String?
+  summary    String
+  /// JSON snapshot of what changed, for disputes months later.
+  changes    String?
+  ip         String?
+  at         DateTime @default(now())
+
+  @@index([at])
+  @@index([module, at])
+  @@index([actorId, at])
+}
+
+/* ==================== M24 — Weighbridge Reconciliation ==================== */
+
+/// A weighbridge slip. Dispatch tickets are matched to receipt tickets so
+/// material that leaves a quarry but never arrives at site becomes visible.
+model WeighbridgeTicket {
+  id           String   @id @default(cuid())
+  ticketNo     String   @unique
+  kind         String   // DISPATCH | RECEIPT
+  date         DateTime @default(now())
+  assetId      String?
+  asset        Asset?   @relation(fields: [assetId], references: [id])
+  driverId     String?
+  driver       Driver?  @relation(fields: [driverId], references: [id])
+  projectId    String?
+  project      Project? @relation(fields: [projectId], references: [id])
+  material     String
+  grossKg      Float    @default(0)
+  tareKg       Float    @default(0)
+  netKg        Float    @default(0)
+  fromLocation String?
+  toLocation   String?
+  vendor       String?
+  /// Links a receipt back to the dispatch ticket it answers.
+  pairedTicketNo String?
+  billedKg     Float    @default(0)
+  rate         Float    @default(0)
+  amount       Float    @default(0)
+  photo        String?
+  recordedBy   String?
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  @@index([kind, date])
+  @@index([material, date])
+  @@index([pairedTicketNo])
+}
+
+/* ============ M12 — Driver / Operator Management & Safety ============ */
+
+/// What a person is cleared to operate. An excavator operator is not
+/// automatically a crane operator, and assignment should refuse to pretend otherwise.
+model Competency {
+  id          String   @id @default(cuid())
+  driverId    String
+  driver      Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  assetClass  String
+  level       String   @default("TRAINED") // TRAINED | CERTIFIED | EXPERT
+  certNo      String?
+  certifiedOn DateTime?
+  expiresOn   DateTime?
+  issuedBy    String?
+  createdAt   DateTime @default(now())
+
+  @@unique([driverId, assetClass])
+  @@index([driverId])
+}
+
+/// A safety or conduct event against a person. Points accumulate into the
+/// safety score and decay over time, so old mistakes stop counting forever.
+model Violation {
+  id          String   @id @default(cuid())
+  driverId    String
+  driver      Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  assetId     String?
+  asset       Asset?   @relation(fields: [assetId], references: [id])
+  type        String   // OVERSPEED | HARSH_BRAKING | IDLING | NO_SEATBELT | PHONE_USE | ACCIDENT | FUEL_MISUSE | DOCUMENT | OTHER
+  severity    String   @default("MINOR") // MINOR | MAJOR | CRITICAL
+  points      Int      @default(1)
+  date        DateTime @default(now())
+  description String?
+  penalty     Float    @default(0)
+  actionTaken String?  // COACHING | WARNING | PENALTY | SUSPENSION | TERMINATION
+  status      String   @default("OPEN") // OPEN | ACTIONED | DISMISSED
+  recordedBy  String?
+  createdAt   DateTime @default(now())
+
+  @@index([driverId, date])
+  @@index([status])
+}
+
+/* ==================== M14 — Preventive & Breakdown Maintenance ==================== */
+
+/// A recurring service task. Due-ness is driven by whichever interval trips first —
+/// kilometres, engine-hours or calendar days — because a machine that sits idle
+/// still ages, and one that runs hard ages faster than the calendar suggests.
+model MaintenanceSchedule {
+  id             String   @id @default(cuid())
+  assetId        String?
+  asset          Asset?   @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  /// When assetId is null this is a class-wide template applying to every machine of the class.
+  assetClass     String?
+  taskName       String
+  taskCode       String?
+  intervalKm     Float    @default(0)
+  intervalHours  Float    @default(0)
+  intervalDays   Int      @default(0)
+  lastDoneMeter  Float    @default(0)
+  lastDoneDate   DateTime?
+  estimatedCost  Float    @default(0)
+  estimatedHours Float    @default(0)
+  active         Boolean  @default(true)
+  notes          String?
+  createdAt      DateTime @default(now())
+
+  @@index([assetId, active])
+}
+
+/// Labour and parts lines on a work order — what the totals are actually made of.
+model WorkOrderLine {
+  id              String    @id @default(cuid())
+  workOrderId     String
+  workOrder       WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  kind            String    // LABOUR | PART | OUTSIDE
+  description     String
+  partNo          String?
+  qty             Float     @default(1)
+  rate            Float     @default(0)
+  amount          Float     @default(0)
+  vendor          String?
+  inventoryItemId String?
+  inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id])
+
+  @@index([workOrderId])
+}
+
+
+/// Job-card checklist. A closed work order with unticked safety items is a
+/// question worth asking before the machine goes back to work.
+model JobCardItem {
+  id          String    @id @default(cuid())
+  workOrderId String
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  task        String
+  done        Boolean   @default(false)
+  critical    Boolean   @default(false)
+  note        String?
+  doneBy      String?
+  doneAt      DateTime?
+
+  @@index([workOrderId])
+}
+
+/* ============= M17 — Tyre & Major-Component Lifecycle ============= */
+
+/// One physical tyre, tracked by serial across every machine it is ever fitted to.
+/// Serial-level tracking is what makes a quiet swap onto another vehicle visible.
+model Tyre {
+  id             String              @id @default(cuid())
+  serialNo       String              @unique
+  make           String
+  pattern        String?
+  size           String
+  assetId        String?
+  asset          Asset?              @relation(fields: [assetId], references: [id])
+  position       String?             // FL, FR, RL1, RL2, RR1, RR2, SPARE
+  status         String              @default("IN_STOCK") // IN_STOCK | IN_USE | REMOVED | RETREADED | SCRAPPED
+  purchaseDate   DateTime?
+  cost           Float               @default(0)
+  treadNewMm     Float               @default(20)
+  currentTreadMm Float               @default(20)
+  expectedLifeKm Float               @default(60000)
+  fittedMeter    Float               @default(0)
+  totalKm        Float               @default(0) // accumulated across fitments
+  retreadCount   Int                 @default(0)
+  events         TyreEvent[]
+  warehouseId    String?
+  warehouse      InventoryWarehouse? @relation(fields: [warehouseId], references: [id])
+  createdAt      DateTime            @default(now())
+
+  @@index([assetId, status])
+  @@index([status])
+}
+
+model TyreEvent {
+  id         String   @id @default(cuid())
+  tyreId     String
+  tyre       Tyre     @relation(fields: [tyreId], references: [id], onDelete: Cascade)
+  kind       String   // FIT | REMOVE | ROTATE | INSPECT | RETREAD | SCRAP
+  date       DateTime @default(now())
+  assetId    String?
+  position   String?
+  meterValue Float    @default(0)
+  treadMm    Float    @default(0)
+  cost       Float    @default(0)
+  reason     String?  // WEAR | PUNCTURE | BURST | CUT | ROTATION | THEFT
+  note       String?
+  by         String?
+
+  @@index([tyreId, date])
+}
+
+/// Major components — buckets, undercarriage, engines, transmissions. Same
+/// serial-level discipline as tyres, for the same reason.
+model MajorComponent {
+  id                String              @id @default(cuid())
+  serialNo          String              @unique
+  type              String              // BUCKET | UNDERCARRIAGE | ENGINE | TRANSMISSION | BOOM | DRUM | OTHER
+  make              String?
+  assetId           String?
+  asset             Asset?              @relation(fields: [assetId], references: [id])
+  status            String              @default("IN_STOCK") // IN_STOCK | IN_USE | REMOVED | REBUILT | SCRAPPED
+  cost              Float               @default(0)
+  fittedDate        DateTime?
+  fittedMeter       Float               @default(0)
+  expectedLifeHours Float               @default(8000)
+  hoursUsed         Float               @default(0)
+  rebuildCount      Int                 @default(0)
+  notes             String?
+  warehouseId       String?
+  warehouse         InventoryWarehouse? @relation(fields: [warehouseId], references: [id])
+  createdAt         DateTime            @default(now())
+
+  @@index([assetId, status])
+}
+
+/* ================= M23 — Production & Productivity (construction core) ================= */
+
+/// One shift of actual output for one machine. Trips suit tippers; excavators and
+/// crushers are measured in m3/BCM or cycles, so all units live side by side and
+/// each asset class is read through the unit that makes sense for it.
+model ProductionLog {
+  id          String   @id @default(cuid())
+  assetId     String
+  asset       Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id])
+  driverId    String?
+  driver      Driver?  @relation(fields: [driverId], references: [id])
+  date        DateTime
+  shift       String   @default("DAY") // DAY | NIGHT
+  material    String?  // Earth, GSB, WMM, Aggregate, Sand, Bitumen, Debris
+  trips       Int      @default(0)
+  tonnage     Float    @default(0)
+  volumeM3    Float    @default(0) // m3 / BCM moved
+  cycles      Int      @default(0) // bucket or drum cycles
+  workedHours Float    @default(0)
+  idleHours   Float    @default(0)
+  distanceKm  Float    @default(0)
+  leadKm      Float    @default(0) // one-way haul distance, drives trips/day expectation
+  source      String   @default("MANUAL") // MANUAL | GPS | OPERATOR | WEIGHBRIDGE
+  verifiedBy  String?
+  note        String?
+  createdAt   DateTime @default(now())
+
+  @@unique([assetId, date, shift])
+  @@index([projectId, date])
+  @@index([assetId, date])
+}
+
+/// Expected output band per asset class, so under-performance is measurable
+/// rather than a matter of opinion. Editable by the client.
+model ProductionNorm {
+  id         String   @id @default(cuid())
+  assetClass String
+  unit       String   // TONNES_PER_DAY | M3_PER_HOUR | TRIPS_PER_DAY | CYCLES_PER_HOUR
+  targetLow  Float
+  targetHigh Float
+  updatedAt  DateTime @updatedAt
+
+  @@unique([assetClass, unit])
+}
+
+/* ==================== M7 — Cost, TCO & Profitability (extensions) ==================== */
+
+/// Money coming in on a project, so profitability is revenue minus true cost
+/// rather than cost alone.
+model ProjectRevenue {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  description String
+  amount      Float
+  period      String   // YYYY-MM
+  billType    String   @default("RA_BILL") // RA_BILL | ADVANCE | RETENTION_RELEASE | OTHER
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([projectId, period])
+}
+
+/* ======================= M6 — Loss Prevention & Fraud Controls ======================= */
+
+/// The control-rule library. Rules are data, not code, so the client can tune
+/// thresholds per site without a redeploy.
+model ControlRule {
+  id          String   @id @default(cuid())
+  code        String   @unique // FUEL_TANK_GAP, HIRE_OVERBILL, METER_ROLLBACK, ...
+  name        String
+  domain      String   // FUEL | HIRE | MAINTENANCE | METER | COMPLIANCE | TRIP
+  description String
+  severity    String   @default("MEDIUM") // HIGH | MEDIUM | LOW
+  /// Numeric trigger point; meaning depends on the rule (litres, ₹, %, days).
+  threshold   Float    @default(0)
+  thresholdUnit String?
+  enabled     Boolean  @default(true)
+  /// When true, a matching signal opens a case automatically instead of only alerting.
+  autoCase    Boolean  @default(true)
+  hits        Int      @default(0)
+  updatedAt   DateTime @updatedAt
+}
+
+/// A cross-domain loss-prevention case: the investigation unit that turns a
+/// detected signal into a tracked recovery.
+model FraudCase {
+  id           String   @id @default(cuid())
+  caseNo       String   @unique
+  title        String
+  domain       String   // FUEL | HIRE | MAINTENANCE | METER | COMPLIANCE | TRIP
+  ruleCode     String?
+  severity     String   @default("MEDIUM")
+  score        Int      @default(0)
+  status       String   @default("OPEN") // OPEN | INVESTIGATING | PENDING_APPROVAL | RECOVERED | WRITTEN_OFF | FALSE_POSITIVE | CLOSED
+  amountAtRisk Float    @default(0)
+  amountRecovered Float @default(0)
+  /// Who or what the case is against — used to build repeat-offender profiles.
+  assetId      String?
+  asset        Asset?   @relation(fields: [assetId], references: [id])
+  driverId     String?
+  driver       Driver?  @relation(fields: [driverId], references: [id])
+  vendor       String?
+  projectId    String?
+  project      Project? @relation(fields: [projectId], references: [id])
+  summary      String?
+  rootCause    String?
+  disposition  String?
+  assignedTo   String?
+  openedBy     String?
+  openedAt     DateTime @default(now())
+  dueDate      DateTime?
+  closedAt     DateTime?
+  /// Stable key of the originating signal, so re-scanning updates rather than duplicates.
+  signalKey    String?  @unique
+  evidence     CaseEvidence[]
+  actions      CaseAction[]
+  recoveries   CaseRecovery[]
+
+  @@index([status, severity])
+  @@index([domain, openedAt])
+}
+
+/// Evidence bundle attached to a case — the pack you hand to the person deciding.
+model CaseEvidence {
+  id       String    @id @default(cuid())
+  caseId   String
+  case     FraudCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  kind     String    // FUEL_ANOMALY | HIRE_INVOICE | FUEL_TXN | WORK_ORDER | PHOTO | NOTE | RECON
+  refId    String?
+  label    String
+  detail   String?
+  url      String?
+  addedBy  String?
+  addedAt  DateTime  @default(now())
+
+  @@index([caseId])
+}
+
+/// Immutable-ish timeline of what was done on a case. The audit trail.
+model CaseAction {
+  id      String    @id @default(cuid())
+  caseId  String
+  case    FraudCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  action  String    // OPENED | ASSIGNED | STATUS_CHANGE | NOTE | EVIDENCE_ADDED | RECOVERY | CLOSED
+  note    String?
+  by      String?
+  at      DateTime  @default(now())
+
+  @@index([caseId, at])
+}
+
+/// Money actually clawed back. Kept separate from the case so partial recoveries
+/// from different channels each keep their own reference.
+model CaseRecovery {
+  id        String    @id @default(cuid())
+  caseId    String
+  case      FraudCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  amount    Float
+  method    String    // SALARY_DEDUCTION | VENDOR_DEBIT_NOTE | CASH | INSURANCE | WRITE_OFF
+  reference String?
+  note      String?
+  by        String?
+  date      DateTime  @default(now())
+
+  @@index([caseId])
+}
+
+/* ============================ M8 — Hire / Rental Billing ============================ */
+
+/// Terms a hired or contractor asset is engaged on. Drives invoice validation:
+/// nothing gets approved that the contract and the logs don't both support.
+model HireContract {
+  id            String   @id @default(cuid())
+  assetId       String
+  asset         Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  vendor        String
+  contractNo    String?
+  rateType      String   // PER_DAY | PER_HOUR | PER_KM | PER_TRIP | MONTHLY
+  rate          Float
+  overtimeRate  Float    @default(0)
+  /// Minimum the vendor is paid regardless of work done (e.g. 8 hrs/day, 26 days/month).
+  minGuarantee  Float    @default(0)
+  guaranteeUnit String?  // HOURS_PER_DAY | DAYS_PER_MONTH
+  /// Who pays for diesel. When VENDOR, any fuel we issue is recovered from their bill.
+  fuelBorneBy   String   @default("HIRER") // HIRER | VENDOR
+  /// Days the machine was down are typically not billable — this makes that explicit.
+  breakdownBillable Boolean @default(false)
+  idleBillable      Boolean @default(true)
+  startDate     DateTime @default(now())
+  endDate       DateTime?
+  status        String   @default("Active") // Active | Expired | Terminated
+  notes         String?
+  logs          HireLog[]
+  invoices      HireInvoice[]
+  createdAt     DateTime @default(now())
+
+  @@index([assetId, status])
+}
+
+/// One day of actual work for a hired asset — the evidence an invoice is checked against.
+model HireLog {
+  id          String   @id @default(cuid())
+  contractId  String
+  contract    HireContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  date        DateTime
+  present     Boolean  @default(true)
+  workedHours Float    @default(0)
+  idleHours   Float    @default(0)
+  breakdownHours Float @default(0)
+  km          Float    @default(0)
+  trips       Int      @default(0)
+  /// GPS = derived from telematics, MANUAL = site entry, OPERATOR = from the driver app.
+  source      String   @default("MANUAL")
+  verifiedBy  String?
+  note        String?
+  createdAt   DateTime @default(now())
+
+  @@unique([contractId, date])
+  @@index([contractId, date])
+}
+
+/// A vendor bill, with the system's independent verification alongside the claim.
+model HireInvoice {
+  id           String   @id @default(cuid())
+  contractId   String
+  contract     HireContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  invoiceNo    String?
+  periodStart  DateTime
+  periodEnd    DateTime
+  // ---- what the vendor claims ----
+  claimedQty   Float    @default(0) // days / hours / km / trips per the contract's rateType
+  claimedAmount Float   @default(0)
+  // ---- what our logs support ----
+  verifiedQty  Float    @default(0)
+  verifiedAmount Float  @default(0)
+  fuelDeduction  Float  @default(0) // diesel we issued that the vendor should bear
+  otherDeduction Float  @default(0)
+  payableAmount  Float  @default(0)
+  varianceAmount Float  @default(0) // claimed - payable (positive = overbilled)
+  findings     String?  // newline-separated
+  status       String   @default("RECEIVED") // RECEIVED | VERIFIED | DISPUTED | APPROVED | PAID
+  disputedAmount Float  @default(0)
+  recovered    Float    @default(0)
+  invoicePhoto String?
+  verifiedBy   String?
+  date         DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@index([contractId, periodEnd])
+  @@index([status])
+}
+
+/// Unified fuel anomaly queue. Feeds M6 Loss Prevention.
+model FuelAnomaly {
+  id         String   @id @default(cuid())
+  source     String   // ISSUE | RECEIPT | TANK_RECON | ASSET_EFFICIENCY
+  refId      String?  // id of the originating record
+  assetId    String?
+  tankId     String?
+  severity   String   @default("MEDIUM") // HIGH | MEDIUM | LOW
+  score      Int      @default(0)        // 0-100 risk score
+  litres     Float    @default(0)
+  valueAtRisk Float   @default(0)
+  reasons    String   // newline-separated
+  status     String   @default("OPEN")  // OPEN | INVESTIGATING | RECOVERED | FALSE_POSITIVE | CLOSED
+  assignedTo String?
+  resolution String?
+  recovered  Float    @default(0)
+  detectedAt DateTime @default(now())
+  resolvedAt DateTime?
+
+  @@unique([source, refId])
+  @@index([status, severity])
+}
+
+model FuelTransaction {
+  id           String   @id @default(cuid())
+  type         String   // ISSUE | RECEIPT
+  assetId      String?
+  asset        Asset?   @relation(fields: [assetId], references: [id])
+  projectId    String?
+  project      Project? @relation(fields: [projectId], references: [id])
+  quantity     Float
+  rate         Float    @default(92)
+  amount       Float    @default(0)
+  meterValue   Float    @default(0)
+  sensorRise   Float    @default(0)
+  variancePct  Float    @default(0)
+  anomaly      Boolean  @default(false)
+  geofenceOk   Boolean  @default(true)
+  odometerPhoto String?
+  pumpPhoto     String?
+  lat          Float?
+  lng          Float?
+  date         DateTime @default(now())
+  // ---- M5 ----
+  tankId       String?   // set when diesel came from a site tank rather than a retail pump
+  tank         FuelTank? @relation(fields: [tankId], references: [id])
+  source       String    @default("RETAIL") // SITE_TANK | RETAIL | BOWSER | CARD
+  issuedBy     String?
+  approvedBy   String?
+  shift        String?   // DAY | NIGHT
+  expectedL    Float     @default(0) // norm-based expectation for this segment
+  expectedVarPct Float   @default(0) // (actual - expected) / expected * 100
+  /// The QR session this fill was logged under, so every litre has an
+  /// accountable driver rather than only a vehicle.
+  sessionId    String?
+  session      TripSession? @relation(fields: [sessionId], references: [id])
+  /// SENSOR | IMAGE | MANUAL — how the quantity was established.
+  captureMethod String   @default("MANUAL")
+  captureConfidence Float @default(0)
+
+  @@index([assetId, date])
+  @@index([tankId, date])
+}
+
+model WorkOrder {
+  id           String   @id @default(cuid())
+  woNo         String   @unique
+  assetId      String
+  asset        Asset    @relation(fields: [assetId], references: [id])
+  projectId    String?
+  project      Project? @relation(fields: [projectId], references: [id])
+  type         String   // PM | BREAKDOWN | REPAIR
+  priority     String   // Low, Medium, High, Critical
+  status       String   // Open, In-Progress, Completed, Closed
+  description  String
+  laborCost    Float    @default(0)
+  partsCost    Float    @default(0)
+  totalCost    Float    @default(0)
+  downtimeHrs  Float    @default(0)
+  warranty     Boolean  @default(false)
+  partPhotos   String?  // JSON array of repaired-part photo URLs
+  reportedAt   DateTime @default(now())
+  completedAt  DateTime?
+  // ---- M14 ----
+  scheduleId   String?  // set when this WO came from a PM schedule
+  meterAtService Float  @default(0)
+  technician   String?
+  lines        WorkOrderLine[]
+  checklist    JobCardItem[]
+
+  @@index([assetId, reportedAt])
+  @@index([status])
+}
+
+model ComplianceDoc {
+  id          String   @id @default(cuid())
+  assetId     String
+  asset       Asset    @relation(fields: [assetId], references: [id])
+  docType     String   // RC, Insurance, Fitness, Permit, PUC, RoadTax
+  number      String
+  issueDate   DateTime
+  expiryDate  DateTime
+  status      String   @default("Valid") // Valid, Expiring, Expired
+  // ---- M13 ----
+  documentUrl String?
+  reminderDays Int     @default(30)
+  cost        Float    @default(0)
+  vendor      String?
+  /// Chains renewals so a document's history is traceable rather than overwritten.
+  supersedesId String? @unique
+  renewedAt   DateTime?
+  notes       String?
+
+  @@index([assetId, expiryDate])
+  @@index([expiryDate])
+}
+
+model Alert {
+  id          String   @id @default(cuid())
+  category    String   // Fuel, Maintenance, Compliance, Geofence, Driver, Idle
+  severity    String   // Info, Warning, Critical
+  title       String
+  message     String
+  assetId     String?
+  asset       Asset?   @relation(fields: [assetId], references: [id])
+  driverId    String?
+  driver      Driver?  @relation(fields: [driverId], references: [id])
+  status      String   @default("Open") // Open, Acknowledged, Resolved
+  createdAt   DateTime @default(now())
+  // ---- M18 ----
+  ruleCode    String?
+  /// Stable key of the underlying condition, so a repeat sweep updates rather than duplicates.
+  dedupeKey   String?  @unique
+  dueDate     DateTime?
+  acknowledgedBy String?
+  acknowledgedAt DateTime?
+  escalatedAt DateTime?
+  resolvedAt  DateTime?
+  actionUrl   String?
+  assignedTo  String?
+
+  @@index([status, severity])
+  @@index([category, createdAt])
+}
+
+/* ==================== M18 — Alert & Notification Engine ==================== */
+
+/// Alert rules as data: which conditions raise an alert, how loud, who is chased
+/// and after how long. Stored so the client can quiet a noisy rule without a
+/// redeploy — an alert nobody can turn down is an alert everybody ignores.
+model AlertRule {
+  id             String  @id @default(cuid())
+  code           String  @unique
+  name           String
+  category       String  // Fuel, Maintenance, Compliance, Driver, Operations, Loss
+  description    String
+  severity       String  @default("Warning") // Info | Warning | Critical
+  /// Days of notice, or a threshold — meaning depends on the rule.
+  threshold      Float   @default(0)
+  thresholdUnit  String?
+  enabled        Boolean @default(true)
+  /// Comma-separated: IN_APP, PUSH, EMAIL
+  channels       String  @default("IN_APP,PUSH")
+  /// Hours an unacknowledged alert may sit before it is escalated.
+  escalateAfterHours Int @default(24)
+  escalateToRole String?
+  hits           Int     @default(0)
+  updatedAt      DateTime @updatedAt
+}
+
+/* ==================== M19 — Reporting ==================== */
+
+/// A saved report definition — what to run, for whom, how often.
+model SavedReport {
+  id          String   @id @default(cuid())
+  name        String
+  reportKey   String   // which built-in report
+  filters     String?  // JSON
+  schedule    String   @default("MANUAL") // MANUAL | DAILY | WEEKLY | MONTHLY
+  recipients  String?  // comma-separated emails
+  lastRunAt   DateTime?
+  createdBy   String?
+  createdAt   DateTime @default(now())
+
+  @@index([schedule])
+}
+
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userId    String?
+  createdAt DateTime @default(now())
+}
+
+model CostTransaction {
+  id         String   @id @default(cuid())
+  assetId    String?
+  asset      Asset?   @relation(fields: [assetId], references: [id])
+  projectId  String?
+  project    Project? @relation(fields: [projectId], references: [id])
+  costHead   String   // FUEL, MAINTENANCE, TYRE, OPERATOR, INSURANCE, DEPRECIATION, EMI, TOLL, HIRE
+  amount     Float
+  period     String   // YYYY-MM
+  date       DateTime @default(now())
+}
+
+model InventoryWarehouse {
+  id           String                 @id @default(cuid())
+  code         String                 @unique
+  name         String
+  location     String?
+  projectId    String?
+  project      Project?               @relation(fields: [projectId], references: [id])
+  active          Boolean                @default(true)
+  stocks          InventoryStock[]
+  transactions    InventoryTransaction[]  @relation("WarehouseFrom")
+  toTransactions  InventoryTransaction[]  @relation("WarehouseTo")
+  tyres           Tyre[]
+  components      MajorComponent[]
+  createdAt       DateTime               @default(now())
+}
+
+model InventoryItem {
+  id             String                 @id @default(cuid())
+  partNo         String                 @unique
+  name           String
+  description    String?
+  category       String                 // PART | LUBRICANT | CONSUMABLE | TOOL | OTHER
+  unitOfMeasure  String                 // PCS | LITRES | BOX | SET | KG
+  minStockLevel  Float                  @default(0)
+  averageCost    Float                  @default(0)
+  stocks         InventoryStock[]
+  transactions   InventoryTransaction[]
+  workOrderLines WorkOrderLine[]
+  createdAt      DateTime               @default(now())
+}
+
+model InventoryStock {
+  id          String             @id @default(cuid())
+  itemId      String
+  item        InventoryItem      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  warehouseId String
+  warehouse   InventoryWarehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  quantity    Float              @default(0)
+
+  @@unique([itemId, warehouseId])
+}
+
+model InventoryTransaction {
+  id            String              @id @default(cuid())
+  type          String              // RECEIPT | ISSUE | TRANSFER | ADJUSTMENT
+  itemId        String
+  item          InventoryItem       @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  warehouseId   String
+  warehouse     InventoryWarehouse  @relation("WarehouseFrom", fields: [warehouseId], references: [id], onDelete: Cascade)
+  toWarehouseId String?             // filled for TRANSFER
+  toWarehouse   InventoryWarehouse? @relation("WarehouseTo", fields: [toWarehouseId], references: [id])
+  quantity      Float               // positive for receipts, negative for issues/transfers
+  unitCost      Float               @default(0)
+  totalCost     Float               @default(0)
+  refType       String?             // WORK_ORDER | PURCHASE_ORDER | ADJUSTMENT
+  refId         String?             // links to WorkOrder id, etc.
+  note          String?
+  by            String?
+  date          DateTime            @default(now())
+
+  @@index([itemId])
+  @@index([warehouseId])
+  @@index([date])
+}
+
