@@ -6,10 +6,10 @@
 
 ## 🌐 App link
 
-**https://fleetview-erp.vercel.app**
+**https://fleetview-erp-indol.vercel.app**
 
 Install page (share this with the team, or scan to install):
-**https://fleetview-erp.vercel.app/install**
+**https://fleetview-erp-indol.vercel.app/install**
 
 ## 📲 Install (one app for everyone)
 
@@ -179,20 +179,31 @@ performance before treating "below norm" as a finding.
 
 ## ⚠️ Known limitations
 
-1. **Automated backups.** The database has none — backups are taken manually. Move to a
+1. **An old copy of the app is still online and must be shut down.**
+   `https://fleetview-erp.vercel.app` is a **separate, outdated deployment** that is not
+   part of this project but still connects to the same live database. It runs the code
+   from before the data-integrity fixes, and it accepts a telemetry key that is published
+   in this repository — meaning anyone who knows the address can write false vehicle data
+   into your fleet records. It was verified doing exactly that.
+
+   The correct address is the one at the top of this document. **Delete or disable the
+   old deployment, and rotate the database credentials afterwards.** Until then, treat any
+   figure seen at the old address as unreliable.
+
+2. **Automated backups.** The database has none — backups are taken manually. Move to a
    plan with daily backups (and India-region hosting for DPDP) before the fleet depends
    on this system.
-2. **Telemetry history has gaps.** Continuous 2-minute polling is recent; earlier data
+3. **Telemetry history has gaps.** Continuous 2-minute polling is recent; earlier data
    was collected hourly or less. Until a period is fully covered, fuel analysis over it
    will correctly report low confidence. Roughly 80% of the first window was unobserved.
-3. **One vehicle is tracked**, and only until 09 Sep 2026. See *Live tracking* above.
-4. **A database index is pending deployment.** The next `npm run db:deploy` applies a
+4. **One vehicle is tracked**, and only until 09 Sep 2026. See *Live tracking* above.
+5. **A database index is pending deployment.** The next `npm run db:deploy` applies a
    uniqueness rule that prevents the same telemetry sample being counted twice if a
    provider retries. Until then a rare duplicate is possible; the application already
    checks for one on every insert.
-5. **Custom domain** not yet configured, e.g. `fleet.mahadevconstructions.com`.
-6. **Multi-factor authentication** is not yet enabled for the administrator account.
-7. **AI photo-reading** runs on a free, rate-limited key — fine for current volume,
+6. **Custom domain** not yet configured, e.g. `fleet.mahadevconstructions.com`.
+7. **Multi-factor authentication** is not yet enabled for the administrator account.
+8. **AI photo-reading** runs on a free, rate-limited key — fine for current volume,
    needs a paid key at scale.
 
 ---
