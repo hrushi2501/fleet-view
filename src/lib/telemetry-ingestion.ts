@@ -3,10 +3,19 @@ import { fetchTataPings, isTataEnabled } from "@/lib/tata-fleet-edge";
 export interface TelemetryReading {
   vehicleId: string;
   timestamp: string;
-  speed: number;
-  tankLevel: number;
-  engineState: 'ON' | 'OFF';
-  gps: { lat: number; lng: number };
+  /** Null when the provider did not report it — never zero. */
+  speed: number | null;
+  /**
+   * Tank level in litres, or null when unknown.
+   *
+   * This must never be coerced to a number. The fraud scanner reads a fall in
+   * this value as diesel leaving the tank, so a missing reading rendered as 0
+   * is a full tank's worth of fabricated theft against a real driver.
+   */
+  tankLevel: number | null;
+  engineState: 'ON' | 'OFF' | 'UNKNOWN';
+  /** Null when there is no GPS fix. 0,0 is a place in the Atlantic, not a null. */
+  gps: { lat: number; lng: number } | null;
 }
 
 export interface ITelemetryIngestionAdapter {
@@ -71,11 +80,14 @@ export class TataApiAdapter implements ITelemetryIngestionAdapter {
     return scoped.map((p) => ({
       vehicleId: p.externalDeviceId,
       timestamp: p.timestamp.toISOString(),
-      speed: p.speedKph ?? 0,
+      speed: p.speedKph,
       // The scanner reasons in litres; percentage alone can't size a siphon.
-      tankLevel: p.fuelLevelLitres ?? 0,
-      engineState: p.ignitionState ? 'ON' : 'OFF',
-      gps: { lat: p.latitude ?? 0, lng: p.longitude ?? 0 },
+      tankLevel: p.fuelLevelLitres,
+      // Three states, not two: a vehicle that did not report its ignition is
+      // not a vehicle with the ignition off, and only the latter makes a fuel
+      // drop impossible to explain as combustion.
+      engineState: p.ignitionState == null ? 'UNKNOWN' : p.ignitionState ? 'ON' : 'OFF',
+      gps: p.latitude != null && p.longitude != null ? { lat: p.latitude, lng: p.longitude } : null,
     }));
   }
 }

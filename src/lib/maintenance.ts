@@ -32,6 +32,13 @@ export type PmDue = {
   /** 0–100+; 100 means exactly due, above means overdue. */
   progressPct: number;
   status: DueStatus;
+  /**
+   * False when nothing could be judged — no interval configured, or an interval
+   * that needs a meter reading or a last-service date we do not hold. `status`
+   * is "ok" in that case only because the type has nowhere else to go; it must
+   * not be read as "this machine is up to date".
+   */
+  assessable: boolean;
   label: string;
 };
 
@@ -46,7 +53,13 @@ export function pmDue(s: ScheduleLite, currentMeter: number, meterIsHours: boole
   const candidates: { basis: PmDue["basis"]; pct: number; dueAtMeter: number | null; dueOnDate: Date | null; remaining: number }[] = [];
 
   const meterInterval = meterIsHours ? s.intervalHours : s.intervalKm;
-  if (meterInterval > 0) {
+  // `currentMeter` arrives as 0 for any asset whose meter has never been
+  // recorded. Taken at face value that makes `used` negative, the progress
+  // negative, and a service that is in fact years overdue reports "ok" — the
+  // exact wrong direction for a safety-relevant check. An unknown meter can
+  // decide nothing, so it contributes no candidate at all.
+  const meterKnown = Number.isFinite(currentMeter) && currentMeter > 0 && currentMeter >= s.lastDoneMeter;
+  if (meterInterval > 0 && meterKnown) {
     const dueAt = s.lastDoneMeter + meterInterval;
     const used = currentMeter - s.lastDoneMeter;
     candidates.push({
@@ -71,9 +84,13 @@ export function pmDue(s: ScheduleLite, currentMeter: number, meterIsHours: boole
   }
 
   if (candidates.length === 0) {
+    const configured = meterInterval > 0 || s.intervalDays > 0;
     return {
       schedule: s, basis: "km", dueAtMeter: null, dueOnDate: null, meterRemaining: null, daysRemaining: null,
-      progressPct: 0, status: "ok", label: "No interval set",
+      progressPct: 0, status: "ok", assessable: false,
+      label: configured
+        ? "Cannot be assessed — no meter reading or last-service date on record"
+        : "No interval set",
     };
   }
 
@@ -97,6 +114,7 @@ export function pmDue(s: ScheduleLite, currentMeter: number, meterIsHours: boole
     daysRemaining: winner.basis === "days" ? winner.remaining : null,
     progressPct: winner.pct,
     status,
+    assessable: true,
     label,
   };
 }
@@ -124,11 +142,22 @@ export type Reliability = {
   mtbfDays: number | null;
   /** Mean time to repair, in hours. */
   mttrHours: number | null;
-  /** Share of jobs that were planned rather than reactive — the health signal. */
-  plannedRatio: number;
+  /**
+   * Share of jobs that were planned rather than reactive — the health signal.
+   * Null when there were no work orders at all: a workshop with no jobs on the
+   * books has not achieved 0% preventive discipline, it has recorded nothing.
+   */
+  plannedRatio: number | null;
   openJobs: number;
   overdueOpen: number;
 };
+
+/**
+ * An open job older than this is chased. A week is the client's own workshop
+ * convention — anything still open after one full working week has stopped
+ * being "in progress" and started being forgotten.
+ */
+const OPEN_JOB_CHASE_DAYS = 7;
 
 export function reliability(wos: WoLite[], windowDays: number, now = new Date()): Reliability {
   const breakdowns = wos.filter((w) => w.type === "BREAKDOWN");
@@ -136,14 +165,20 @@ export function reliability(wos: WoLite[], windowDays: number, now = new Date())
   const repairs = wos.filter((w) => w.type === "REPAIR");
   const open = wos.filter((w) => w.status === "Open" || w.status === "In-Progress");
 
-  const completed = breakdowns.filter((w) => w.completedAt);
-  const mttr = completed.length
-    ? completed.reduce((s, w) => s + (w.completedAt!.getTime() - w.reportedAt.getTime()) / 3.6e6, 0) / completed.length
-    : null;
+  // A job cannot be completed before it was reported. Such a row is a mistyped
+  // date, and letting its negative repair time into the mean quietly subtracts
+  // hours from every other breakdown in the period.
+  const repairHours = breakdowns
+    .filter((w) => w.completedAt)
+    .map((w) => (w.completedAt!.getTime() - w.reportedAt.getTime()) / 3.6e6)
+    .filter((h) => h >= 0);
+  const mttr = repairHours.length ? repairHours.reduce((s, h) => s + h, 0) / repairHours.length : null;
 
   // MTBF over the observation window: a fleet with no failures reports null
-  // rather than a misleadingly infinite figure.
-  const mtbf = breakdowns.length > 0 ? windowDays / breakdowns.length : null;
+  // rather than a misleadingly infinite figure. A window of zero (or a caller
+  // that never set one) is equally unusable — "fails every 0 days" is not a
+  // reliability statistic.
+  const mtbf = breakdowns.length > 0 && windowDays > 0 ? windowDays / breakdowns.length : null;
 
   const total = wos.length;
   return {
@@ -155,9 +190,9 @@ export function reliability(wos: WoLite[], windowDays: number, now = new Date())
     downtimeHrs: wos.reduce((s, w) => s + w.downtimeHrs, 0),
     mtbfDays: mtbf,
     mttrHours: mttr,
-    plannedRatio: total > 0 ? (pm.length / total) * 100 : 0,
+    plannedRatio: total > 0 ? (pm.length / total) * 100 : null,
     openJobs: open.length,
-    overdueOpen: open.filter((w) => (now.getTime() - w.reportedAt.getTime()) / 86400000 > 7).length,
+    overdueOpen: open.filter((w) => (now.getTime() - w.reportedAt.getTime()) / 86400000 > OPEN_JOB_CHASE_DAYS).length,
   };
 }
 

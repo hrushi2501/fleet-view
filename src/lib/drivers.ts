@@ -8,6 +8,8 @@
 //      no competency for that class of machine. An excavator operator is not
 //      automatically a crane operator, and the system shouldn't pretend otherwise.
 
+import { calendarDaysUntil } from "./utils";
+
 export type ViolationLite = {
   id: string;
   type: string;
@@ -44,7 +46,7 @@ export const VIOLATION_LABEL: Record<string, string> = {
 };
 
 /** Violations older than this stop counting entirely. */
-const DECAY_WINDOW_DAYS = 365;
+export const DECAY_WINDOW_DAYS = 365;
 
 /**
  * Safety score out of 100, starting from a clean 100 and deducting weighted
@@ -92,7 +94,10 @@ export function eligibility(
 
   if (driver.status !== "Active") blockers.push(`Marked ${driver.status} — not available for assignment.`);
 
-  const licDays = Math.floor((driver.licenseExpiry.getTime() - now.getTime()) / 86400000);
+  // Counted in whole IST calendar days: a licence is valid through its expiry
+  // date, and refusing a driver an assignment on his last legal day is both
+  // wrong and, on a construction site, expensive.
+  const licDays = calendarDaysUntil(driver.licenseExpiry, now);
   if (licDays < 0) blockers.push(`Licence expired ${Math.abs(licDays)} days ago.`);
   else if (licDays <= 30) warnings.push(`Licence expires in ${licDays} days.`);
 
@@ -100,7 +105,7 @@ export function eligibility(
   if (!comp) {
     blockers.push(`No recorded competency for this machine class.`);
   } else if (comp.expiresOn) {
-    const cDays = Math.floor((comp.expiresOn.getTime() - now.getTime()) / 86400000);
+    const cDays = calendarDaysUntil(comp.expiresOn, now);
     if (cDays < 0) blockers.push(`Competency certificate expired ${Math.abs(cDays)} days ago.`);
     else if (cDays <= 30) warnings.push(`Competency certificate expires in ${cDays} days.`);
   }
@@ -132,9 +137,16 @@ export function driverScorecard(
   now = new Date()
 ): DriverScorecard {
   const { score, recent } = safetyScore(violations, now);
-  const counted = violations.filter((v) => v.status !== "DISMISSED");
+  // The scorecard is a statement about the last year — that is the window the
+  // score itself decays over, and the flag below says "in the last year" in so
+  // many words. Counting every violation ever recorded against a driver whose
+  // score has already forgiven them contradicts the number beside it, and an
+  // accident from four years ago is not evidence for today's assignment.
+  const counted = violations.filter(
+    (v) => v.status !== "DISMISSED" && (now.getTime() - v.date.getTime()) / 86400000 <= DECAY_WINDOW_DAYS
+  );
   const accidents = counted.filter((v) => v.type === "ACCIDENT").length;
-  const licenceDays = Math.floor((driver.licenseExpiry.getTime() - now.getTime()) / 86400000);
+  const licenceDays = calendarDaysUntil(driver.licenseExpiry, now);
 
   const flags: string[] = [];
   if (licenceDays < 0) flags.push(`Licence expired ${Math.abs(licenceDays)} days ago — must not be assigned.`);

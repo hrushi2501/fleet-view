@@ -7,6 +7,8 @@
 // its own right, and answers one blunt question per machine — is it legal to
 // send out today?
 
+import { calendarDaysUntil } from "./utils";
+
 export type DocLite = {
   id: string;
   docType: string;
@@ -34,8 +36,14 @@ export const DOC_LABEL: Record<string, string> = {
   Permit: "Permit", PUC: "Pollution (PUC)", RoadTax: "Road Tax",
 };
 
+/**
+ * A statutory document is valid *through* the whole of its expiry date. Counting
+ * elapsed milliseconds instead of calendar days made every document read as
+ * expired from the first minute of its final day, so machines were being marked
+ * illegal to operate — and pulled off site — a day early.
+ */
 export function docState(expiry: Date, reminderDays = 30, now = new Date()): { state: DocState; days: number } {
-  const days = Math.floor((expiry.getTime() - now.getTime()) / 86400000);
+  const days = calendarDaysUntil(expiry, now);
   if (days < 0) return { state: "expired", days };
   if (days <= reminderDays) return { state: "expiring", days };
   return { state: "valid", days };
@@ -136,7 +144,14 @@ export function assetCompliance(
 
   const blockingProblems = findings.filter((f) => f.blocking && (f.state === "expired" || f.state === "missing"));
   const requiredCount = Math.max(1, required.length);
-  const good = findings.filter((f) => required.includes(f.docType) && f.state === "valid").length;
+  // The score measures what the header promises: every required document held
+  // and in date *today*. A certificate expiring in three weeks is still in
+  // date, so counting only "valid" scored a fully legal machine at 0% during
+  // its renewal window and dragged the fleet audit average down with it. The
+  // approaching expiry is already reported as its own finding.
+  const good = findings.filter(
+    (f) => required.includes(f.docType) && (f.state === "valid" || f.state === "expiring")
+  ).length;
 
   const dated = findings.filter((f) => f.days != null).map((f) => f.days!);
 

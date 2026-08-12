@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getSession } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 
 export async function GET() {
-  if (!(await getSession())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requirePermission("fleet.view");
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const [assets, statusGroups, fuelIssues, openAlerts, expiring, costs] = await Promise.all([
     db.asset.count(),
     db.asset.groupBy({ by: ["status"], _count: true }),
-    db.fuelTransaction.findMany({ where: { type: "ISSUE" } }),
+    // Only two columns are reduced over below; the row also carries notes,
+    // photo URLs and geo — needless bytes for every fuel issue ever recorded.
+    db.fuelTransaction.findMany({ where: { type: "ISSUE" }, select: { quantity: true, sensorRise: true } }),
     db.alert.count({ where: { status: "Open" } }),
     db.complianceDoc.count({ where: { status: { in: ["Expiring", "Expired"] } } }),
     db.costTransaction.aggregate({ _sum: { amount: true } }),

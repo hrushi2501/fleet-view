@@ -1,5 +1,7 @@
 // Rule-based fraud + risk scoring (no external ML needed — runs on your existing data)
 
+import { businessDay } from "./business-time";
+
 export type FuelEntryLite = {
   id: string;
   assetId: string | null;
@@ -64,19 +66,28 @@ export type AssetForRisk = {
 export type BreakdownRisk = { id: string; code: string; name: string; assetClass: string; score: number; level: "High" | "Medium" | "Low"; factors: string[] };
 
 /** Predicts breakdown likelihood from age, service overdue, breakdown history & health. */
-export function scoreBreakdownRisk(assets: AssetForRisk[]): BreakdownRisk[] {
-  const now = Date.now();
+export function scoreBreakdownRisk(assets: AssetForRisk[], now: Date = new Date()): BreakdownRisk[] {
+  const nowMs = now.getTime();
+  // The business year, not the server's. On 1 January the two disagree for the
+  // first five and a half hours, and every machine in the fleet ages by a year
+  // at the wrong moment.
+  const thisYear = Number(businessDay(now).slice(0, 4));
+
   return assets
     .map((a) => {
       let score = 0;
       const factors: string[] = [];
 
-      const age = a.yearMfg ? new Date().getFullYear() - a.yearMfg : 0;
-      if (age >= 15) { score += 25; factors.push(`${age} yrs old`); }
+      // An unrecorded or impossible year of manufacture contributes nothing
+      // rather than an age of 0 — "brand new" is a claim, and the wrong one to
+      // make about a machine whose paperwork is missing.
+      const age = a.yearMfg > 1970 && a.yearMfg <= thisYear ? thisYear - a.yearMfg : null;
+      if (age == null) factors.push("year of manufacture not recorded — age risk unassessed");
+      else if (age >= 15) { score += 25; factors.push(`${age} yrs old`); }
       else if (age >= 10) { score += 15; factors.push(`${age} yrs old`); }
 
       if (a.serviceDueDate) {
-        const daysOver = (now - new Date(a.serviceDueDate).getTime()) / 8.64e7;
+        const daysOver = (nowMs - new Date(a.serviceDueDate).getTime()) / 8.64e7;
         if (daysOver > 0) { score += Math.min(30, 10 + daysOver / 3); factors.push(`service ${Math.round(daysOver)}d overdue`); }
       }
       if (a.breakdownCount >= 3) { score += 25; factors.push(`${a.breakdownCount} past breakdowns`); }
@@ -86,7 +97,7 @@ export function scoreBreakdownRisk(assets: AssetForRisk[]): BreakdownRisk[] {
       else if (a.healthScore < 70) { score += 12; factors.push(`health ${a.healthScore}`); }
 
       if (a.lastServiceDate) {
-        const sinceDays = (now - new Date(a.lastServiceDate).getTime()) / 8.64e7;
+        const sinceDays = (nowMs - new Date(a.lastServiceDate).getTime()) / 8.64e7;
         if (sinceDays > 150) { score += 10; factors.push(`${Math.round(sinceDays)}d since service`); }
       }
 

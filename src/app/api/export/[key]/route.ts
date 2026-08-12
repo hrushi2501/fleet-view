@@ -1,9 +1,13 @@
 import { db } from "@/lib/db";
-import { getSession } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { toCsv } from "@/lib/reporting";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
+
+/** Ceiling on any single export. The larger reports had none, so one request
+ *  could stream an entire table into memory. */
+const MAX_ROWS = 5000;
 
 /**
  * CSV export. These files contain the client's commercial data — vendor rates,
@@ -12,25 +16,20 @@ export const dynamic = "force-dynamic";
  * log because "who took a copy of the vendor rates" is a question that gets
  * asked after someone leaves.
  */
-export async function GET(req: Request, ctx: { params: Promise<{ key: string }> }) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
-
-  // Falls back to the legacy role string when roles have not been installed yet,
-  // so the export keeps working for Admin during setup.
-  const user = await db.user.findUnique({ where: { id: session.id }, include: { roleRef: true } });
-  const perms = user?.roleRef?.permissions.split("\n").filter(Boolean) ?? [];
-  const allowed = perms.includes("*") || perms.includes("reports.export") || (perms.length === 0 && user?.role === "Admin");
-  if (!allowed) {
-    return NextResponse.json({ error: "Your role does not permit data export." }, { status: 403 });
-  }
+export async function GET(_req: Request, ctx: { params: Promise<{ key: string }> }) {
+  // Same rule as before — `reports.export`, with the legacy-Admin fallback while
+  // roles are being installed — now expressed through the shared gate so every
+  // route resolves permissions the same way.
+  const auth = await requirePermission("reports.export");
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const { session } = auth;
 
   const { key } = await ctx.params;
   let rows: Record<string, unknown>[] = [];
 
   switch (key) {
     case "fuel_issues": {
-      const d = await db.fuelTransaction.findMany({ where: { type: "ISSUE" }, include: { asset: true, project: true }, orderBy: { date: "desc" }, take: 5000 });
+      const d = await db.fuelTransaction.findMany({ where: { type: "ISSUE" }, include: { asset: true, project: true }, orderBy: { date: "desc" }, take: MAX_ROWS });
       rows = d.map((x) => ({
         Date: x.date, Asset: x.asset?.code ?? "", Registration: x.asset?.registrationNo ?? "", Project: x.project?.code ?? "",
         Litres: x.quantity, Rate: x.rate, Amount: x.amount, Meter: x.meterValue, Source: x.source,
@@ -39,7 +38,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ key: string }> 
       break;
     }
     case "fuel_reconciliation": {
-      const d = await db.fuelReconciliation.findMany({ include: { tank: true }, orderBy: { periodEnd: "desc" } });
+      const d = await db.fuelReconciliation.findMany({ include: { tank: true }, orderBy: { periodEnd: "desc" }, take: MAX_ROWS });
       rows = d.map((x) => ({
         Tank: x.tank.name, PeriodStart: x.periodStart, PeriodEnd: x.periodEnd, OpeningDip: x.openingDip,
         Received: x.receiptsL, Issued: x.issuesL, Expected: x.expectedClosing, Actual: x.actualClosing,
@@ -48,7 +47,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ key: string }> 
       break;
     }
     case "production": {
-      const d = await db.productionLog.findMany({ include: { asset: true, project: true, driver: true }, orderBy: { date: "desc" }, take: 5000 });
+      const d = await db.productionLog.findMany({ include: { asset: true, project: true, driver: true }, orderBy: { date: "desc" }, take: MAX_ROWS });
       rows = d.map((x) => ({
         Date: x.date, Shift: x.shift, Asset: x.asset.code, Project: x.project?.code ?? "", Operator: x.driver?.name ?? "",
         Material: x.material ?? "", Trips: x.trips, Tonnes: x.tonnage, CubicMetres: x.volumeM3, Cycles: x.cycles,
@@ -57,7 +56,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ key: string }> 
       break;
     }
     case "compliance": {
-      const d = await db.complianceDoc.findMany({ include: { asset: true }, orderBy: { expiryDate: "asc" } });
+      const d = await db.complianceDoc.findMany({ include: { asset: true }, orderBy: { expiryDate: "asc" }, take: MAX_ROWS });
       rows = d.map((x) => ({
         Asset: x.asset.code, Registration: x.asset.registrationNo ?? "", Document: x.docType, Number: x.number,
         Issued: x.issueDate, Expires: x.expiryDate, Status: x.status, Cost: x.cost, Vendor: x.vendor ?? "",
@@ -66,7 +65,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ key: string }> 
       break;
     }
     case "loss_cases": {
-      const d = await db.fraudCase.findMany({ include: { asset: true }, orderBy: { openedAt: "desc" } });
+      const d = await db.fraudCase.findMany({ include: { asset: true }, orderBy: { openedAt: "desc" }, take: MAX_ROWS });
       rows = d.map((x) => ({
         CaseNo: x.caseNo, Opened: x.openedAt, Domain: x.domain, Severity: x.severity, Score: x.score, Title: x.title,
         Asset: x.asset?.code ?? "", Vendor: x.vendor ?? "", AtRisk: x.amountAtRisk, Recovered: x.amountRecovered,
@@ -75,7 +74,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ key: string }> 
       break;
     }
     case "maintenance": {
-      const d = await db.workOrder.findMany({ include: { asset: true }, orderBy: { reportedAt: "desc" } });
+      const d = await db.workOrder.findMany({ include: { asset: true }, orderBy: { reportedAt: "desc" }, take: MAX_ROWS });
       rows = d.map((x) => ({
         WorkOrder: x.woNo, Asset: x.asset.code, Type: x.type, Priority: x.priority, Status: x.status,
         Description: x.description, Labour: x.laborCost, Parts: x.partsCost, Total: x.totalCost,
@@ -84,7 +83,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ key: string }> 
       break;
     }
     case "weighbridge": {
-      const d = await db.weighbridgeTicket.findMany({ include: { asset: true }, orderBy: { date: "desc" }, take: 5000 });
+      const d = await db.weighbridgeTicket.findMany({ include: { asset: true }, orderBy: { date: "desc" }, take: MAX_ROWS });
       rows = d.map((x) => ({
         Date: x.date, Ticket: x.ticketNo, Kind: x.kind, PairedWith: x.pairedTicketNo ?? "", Material: x.material,
         Asset: x.asset?.code ?? "", GrossKg: x.grossKg, TareKg: x.tareKg, NetKg: x.netKg, BilledKg: x.billedKg,
@@ -93,7 +92,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ key: string }> 
       break;
     }
     case "attendance": {
-      const d = await db.attendance.findMany({ include: { driver: true, project: true }, orderBy: { date: "desc" }, take: 5000 });
+      const d = await db.attendance.findMany({ include: { driver: true, project: true }, orderBy: { date: "desc" }, take: MAX_ROWS });
       rows = d.map((x) => ({
         Date: x.date, Person: x.driver.name, EmpCode: x.driver.empCode, Status: x.status, Shift: x.shift,
         Hours: x.hours, Project: x.project?.code ?? "", MarkedBy: x.markedBy ?? "",
@@ -102,7 +101,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ key: string }> 
     }
     case "cost_per_asset": {
       const [assets, fuel, wo] = await Promise.all([
-        db.asset.findMany({ orderBy: { code: "asc" } }),
+        db.asset.findMany({ orderBy: { code: "asc" }, take: MAX_ROWS }),
         db.fuelTransaction.groupBy({ by: ["assetId"], where: { type: "ISSUE" }, _sum: { amount: true, quantity: true } }),
         db.workOrder.groupBy({ by: ["assetId"], _sum: { totalCost: true, downtimeHrs: true } }),
       ]);

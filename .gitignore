@@ -57,3 +57,7 @@ DRIVER-CREDENTIALS.local.json
 .supabase-direct
 
 .env.local.neon-backup
+
+# Claude Code local state — agent settings and memory, not project source.
+.claude/settings.local.json
+.claude/projects/

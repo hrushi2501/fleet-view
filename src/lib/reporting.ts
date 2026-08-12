@@ -8,6 +8,8 @@
 // which module it comes from, because a dashboard figure nobody can trace is a
 // figure nobody trusts.
 
+import { businessDay } from "@/lib/business-time";
+
 export type KpiDirection = "higher-better" | "lower-better" | "neutral";
 
 export type Kpi = {
@@ -116,15 +118,16 @@ export function toCsv(rows: Record<string, unknown>[], columns?: string[]): stri
   if (rows.length === 0) return "";
   const cols = columns ?? Object.keys(rows[0]);
 
-  // Dates are formatted in LOCAL time, not UTC. toISOString() would shift an
-  // IST timestamp back a day (local midnight is 18:30 UTC the day before), so
-  // every date in an exported report would read one day early.
-  const localDay = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-
+  // Dates are formatted in the BUSINESS timezone, not UTC and not the server's.
+  //
+  // toISOString() would shift an IST timestamp back a day (local midnight is
+  // 18:30 UTC the day before). But the previous fix here — getFullYear() and
+  // friends — reads the *server's* zone, which is IST on a developer's laptop
+  // and UTC on Vercel: the same export produced different dates depending on
+  // where it ran. `businessDay` pins it to the zone the client works in.
   const cell = (v: unknown): string => {
     if (v == null) return "";
-    if (v instanceof Date) return localDay(v);
+    if (v instanceof Date) return businessDay(v);
     const s = String(v);
     return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };

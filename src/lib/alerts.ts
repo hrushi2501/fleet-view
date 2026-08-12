@@ -10,6 +10,8 @@
 //   - unacknowledged alerts escalate on a clock, because the ones that matter
 //     are precisely the ones nobody wanted to deal with
 
+import { calendarDaysUntil } from "./utils";
+
 export type Severity = "Info" | "Warning" | "Critical";
 
 export type AlertRuleLite = {
@@ -84,7 +86,11 @@ export type SweepInput = {
 export function sweepAlerts(input: SweepInput, now = new Date()): Candidate[] {
   const { rules } = input;
   const out: Candidate[] = [];
-  const days = (d: Date) => Math.floor((d.getTime() - now.getTime()) / 86400000);
+  // Whole IST calendar days to expiry. Measuring elapsed milliseconds instead
+  // raised a Critical "expired, not legal to operate" alert from the first
+  // minute of a document's final valid day — the alert that stands a machine
+  // down, fired 24 hours early, every time.
+  const days = (d: Date) => calendarDaysUntil(d, now);
 
   for (const d of input.docs) {
     const left = days(d.expiryDate);

@@ -112,19 +112,26 @@ export default async function SessionsPage() {
                       <p className="text-[11px] text-slate-500">{a.registrationNo ?? a.name}</p>
                     </td>
                     <td className="px-5 py-3 text-slate-700">{num(a.usage.distanceKm)} km</td>
-                    <td className="px-5 py-3 text-slate-700">{num(a.usage.litresBurned)} L</td>
+                    <td className="px-5 py-3 text-slate-700">
+                      {a.usage.insufficientData
+                        ? <span className="text-slate-300">—</span>
+                        : `${num(a.usage.litresBurned)} L`}
+                    </td>
                     <td className="px-5 py-3">
-                      {a.usage.avgKmPerL != null ? (
+                      {a.usage.avgKmPerL != null && !a.usage.insufficientData ? (
                         <span className={`font-semibold ${a.belowNorm ? "text-rose-600" : "text-emerald-700"}`}>
                           {a.usage.avgKmPerL} km/L
                         </span>
                       ) : <span className="text-slate-300">—</span>}
+                      <p className="text-[10px] text-slate-400">{a.usage.confidence.toLowerCase()} confidence</p>
                     </td>
                     <td className="px-5 py-3 text-slate-500">{a.norm ? `${a.norm.low}–${a.norm.high}` : "—"}</td>
                     <td className="px-5 py-3">
-                      {a.usage.litresUnaccounted > 0
-                        ? <span className="font-semibold text-rose-600">{a.usage.litresUnaccounted} L</span>
-                        : <span className="text-slate-400">none</span>}
+                      {a.usage.insufficientData
+                        ? <span className="text-slate-300">—</span>
+                        : a.usage.litresUnaccounted > 0
+                          ? <span className="font-semibold text-rose-600">{a.usage.litresUnaccounted} L</span>
+                          : <span className="text-slate-400">none</span>}
                     </td>
                     <td className="px-5 py-3 text-slate-700">
                       {a.fuelLevelPct != null ? `${a.fuelLevelPct.toFixed(0)}%` : "—"}

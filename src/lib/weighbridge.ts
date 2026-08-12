@@ -107,46 +107,92 @@ export function reconcilePairs(tickets: TicketLite[]): PairResult[] {
 
 export type MaterialSummary = {
   material: string;
+  /** Dispatched on trips that were actually matched to a receipt. */
   dispatchedKg: number;
   receivedKg: number;
   shortageKg: number;
-  shortagePct: number;
+  /** Measured transit loss. Null when no trip of this material could be paired. */
+  shortagePct: number | null;
   trips: number;
+  /** Trips with a receipt — the only ones a loss percentage can be computed on. */
+  matchedTrips: number;
+  /** Dispatched tonnage with no receipt at all. A paperwork gap, not a measured loss. */
+  unmatchedTrips: number;
+  unmatchedKg: number;
   valueAtRisk: number;
 };
 
+/**
+ * Loss by material.
+ *
+ * Matched and unmatched trips are kept apart on purpose. A dispatch with no
+ * receipt is not "100% of the load lost in transit" — it is a missing slip, and
+ * the material has very likely arrived. Averaging those two things together
+ * produced shortage percentages that looked like mass theft whenever the site
+ * office was behind on its paperwork, and that number is the basis of a claim
+ * against a haulier.
+ */
 export function byMaterial(pairs: PairResult[]): MaterialSummary[] {
   const m = new Map<string, MaterialSummary>();
   for (const p of pairs) {
     const key = p.dispatch.material || "Unspecified";
-    const cur = m.get(key) ?? { material: key, dispatchedKg: 0, receivedKg: 0, shortageKg: 0, shortagePct: 0, trips: 0, valueAtRisk: 0 };
-    cur.dispatchedKg += p.dispatch.netKg;
-    cur.receivedKg += p.receipt?.netKg ?? 0;
-    cur.shortageKg += Math.max(0, p.shortageKg);
-    cur.valueAtRisk += p.valueAtRisk;
+    const cur = m.get(key) ?? {
+      material: key, dispatchedKg: 0, receivedKg: 0, shortageKg: 0, shortagePct: null,
+      trips: 0, matchedTrips: 0, unmatchedTrips: 0, unmatchedKg: 0, valueAtRisk: 0,
+    };
     cur.trips++;
+    cur.valueAtRisk += p.valueAtRisk;
+
+    if (p.receipt) {
+      cur.matchedTrips++;
+      cur.dispatchedKg += p.dispatch.netKg;
+      cur.receivedKg += p.receipt.netKg;
+      cur.shortageKg += Math.max(0, p.shortageKg);
+    } else {
+      cur.unmatchedTrips++;
+      cur.unmatchedKg += p.dispatch.netKg;
+    }
     m.set(key, cur);
   }
-  for (const v of m.values()) v.shortagePct = v.dispatchedKg > 0 ? (v.shortageKg / v.dispatchedKg) * 100 : 0;
+  for (const v of m.values()) {
+    v.shortagePct = v.dispatchedKg > 0 ? (v.shortageKg / v.dispatchedKg) * 100 : null;
+  }
   return [...m.values()].sort((a, b) => b.shortageKg - a.shortageKg);
 }
 
-export type VehicleSummary = { assetId: string; trips: number; shortageKg: number; shortagePct: number; dispatchedKg: number };
+export type VehicleSummary = {
+  assetId: string;
+  trips: number;
+  shortageKg: number;
+  shortagePct: number | null;
+  dispatchedKg: number;
+  unmatchedTrips: number;
+};
 
-/** Shortage concentrated on particular vehicles is a stronger signal than fleet averages. */
+/**
+ * Shortage concentrated on particular vehicles is a stronger signal than fleet
+ * averages — this list names a driver's vehicle, so only *measured* pairs count
+ * towards its percentage. Missing paperwork is reported alongside, not as loss.
+ */
 export function byVehicle(pairs: PairResult[]): VehicleSummary[] {
   const m = new Map<string, VehicleSummary>();
   for (const p of pairs) {
     const id = p.dispatch.assetId;
     if (!id) continue;
-    const cur = m.get(id) ?? { assetId: id, trips: 0, shortageKg: 0, shortagePct: 0, dispatchedKg: 0 };
+    const cur = m.get(id) ?? { assetId: id, trips: 0, shortageKg: 0, shortagePct: null, dispatchedKg: 0, unmatchedTrips: 0 };
     cur.trips++;
-    cur.dispatchedKg += p.dispatch.netKg;
-    cur.shortageKg += Math.max(0, p.shortageKg);
+    if (p.receipt) {
+      cur.dispatchedKg += p.dispatch.netKg;
+      cur.shortageKg += Math.max(0, p.shortageKg);
+    } else {
+      cur.unmatchedTrips++;
+    }
     m.set(id, cur);
   }
-  for (const v of m.values()) v.shortagePct = v.dispatchedKg > 0 ? (v.shortageKg / v.dispatchedKg) * 100 : 0;
-  return [...m.values()].filter((v) => v.shortageKg > 0).sort((a, b) => b.shortagePct - a.shortagePct);
+  for (const v of m.values()) v.shortagePct = v.dispatchedKg > 0 ? (v.shortageKg / v.dispatchedKg) * 100 : null;
+  return [...m.values()]
+    .filter((v) => v.shortageKg > 0)
+    .sort((a, b) => (b.shortagePct ?? 0) - (a.shortagePct ?? 0));
 }
 
 export const MATERIALS = ["Earth", "GSB", "WMM", "Aggregate", "Sand", "Bitumen", "Concrete", "Debris", "Other"];

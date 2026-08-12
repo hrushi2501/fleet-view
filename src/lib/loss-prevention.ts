@@ -8,6 +8,9 @@
 // The scan is deliberately idempotent: every signal carries a stable `signalKey`,
 // so re-running it updates existing cases instead of spawning duplicates.
 
+import { businessDay } from "./business-time";
+import { calendarDaysUntil } from "./utils";
+
 export type Domain = "FUEL" | "HIRE" | "MAINTENANCE" | "METER" | "COMPLIANCE" | "TRIP";
 
 export type Signal = {
@@ -72,7 +75,7 @@ export type ScanInput = {
  * Turn everything the other modules know into a single list of scored signals.
  * Pure function — the caller owns all database access, which keeps this testable.
  */
-export function scanSignals(input: ScanInput): Signal[] {
+export function scanSignals(input: ScanInput, now: Date = new Date()): Signal[] {
   const { rules, dieselRate } = input;
   const out: Signal[] = [];
 
@@ -158,18 +161,22 @@ export function scanSignals(input: ScanInput): Signal[] {
   // --- COMPLIANCE: expired paper on a working machine ---
   if (on(rules, "COMPLIANCE_EXPIRED_RUNNING")) {
     for (const c of input.expiredRunning) {
-      const daysOver = Math.floor((Date.now() - c.expiry.getTime()) / 86400000);
+      // Whole IST calendar days, and the expiry date printed in the calendar the
+      // RTO and the insurer use. This text is quoted in a fraud case file.
+      const daysOver = -calendarDaysUntil(c.expiry, now);
+      if (daysOver <= 0) continue; // valid through its expiry date — not a finding yet
+      const expiredOn = businessDay(c.expiry);
       out.push({
         signalKey: `COMPLIANCE_EXPIRED:${c.assetId}:${c.docType}`,
         ruleCode: "COMPLIANCE_EXPIRED_RUNNING",
         domain: "COMPLIANCE",
         title: `${c.docType} expired ${daysOver}d — ${c.assetCode} still active`,
-        summary: `${c.assetCode} is operating with ${c.docType} expired since ${c.expiry.toISOString().slice(0, 10)}. Exposure to seizure, fines and a void insurance claim.`,
+        summary: `${c.assetCode} is operating with ${c.docType} expired since ${expiredOn}. Exposure to seizure, fines and a void insurance claim.`,
         severity: "HIGH",
         score: Math.min(100, 50 + Math.floor(daysOver / 3)),
         amountAtRisk: 0,
         assetId: c.assetId,
-        evidence: [{ kind: "NOTE", label: `${c.docType} expired`, detail: `Expiry ${c.expiry.toISOString().slice(0, 10)}, ${daysOver} days overdue` }],
+        evidence: [{ kind: "NOTE", label: `${c.docType} expired`, detail: `Expiry ${expiredOn}, ${daysOver} days overdue` }],
       });
     }
   }
@@ -239,9 +246,12 @@ export type Scorecard = {
   recovered: number;
   writtenOff: number;
   falsePositives: number;
-  falsePositiveRate: number;
-  recoveryRate: number;
-  avgDaysToResolve: number;
+  /** Null with no cases on the books — there is no denominator to be a share of. */
+  falsePositiveRate: number | null;
+  /** Null when nothing has been pursued. 0% recovery of nothing is not a failure to recover. */
+  recoveryRate: number | null;
+  /** Null until at least one case has actually been closed. */
+  avgDaysToResolve: number | null;
   byDomain: { domain: string; cases: number; atRisk: number; recovered: number }[];
 };
 
@@ -259,10 +269,17 @@ export function scorecard(
   const recovered = cases.reduce((s, c) => s + c.amountRecovered, 0);
   const writtenOff = wo.reduce((s, c) => s + c.amountAtRisk, 0);
 
-  const resolved = cases.filter((c) => c.closedAt);
-  const avgDays = resolved.length
-    ? resolved.reduce((s, c) => s + (c.closedAt!.getTime() - c.openedAt.getTime()) / 86400000, 0) / resolved.length
-    : 0;
+  // "Avg time to resolve: 0.0d" is the headline the loss-prevention dashboard
+  // prints when not one case has ever been closed. It reads as same-day
+  // resolution — the best possible number — for the worst possible situation.
+  // A case cannot close before it opened either; such a row is a bad date.
+  const resolutionDays = cases
+    .filter((c) => c.closedAt)
+    .map((c) => (c.closedAt!.getTime() - c.openedAt.getTime()) / 86400000)
+    .filter((d) => d >= 0);
+  const avgDays = resolutionDays.length
+    ? resolutionDays.reduce((s, d) => s + d, 0) / resolutionDays.length
+    : null;
 
   // Recovery rate is measured against what was actually pursued (excludes false positives).
   const pursued = cases.filter((c) => c.status !== "FALSE_POSITIVE").reduce((s, c) => s + c.amountAtRisk, 0);
@@ -283,8 +300,8 @@ export function scorecard(
     recovered,
     writtenOff,
     falsePositives: fp.length,
-    falsePositiveRate: total > 0 ? (fp.length / total) * 100 : 0,
-    recoveryRate: pursued > 0 ? (recovered / pursued) * 100 : 0,
+    falsePositiveRate: total > 0 ? (fp.length / total) * 100 : null,
+    recoveryRate: pursued > 0 ? (recovered / pursued) * 100 : null,
     avgDaysToResolve: avgDays,
     byDomain: [...domains.values()].sort((a, b) => b.atRisk - a.atRisk),
   };

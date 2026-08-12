@@ -6,6 +6,7 @@ import { put } from "@vercel/blob";
 import { getSession } from "@/lib/auth";
 import { audit } from "@/app/(app)/admin/actions";
 import { checkReading, type MeterType, type ReadingLite } from "@/lib/master";
+import { parseBusinessDay } from "@/lib/business-time";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -29,7 +30,7 @@ export async function saveReading(fd: FormData) {
   if (!assetId) throw new Error("Asset is required");
   const meterType = (s(fd, "meterType") || "ODOMETER") as MeterType;
   const value = n(fd, "value");
-  const date = s(fd, "date") ? new Date(s(fd, "date")) : new Date();
+  const date = parseBusinessDay(s(fd, "date"));
   const session = await getSession();
 
   const history = await db.meterReading.findMany({ where: { assetId }, orderBy: { date: "desc" }, take: 200 });
@@ -102,7 +103,7 @@ export async function saveLifecycleEvent(fd: FormData) {
   await db.assetLifecycleEvent.create({
     data: {
       assetId, kind,
-      date: s(fd, "date") ? new Date(s(fd, "date")) : new Date(),
+      date: parseBusinessDay(s(fd, "date")),
       fromValue: s(fd, "fromValue") || null,
       toValue: s(fd, "toValue") || null,
       amount: n(fd, "amount"),
@@ -123,7 +124,7 @@ export async function saveLifecycleEvent(fd: FormData) {
 export async function saveAttendance(fd: FormData) {
   const driverId = s(fd, "driverId");
   if (!driverId) throw new Error("Person is required");
-  const date = new Date(s(fd, "date") || new Date().toISOString().slice(0, 10));
+  const date = parseBusinessDay(s(fd, "date"));
   date.setHours(0, 0, 0, 0);
   const shift = s(fd, "shift") || "DAY";
   const session = await getSession();

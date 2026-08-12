@@ -9,6 +9,8 @@
 //   3. What did the project plan to need, versus what is actually standing on
 //      site? Over-allocation is cost; under-allocation is delay.
 
+import { businessDay } from "./business-time";
+
 export type AllocationLite = {
   id: string;
   assetId: string;
@@ -69,9 +71,12 @@ export function allocationConflicts(allocations: AllocationLite[]): OverlapFindi
         const days = ov.to ? Math.ceil((ov.to.getTime() - ov.from.getTime()) / 86400000) : null;
         out.push({
           assetId, a, b, fromDate: ov.from, toDate: ov.to, days,
-          message: days
+          message: days != null
             ? `Committed to two projects for ${days} overlapping day${days === 1 ? "" : "s"} — only one of them can legitimately be billed.`
-            : `Committed to two projects from ${ov.from.toISOString().slice(0, 10)} with no end date on at least one — only one can legitimately be billed.`,
+            // businessDay, not toISOString: this date goes into a billing
+            // dispute, and an overlap starting at 01:00 IST must not be quoted
+            // as the previous day back to the vendor.
+            : `Committed to two projects from ${businessDay(ov.from)} with no end date on at least one — only one can legitimately be billed.`,
         });
       }
     }
@@ -197,8 +202,17 @@ export function mobilizationStats(orders: MobLite[], now = new Date()): MobStats
   const pending = orders.filter((o) => o.status === "REQUESTED" || o.status === "APPROVED");
   const done = orders.filter((o) => o.arrivalDate && o.dispatchDate);
 
-  const transit = done.map((o) => (o.arrivalDate!.getTime() - o.dispatchDate!.getTime()) / 86400000);
-  const waited = orders.filter((o) => o.dispatchDate).map((o) => (o.dispatchDate!.getTime() - o.requestedDate.getTime()) / 86400000);
+  // A machine cannot arrive before it left, or leave before it was requested.
+  // Those rows are data-entry errors, and a negative duration in the average
+  // silently cancels out a real delay elsewhere in the fleet — the mean transit
+  // time comes back looking better than any individual move actually was.
+  const transit = done
+    .map((o) => (o.arrivalDate!.getTime() - o.dispatchDate!.getTime()) / 86400000)
+    .filter((d) => d >= 0);
+  const waited = orders
+    .filter((o) => o.dispatchDate)
+    .map((o) => (o.dispatchDate!.getTime() - o.requestedDate.getTime()) / 86400000)
+    .filter((d) => d >= 0);
 
   return {
     inTransit: inTransit.length,

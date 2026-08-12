@@ -1,153 +1,143 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import { Card, StatCard, Badge, SectionTitle } from "@/components/ui";
+import { Card, StatCard, Badge } from "@/components/ui";
 import {
-  Users,
   CheckCircle2,
   XCircle,
-  Clock,
   Calendar,
   Search,
-  Filter,
   Download,
   ChevronLeft,
   ChevronRight,
   Eye,
-  Check,
   X,
   Radio,
-  FileSpreadsheet,
-  Building2,
-  Truck,
+  ClipboardX,
+  FileQuestion,
+  MapPin,
 } from "lucide-react";
-import mockData from "@/lib/mock-data.json";
 
-export type AttendanceRecord = {
+/**
+ * One driver-day of attendance, already resolved against the database by
+ * `src/app/(app)/attendance/data.ts`.
+ *
+ * Every optional field is `null` when the database has no value for it, and
+ * renders as an em dash. This screen previously filled those gaps with
+ * plausible-looking constants — a supervisor called "Rajeev Saxena", a site
+ * called "Jaipur Ring Road Expressway Site", an employee code of "DRV-1000" —
+ * which made unknown data indistinguishable from recorded data on a screen that
+ * feeds payroll. Nothing here is allowed to invent a value.
+ */
+export type AttendanceRow = {
   id: string;
+  /** REGISTER = a marked `Attendance` row. SESSION = a trip session nobody marked. */
+  source: "REGISTER" | "SESSION";
   driverId: string;
   driverName: string;
-  driverEmpCode: string;
-  vehicleCode: string;
-  vehicleName: string;
-  projectName: string;
-  siteName: string;
-  shift: "DAY" | "NIGHT";
-  checkIn: string;
-  checkOut: string | null;
-  workingHours: number;
-  status: "PRESENT" | "ABSENT" | "LATE" | "LEAVE" | "RUNNING";
-  supervisor: string;
+  driverEmpCode: string | null;
+  vehicleCode: string | null;
+  vehicleName: string | null;
+  projectName: string | null;
+  shift: string | null;
+  /** `YYYY-MM-DD` in the business timezone, via `businessDay()`. */
   date: string;
-  selfieUrl?: string;
-  lat?: number;
-  lng?: number;
-  safetyChecklistPassed?: boolean;
+  checkIn: string | null;
+  checkOut: string | null;
+  /** `null` when no total exists yet — a running shift, or an unmarked day. */
+  workingHours: number | null;
+  running: boolean;
+  status: string;
+  /** Who entered the register row. The schema has no supervisor relation. */
+  markedBy: string | null;
+  /** GPS | MOBILE | NONE — how the session was tracked, as recorded. */
+  trackingSource: string | null;
+  /** QR | MANUAL — how the driver bound to the machine, as recorded. */
+  scanMethod: string | null;
+  lat: number | null;
+  lng: number | null;
+  note: string | null;
 };
 
-// Generate realistic 30-day attendance records from mock data
-function generateAttendanceData(): AttendanceRecord[] {
-  const records: AttendanceRecord[] = [];
-  const statuses: Array<AttendanceRecord["status"]> = ["PRESENT", "PRESENT", "PRESENT", "PRESENT", "LATE", "ABSENT", "LEAVE", "RUNNING"];
-  const shifts: Array<"DAY" | "NIGHT"> = ["DAY", "DAY", "DAY", "NIGHT"];
+export type AttendanceKpis = {
+  present: number;
+  running: number;
+  absent: number;
+  leave: number;
+  unmarked: number;
+};
 
-  let idCounter = 1;
-  const today = new Date();
+export type AttendanceView = {
+  rows: AttendanceRow[];
+  kpis: AttendanceKpis;
+  /** Only the statuses present in the data, so no filter promises a field the schema lacks. */
+  statusOptions: string[];
+  /** Today in the business timezone, `YYYY-MM-DD`. */
+  today: string;
+  windowDays: number;
+  trend: { label: string; Present: number; Absent: number; Leave: number }[];
+  breakdown: { name: string; value: number; color?: string }[];
+};
 
-  mockData.drivers.forEach((driver, idx) => {
-    // assign vehicle and site
-    const vehicle = mockData.vehicles[idx % mockData.vehicles.length];
-    const site = mockData.sites[idx % mockData.sites.length];
-    const project = mockData.projects[idx % mockData.projects.length];
-
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
-      const dateStr = d.toISOString().slice(0, 10);
-
-      const status = i === 0 && idx % 3 === 0 ? "RUNNING" : statuses[(idx + i) % statuses.length];
-      const shift = shifts[(idx + i) % shifts.length];
-
-      let checkIn = `${shift === "DAY" ? "07:30 AM" : "07:30 PM"}`;
-      let checkOut: string | null = `${shift === "DAY" ? "05:30 PM" : "05:30 AM"}`;
-      let workingHours = 9.5;
-
-      if (status === "LATE") {
-        checkIn = `${shift === "DAY" ? "09:15 AM" : "09:15 PM"}`;
-        workingHours = 8.0;
-      } else if (status === "RUNNING") {
-        checkOut = null;
-        workingHours = 4.5;
-      } else if (status === "ABSENT" || status === "LEAVE") {
-        checkIn = "—";
-        checkOut = "—";
-        workingHours = 0;
-      }
-
-      records.push({
-        id: `att-${idCounter++}`,
-        driverId: driver.id,
-        driverName: driver.name,
-        driverEmpCode: driver.empCode,
-        vehicleCode: vehicle.code,
-        vehicleName: vehicle.name,
-        projectName: project.name,
-        siteName: site.name,
-        shift,
-        checkIn,
-        checkOut,
-        workingHours,
-        status,
-        supervisor: driver.supervisor,
-        date: dateStr,
-        selfieUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop",
-        lat: 26.9124,
-        lng: 75.7873,
-        safetyChecklistPassed: true,
-      });
-    }
-  });
-
-  return records;
+/** Anything the database does not hold reads as an em dash, never as a guess. */
+export function dash(v: string | number | null | undefined): string {
+  if (v === null || v === undefined) return "—";
+  const s = String(v).trim();
+  return s.length > 0 ? s : "—";
 }
 
-export function AttendanceDashboard({ dbSessions }: { dbSessions?: any[] }) {
-  const [data] = useState<AttendanceRecord[]>(() => {
-    if (dbSessions && dbSessions.length > 0) return dbSessions;
-    return generateAttendanceData();
-  });
+const STATUS_BADGE: Record<string, string> = {
+  PRESENT: "bg-emerald-100 text-emerald-700 ring-emerald-600/20",
+  HALF_DAY: "bg-amber-100 text-amber-700 ring-amber-600/20",
+  ABSENT: "bg-rose-100 text-rose-700 ring-rose-600/20",
+  LEAVE: "bg-violet-100 text-violet-700 ring-violet-600/20",
+  REST: "bg-slate-100 text-slate-500 ring-slate-400/20",
+  NOT_MARKED: "bg-slate-100 text-slate-600 ring-slate-500/20",
+};
+
+/** Human label for a status the database stores as a bare string. */
+export function statusLabel(status: string): string {
+  if (status === "NOT_MARKED") return "Not in register";
+  return status.charAt(0) + status.slice(1).toLowerCase().replace(/_/g, " ");
+}
+
+export function StatusBadge({ status }: { status: string }) {
+  if (status === "RUNNING") {
+    return (
+      <Badge color="bg-brand-100 text-brand-700 ring-brand-600/20">
+        <Radio className="h-3 w-3 animate-pulse text-brand-600" /> Shift Running
+      </Badge>
+    );
+  }
+  return <Badge color={STATUS_BADGE[status] ?? "bg-slate-100 text-slate-600 ring-slate-500/20"}>{statusLabel(status)}</Badge>;
+}
+
+/** A running shift has no total yet; an unmarked day has none at all. */
+export function HoursCell({ row }: { row: AttendanceRow }) {
+  if (row.workingHours === null) {
+    return row.running ? <span className="font-semibold italic text-brand-600">Running</span> : <span className="text-slate-400">—</span>;
+  }
+  return <>{row.workingHours.toFixed(1)} hrs</>;
+}
+
+export function AttendanceDashboard({ view }: { view: AttendanceView }) {
+  const { rows, kpis, statusOptions, today, windowDays } = view;
+
   const [search, setSearch] = useState("");
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string>("ALL");
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
-  // Selected record for details modal
-  const [selectedRecord, setSelectedRecord] = useState<AttendanceRecord | null>(null);
+  const [selectedRecord, setSelectedRecord] = useState<AttendanceRow | null>(null);
 
-  // Compute KPI metrics
-  const kpis = useMemo(() => {
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const todayRecords = data.filter((r) => r.date === todayStr);
-
-    const present = todayRecords.filter((r) => r.status === "PRESENT").length;
-    const absent = todayRecords.filter((r) => r.status === "ABSENT").length;
-    const late = todayRecords.filter((r) => r.status === "LATE").length;
-    const leave = todayRecords.filter((r) => r.status === "LEAVE").length;
-    const running = todayRecords.filter((r) => r.status === "RUNNING").length;
-
-    return { present: present || 38, absent: absent || 4, late: late || 3, leave: leave || 2, running: running || 18 };
-  }, [data]);
-
-  // Filtered & Paginated records
   const { filteredRecords, paginatedRecords, totalPages } = useMemo(() => {
-    const filtered = data.filter((r) => {
+    const q = search.trim().toLowerCase();
+    const filtered = rows.filter((r) => {
       const matchSearch =
-        r.driverName.toLowerCase().includes(search.toLowerCase()) ||
-        r.driverEmpCode.toLowerCase().includes(search.toLowerCase()) ||
-        r.vehicleCode.toLowerCase().includes(search.toLowerCase()) ||
-        r.projectName.toLowerCase().includes(search.toLowerCase()) ||
-        r.supervisor.toLowerCase().includes(search.toLowerCase());
+        !q ||
+        [r.driverName, r.driverEmpCode, r.vehicleCode, r.projectName, r.markedBy]
+          .some((f) => (f ?? "").toLowerCase().includes(q));
 
       const matchDate = !selectedDate || r.date === selectedDate;
       const matchStatus = selectedStatus === "ALL" || r.status === selectedStatus;
@@ -156,110 +146,90 @@ export function AttendanceDashboard({ dbSessions }: { dbSessions?: any[] }) {
     });
 
     const pages = Math.ceil(filtered.length / pageSize) || 1;
-    const start = (currentPage - 1) * pageSize;
-    const paginated = filtered.slice(start, start + pageSize);
+    const page = Math.min(currentPage, pages);
+    const start = (page - 1) * pageSize;
 
-    return { filteredRecords: filtered, paginatedRecords: paginated, totalPages: pages };
-  }, [data, search, selectedDate, selectedStatus, currentPage, pageSize]);
+    return { filteredRecords: filtered, paginatedRecords: filtered.slice(start, start + pageSize), totalPages: pages };
+  }, [rows, search, selectedDate, selectedStatus, currentPage]);
 
-  // CSV Export handler
+  /** Exports exactly the rows on screen — all of them database-derived. */
   const handleExportCSV = () => {
     const headers = [
+      "Date",
       "Driver Name",
       "Emp Code",
       "Vehicle",
       "Project",
-      "Site",
       "Shift",
-      "Date",
       "Check In",
       "Check Out",
       "Working Hours",
       "Status",
-      "Supervisor",
+      "Marked By",
+      "Source",
     ];
-    const rows = filteredRecords.map((r) => [
-      `"${r.driverName}"`,
-      `"${r.driverEmpCode}"`,
-      `"${r.vehicleCode} - ${r.vehicleName}"`,
-      `"${r.projectName}"`,
-      `"${r.siteName}"`,
-      r.shift,
+    const rowsOut = filteredRecords.map((r) => [
       r.date,
-      r.checkIn,
-      r.checkOut || "In Progress",
-      r.workingHours,
+      `"${r.driverName}"`,
+      `"${dash(r.driverEmpCode)}"`,
+      `"${dash(r.vehicleCode)}"`,
+      `"${dash(r.projectName)}"`,
+      dash(r.shift),
+      dash(r.checkIn),
+      r.checkOut ?? (r.running ? "IN PROGRESS" : "—"),
+      // Blank rather than a number when no total has been recorded, so a
+      // spreadsheet cannot sum a shift that has not finished.
+      r.workingHours === null ? "" : r.workingHours.toFixed(1),
       r.status,
-      `"${r.supervisor}"`,
+      `"${dash(r.markedBy)}"`,
+      r.source === "REGISTER" ? "Attendance register" : "Trip session (unmarked)",
     ]);
 
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
+    const csv = [headers.join(","), ...rowsOut.map((e) => e.join(","))].join("\n");
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `driver_attendance_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute("href", encodeURI("data:text/csv;charset=utf-8," + csv));
+    link.setAttribute("download", `driver_attendance_${today}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  const getStatusBadge = (status: AttendanceRecord["status"]) => {
-    switch (status) {
-      case "PRESENT":
-        return <Badge color="bg-emerald-100 text-emerald-700 ring-emerald-600/20">Present</Badge>;
-      case "RUNNING":
-        return (
-          <Badge color="bg-brand-100 text-brand-700 ring-brand-600/20">
-            <Radio className="h-3 w-3 animate-pulse text-brand-600" /> Shift Running
-          </Badge>
-        );
-      case "LATE":
-        return <Badge color="bg-amber-100 text-amber-700 ring-amber-600/20">Late Arrival</Badge>;
-      case "ABSENT":
-        return <Badge color="bg-rose-100 text-rose-700 ring-rose-600/20">Absent</Badge>;
-      case "LEAVE":
-        return <Badge color="bg-slate-100 text-slate-700 ring-slate-600/20">On Leave</Badge>;
-      default:
-        return <Badge>{status}</Badge>;
-    }
-  };
-
   return (
     <div className="space-y-6">
-      {/* Attendance Summary Cards */}
+      {/* Attendance Summary Cards — counts of today's real rows, nothing padded */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard
           label="Present Today"
           value={kpis.present.toString()}
-          sub="On duty & checked in"
+          sub="Marked present"
           icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />}
           accent="emerald"
         />
         <StatCard
           label="Running Shifts"
           value={kpis.running.toString()}
-          sub="Active on site"
+          sub="Checked in, not out"
           icon={<Radio className="h-5 w-5 text-brand-600" />}
           accent="brand"
         />
         <StatCard
-          label="Late Arrivals"
-          value={kpis.late.toString()}
-          sub="Passed shift start"
-          icon={<Clock className="h-5 w-5 text-amber-600" />}
+          label="Not In Register"
+          value={kpis.unmarked.toString()}
+          sub="Shift ran, never marked"
+          icon={<ClipboardX className="h-5 w-5 text-amber-600" />}
           accent="amber"
         />
         <StatCard
           label="Absent"
           value={kpis.absent.toString()}
-          sub="Unexcused missing"
+          sub="Marked absent"
           icon={<XCircle className="h-5 w-5 text-rose-600" />}
           accent="rose"
         />
         <StatCard
           label="On Leave"
           value={kpis.leave.toString()}
-          sub="Approved leave"
+          sub="Marked leave"
           icon={<Calendar className="h-5 w-5 text-violet-600" />}
           accent="violet"
         />
@@ -274,7 +244,7 @@ export function AttendanceDashboard({ dbSessions }: { dbSessions?: any[] }) {
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search driver, vehicle, supervisor..."
+                placeholder="Search driver, vehicle, project..."
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value);
@@ -297,7 +267,7 @@ export function AttendanceDashboard({ dbSessions }: { dbSessions?: any[] }) {
               />
             </div>
 
-            {/* Status Filter */}
+            {/* Status Filter — options come from the data, not a hardcoded list */}
             <div className="relative">
               <select
                 value={selectedStatus}
@@ -308,11 +278,11 @@ export function AttendanceDashboard({ dbSessions }: { dbSessions?: any[] }) {
                 className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 focus:border-brand-500 focus:outline-none"
               >
                 <option value="ALL">All Statuses</option>
-                <option value="PRESENT">Present</option>
-                <option value="RUNNING">Running Shift</option>
-                <option value="LATE">Late</option>
-                <option value="ABSENT">Absent</option>
-                <option value="LEAVE">Leave</option>
+                {statusOptions.map((s) => (
+                  <option key={s} value={s}>
+                    {statusLabel(s)}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -320,7 +290,8 @@ export function AttendanceDashboard({ dbSessions }: { dbSessions?: any[] }) {
           {/* Export Button */}
           <button
             onClick={handleExportCSV}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-brand-600 shadow-md shadow-brand-500/20"
+            disabled={filteredRecords.length === 0}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-brand-500/20 transition-all hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Download className="h-4 w-4" />
             Export CSV
@@ -328,112 +299,127 @@ export function AttendanceDashboard({ dbSessions }: { dbSessions?: any[] }) {
         </div>
       </Card>
 
-      {/* Attendance Table */}
-      <Card className="overflow-hidden p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-600">
-            <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 border-b border-slate-100">
-              <tr>
-                <th className="px-5 py-3.5 font-semibold">Driver</th>
-                <th className="px-5 py-3.5 font-semibold">Vehicle</th>
-                <th className="px-5 py-3.5 font-semibold">Project & Site</th>
-                <th className="px-5 py-3.5 font-semibold">Shift</th>
-                <th className="px-5 py-3.5 font-semibold">Check In</th>
-                <th className="px-5 py-3.5 font-semibold">Check Out</th>
-                <th className="px-5 py-3.5 font-semibold">Working Hrs</th>
-                <th className="px-5 py-3.5 font-semibold">Status</th>
-                <th className="px-5 py-3.5 font-semibold">Supervisor</th>
-                <th className="px-5 py-3.5 font-semibold text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {paginatedRecords.length === 0 ? (
+      {rows.length === 0 ? (
+        /* Nothing is recorded. Say so — the alternative used to be 7 days of
+           fabricated rows per driver, which read as a healthy register. */
+        <Card className="flex flex-col items-center gap-2 px-6 py-16 text-center">
+          <FileQuestion className="h-10 w-10 text-slate-300" />
+          <p className="text-sm font-semibold text-slate-700">No attendance recorded</p>
+          <p className="max-w-md text-xs text-slate-500">
+            Nothing has been marked in the attendance register and no trip sessions were opened in the last {windowDays} days.
+            Mark attendance from Master → People, or have drivers check in from the cabin QR.
+          </p>
+        </Card>
+      ) : (
+        <Card className="overflow-hidden p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-slate-600">
+              <thead className="border-b border-slate-100 bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <td colSpan={10} className="px-5 py-8 text-center text-slate-400">
-                    No attendance records found matching your filter criteria.
-                  </td>
+                  <th className="px-5 py-3.5 font-semibold">Driver</th>
+                  <th className="px-5 py-3.5 font-semibold">Date</th>
+                  <th className="px-5 py-3.5 font-semibold">Vehicle</th>
+                  <th className="px-5 py-3.5 font-semibold">Project</th>
+                  <th className="px-5 py-3.5 font-semibold">Shift</th>
+                  <th className="px-5 py-3.5 font-semibold">Check In</th>
+                  <th className="px-5 py-3.5 font-semibold">Check Out</th>
+                  <th className="px-5 py-3.5 font-semibold">Working Hrs</th>
+                  <th className="px-5 py-3.5 font-semibold">Status</th>
+                  <th className="px-5 py-3.5 font-semibold">Marked By</th>
+                  <th className="px-5 py-3.5 text-right font-semibold">Actions</th>
                 </tr>
-              ) : (
-                paginatedRecords.map((record) => (
-                  <tr key={record.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="px-5 py-3.5">
-                      <div className="font-semibold text-ink-900">{record.driverName}</div>
-                      <div className="text-xs text-slate-400">{record.driverEmpCode}</div>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <div className="font-medium text-slate-800">{record.vehicleCode}</div>
-                      <div className="text-xs text-slate-400">{record.vehicleName}</div>
-                    </td>
-                    <td className="px-5 py-3.5 max-w-[200px]">
-                      <div className="truncate font-medium text-slate-800">{record.projectName}</div>
-                      <div className="truncate text-xs text-slate-400">{record.siteName}</div>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700">
-                        {record.shift === "DAY" ? "☀️ Day" : "🌙 Night"}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3.5 font-medium text-slate-700">{record.checkIn}</td>
-                    <td className="px-5 py-3.5 font-medium text-slate-700">
-                      {record.checkOut || <span className="text-brand-600 font-semibold italic">In Progress</span>}
-                    </td>
-                    <td className="px-5 py-3.5 font-semibold text-ink-900">
-                      {record.workingHours > 0 ? `${record.workingHours.toFixed(1)} hrs` : "—"}
-                    </td>
-                    <td className="px-5 py-3.5">{getStatusBadge(record.status)}</td>
-                    <td className="px-5 py-3.5 text-xs text-slate-600">{record.supervisor}</td>
-                    <td className="px-5 py-3.5 text-right">
-                      <button
-                        onClick={() => setSelectedRecord(record)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-brand-600 transition-colors shadow-sm"
-                      >
-                        <Eye className="h-3.5 w-3.5" /> View
-                      </button>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {paginatedRecords.length === 0 ? (
+                  <tr>
+                    <td colSpan={11} className="px-5 py-8 text-center text-slate-400">
+                      No attendance records match your filter criteria.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination Controls */}
-        <div className="flex flex-col gap-3 px-5 py-3.5 border-t border-slate-100 sm:flex-row sm:items-center sm:justify-between bg-slate-50/50">
-          <p className="text-xs text-slate-500">
-            Showing <span className="font-semibold text-slate-900">{filteredRecords.length > 0 ? (currentPage - 1) * pageSize + 1 : 0}</span> to{" "}
-            <span className="font-semibold text-slate-900">{Math.min(currentPage * pageSize, filteredRecords.length)}</span> of{" "}
-            <span className="font-semibold text-slate-900">{filteredRecords.length}</span> records
-          </p>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50"
-            >
-              <ChevronLeft className="h-3.5 w-3.5" /> Previous
-            </button>
-            <span className="text-xs font-medium text-slate-600">
-              Page {currentPage} of {totalPages}
-            </span>
-            <button
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50"
-            >
-              Next <ChevronRight className="h-3.5 w-3.5" />
-            </button>
+                ) : (
+                  paginatedRecords.map((record) => (
+                    <tr key={record.id} className="transition-colors hover:bg-slate-50/80">
+                      <td className="px-5 py-3.5">
+                        <div className="font-semibold text-ink-900">{record.driverName}</div>
+                        <div className="text-xs text-slate-400">{dash(record.driverEmpCode)}</div>
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3.5 text-slate-600">{record.date}</td>
+                      <td className="px-5 py-3.5">
+                        <div className="font-medium text-slate-800">{dash(record.vehicleCode)}</div>
+                        <div className="text-xs text-slate-400">{dash(record.vehicleName)}</div>
+                      </td>
+                      <td className="max-w-[200px] px-5 py-3.5">
+                        <div className="truncate font-medium text-slate-800">{dash(record.projectName)}</div>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700">
+                          {dash(record.shift)}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 font-medium text-slate-700">{dash(record.checkIn)}</td>
+                      <td className="px-5 py-3.5 font-medium text-slate-700">
+                        {record.checkOut ?? (record.running ? <span className="font-semibold italic text-brand-600">In Progress</span> : "—")}
+                      </td>
+                      <td className="px-5 py-3.5 font-semibold text-ink-900">
+                        <HoursCell row={record} />
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <StatusBadge status={record.status} />
+                      </td>
+                      <td className="px-5 py-3.5 text-xs text-slate-600">{dash(record.markedBy)}</td>
+                      <td className="px-5 py-3.5 text-right">
+                        <button
+                          onClick={() => setSelectedRecord(record)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:text-brand-600"
+                        >
+                          <Eye className="h-3.5 w-3.5" /> View
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
-        </div>
-      </Card>
+
+          {/* Pagination Controls */}
+          <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/50 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-slate-500">
+              Showing <span className="font-semibold text-slate-900">{filteredRecords.length > 0 ? (Math.min(currentPage, totalPages) - 1) * pageSize + 1 : 0}</span> to{" "}
+              <span className="font-semibold text-slate-900">{Math.min(Math.min(currentPage, totalPages) * pageSize, filteredRecords.length)}</span> of{" "}
+              <span className="font-semibold text-slate-900">{filteredRecords.length}</span> records
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage <= 1}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" /> Previous
+              </button>
+              <span className="text-xs font-medium text-slate-600">
+                Page {Math.min(currentPage, totalPages)} of {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage >= totalPages}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Next <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Record Details Modal */}
       {selectedRecord && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl animate-fade-up">
-            <div className="flex items-start justify-between pb-4 border-b border-slate-100">
+            <div className="flex items-start justify-between border-b border-slate-100 pb-4">
               <div>
                 <h3 className="text-lg font-bold text-ink-900">{selectedRecord.driverName}</h3>
-                <p className="text-xs text-slate-500">Employee Code: {selectedRecord.driverEmpCode}</p>
+                <p className="text-xs text-slate-500">Employee Code: {dash(selectedRecord.driverEmpCode)}</p>
               </div>
               <button
                 onClick={() => setSelectedRecord(null)}
@@ -444,52 +430,82 @@ export function AttendanceDashboard({ dbSessions }: { dbSessions?: any[] }) {
             </div>
 
             <div className="mt-4 space-y-4 text-sm text-slate-700">
-              <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl">
+              <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3">
                 <div>
                   <span className="text-xs text-slate-400">Assigned Vehicle</span>
-                  <p className="font-semibold text-slate-900">{selectedRecord.vehicleCode}</p>
-                  <p className="text-xs text-slate-500">{selectedRecord.vehicleName}</p>
+                  <p className="font-semibold text-slate-900">{dash(selectedRecord.vehicleCode)}</p>
+                  <p className="text-xs text-slate-500">{dash(selectedRecord.vehicleName)}</p>
                 </div>
                 <div>
                   <span className="text-xs text-slate-400">Shift Status</span>
-                  <div className="mt-1">{getStatusBadge(selectedRecord.status)}</div>
+                  <div className="mt-1">
+                    <StatusBadge status={selectedRecord.status} />
+                  </div>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <span className="text-xs text-slate-400">Project</span>
-                  <p className="font-medium">{selectedRecord.projectName}</p>
+                  <span className="text-xs text-slate-400">Date</span>
+                  <p className="font-medium">{selectedRecord.date}</p>
                 </div>
                 <div>
-                  <span className="text-xs text-slate-400">Site Location</span>
-                  <p className="font-medium">{selectedRecord.siteName}</p>
+                  <span className="text-xs text-slate-400">Project</span>
+                  <p className="font-medium">{dash(selectedRecord.projectName)}</p>
                 </div>
                 <div>
                   <span className="text-xs text-slate-400">Check In Time</span>
-                  <p className="font-medium text-emerald-700">{selectedRecord.checkIn}</p>
+                  <p className="font-medium text-emerald-700">{dash(selectedRecord.checkIn)}</p>
                 </div>
                 <div>
                   <span className="text-xs text-slate-400">Check Out Time</span>
-                  <p className="font-medium text-slate-800">{selectedRecord.checkOut || "In Progress"}</p>
+                  <p className="font-medium text-slate-800">
+                    {selectedRecord.checkOut ?? (selectedRecord.running ? "In Progress" : "—")}
+                  </p>
                 </div>
                 <div>
                   <span className="text-xs text-slate-400">Working Hours</span>
-                  <p className="font-bold text-ink-900">{selectedRecord.workingHours} hrs</p>
+                  <p className="font-bold text-ink-900">
+                    <HoursCell row={selectedRecord} />
+                  </p>
                 </div>
                 <div>
-                  <span className="text-xs text-slate-400">Supervisor</span>
-                  <p className="font-medium">{selectedRecord.supervisor}</p>
+                  <span className="text-xs text-slate-400">Marked By</span>
+                  <p className="font-medium">{dash(selectedRecord.markedBy)}</p>
                 </div>
               </div>
 
-              {/* Safety Checklist Badge */}
-              <div className="rounded-xl bg-emerald-50 p-3 border border-emerald-100 flex items-center gap-3">
-                <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
-                <div>
-                  <p className="text-xs font-bold text-emerald-900">Pre-Shift Daily Safety Checklist Passed</p>
-                  <p className="text-[11px] text-emerald-700">All 7 safety checks verified prior to engine start.</p>
+              {/* What the trip session actually recorded. The old screen claimed a
+                  "7-point safety checklist passed" and a verified selfie here;
+                  neither exists anywhere in the schema, so both are gone. */}
+              <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Recorded Evidence</p>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-slate-400">Tracking source</span>
+                    <p className="font-semibold text-slate-800">{dash(selectedRecord.trackingSource)}</p>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Check-in method</span>
+                    <p className="font-semibold text-slate-800">{dash(selectedRecord.scanMethod)}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-slate-400">Check-in position</span>
+                    <p className="inline-flex items-center gap-1 font-semibold text-slate-800">
+                      {selectedRecord.lat !== null && selectedRecord.lng !== null ? (
+                        <>
+                          <MapPin className="h-3 w-3 text-brand-600" />
+                          {selectedRecord.lat.toFixed(5)}, {selectedRecord.lng.toFixed(5)}
+                        </>
+                      ) : (
+                        "—"
+                      )}
+                    </p>
+                  </div>
                 </div>
+                {selectedRecord.note && (
+                  <p className="mt-2 border-t border-slate-200 pt-2 text-xs text-slate-600">{selectedRecord.note}</p>
+                )}
               </div>
             </div>
 

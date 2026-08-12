@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { DEFAULT_PROD_NORMS } from "@/lib/production";
+import { parseBusinessDay } from "@/lib/business-time";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -19,7 +20,7 @@ function refresh() {
 export async function saveProduction(fd: FormData) {
   const assetId = s(fd, "assetId");
   if (!assetId) throw new Error("Asset is required");
-  const date = new Date(s(fd, "date") || new Date().toISOString().slice(0, 10));
+  const date = parseBusinessDay(s(fd, "date"));
   date.setHours(0, 0, 0, 0);
   const shift = s(fd, "shift") || "DAY";
   const session = await getSession();

@@ -12,12 +12,38 @@
  *   token     POST https://cvp.api.tatamotors/auth/realms/external/protocol/openid-connect/token
  *   snapshot  GET  https://cvp.api.tatamotors/api/vehicle-snapshots?pageNumber&pageSize
  *
- * Two things the spec gets wrong, both confirmed against live data:
+ * Things the spec gets wrong, all confirmed against live data:
  *
  *   - `expires_in` is documented as minutes. The server returns 3600, which as
  *     minutes would be 60 hours; it is plainly seconds, and is read as seconds.
  *   - The `VehicleTelemetry` model capitalises `PrimaryFuelLevel`, but the API
  *     sends `primaryFuelLevel`. The adapter reads both spellings.
+ *   - `engineRunHour` carries the odometer, not hours (89,513.6 against
+ *     89,513 km). It is discarded rather than stored — see the adapter.
+ *   - `secondaryFuelLevel1` / `secondaryFuelTankCapacity1` are unused-slot
+ *     sentinels (a constant 1,500 L in a 55,555 L tank, on a vehicle that
+ *     reports `noOfFuelTanks: 1`). They are never added to the fuel figure.
+ *
+ * FIELD SEMANTICS, verified against 161 live samples for RJ21GE3220:
+ *
+ *   primaryFuelLevel        litres, instantaneous. Quantised to 0.3–1.5 L steps
+ *                           and noisy: it moves by up to 1.3 L with the engine
+ *                           off and the wheels still, and swings ~9 L while the
+ *                           vehicle is running. Never integrate it — see the
+ *                           header of `fleet-analytics.ts`.
+ *   primaryFuelTankCapacity litres, constant 300.
+ *   odometer                kilometres, cumulative, integer.
+ *   speed                   km/h, instantaneous.
+ *   eventDateTime           vehicle clock, no offset, nanosecond precision.
+ *   gpsFix                  false means the position is the last known one.
+ *   vehicleStatus           "Moving" | "Idling" | "Stopped".
+ *   ignitionOn              boolean.
+ *   defLevel                AdBlue, a constant 65000 here — a scaled or
+ *                           sentinel value, so it is stored raw and not used.
+ *
+ * There is no cumulative fuel-consumed counter in the payload, so consumption
+ * can only ever be derived from tank level. That is the single hardest
+ * constraint on how accurate any mileage figure here can be.
  *
  * The snapshot endpoint reports each vehicle's *latest* state and accepts no
  * time filter, so there is no backfill: a missed run is a permanent gap.
@@ -33,6 +59,9 @@ import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { TataFleetEdgeAdapter, type TelemetryPing } from "@/lib/telematics-adapters";
 import { analyseSegment, riskScore, severityFor, type AnalyticsReading } from "@/lib/fleet-analytics";
+import {
+  normaliseReading, assetCacheUpdate, detectSchemaDrift, describeDrift,
+} from "@/lib/telemetry-normalization";
 
 export const TATA_PROVIDER_CODE = "TATA_FLEET_EDGE";
 
@@ -245,6 +274,14 @@ export type TataSyncResult = {
   analysed?: number;
   /** Segments where fuel loss exceeded what the journey explains. */
   anomaliesRaised?: number;
+  /** Pings rejected outright by validation — never stored, never counted. */
+  invalid?: number;
+  /** Pings stored with one or more unusable fields discarded. */
+  degraded?: number;
+  /** Why those pings were rejected or degraded, for the sync report. */
+  validationIssues?: string[];
+  /** Provider payload no longer matching the recorded field contract. */
+  schemaDrift?: string[];
   /** Vehicles the provider returned that match no asset in the register. */
   unmatched: string[];
   /** Vehicles the provider itself could not report on (HTTP 207). */
@@ -267,6 +304,8 @@ type ResolvedAsset = {
   hourMeterValue: number;
   primaryMeter: string;
   assetClass: string;
+  /** Register's tank size, used to range-check fuel when the OEM omits one. */
+  fuelCapacity: number;
 };
 
 type RawFields = Record<string, unknown>;
@@ -301,6 +340,7 @@ async function buildAssetIndex(): Promise<Map<string, ResolvedAsset>> {
       hourMeterValue: true,
       primaryMeter: true,
       assetClass: true,
+      fuelCapacity: true,
     },
   });
 
@@ -314,6 +354,7 @@ async function buildAssetIndex(): Promise<Map<string, ResolvedAsset>> {
       hourMeterValue: a.hourMeterValue,
       primaryMeter: a.primaryMeter,
       assetClass: a.assetClass,
+      fuelCapacity: a.fuelCapacity,
     };
     for (const key of [a.registrationNo, a.chassisNo, a.deviceId, a.code]) {
       const k = normaliseId(key);
@@ -459,6 +500,12 @@ async function recordSensorRefuel(
       sensorRise: rounded,
       rate,
       amount: Math.round(rounded * rate),
+      // `FuelTransaction.meterValue` is non-nullable with a 0 default, and 0 is
+      // this column's established "no reading" sentinel — every consumer guards
+      // it (`fuel.ts` mileage segments, the meter-rollback scan in
+      // loss-prevention, and the fuel tables all test `meterValue > 0`). It is
+      // written explicitly here so the convention is visible rather than
+      // arriving silently via the schema default.
       meterValue: reading.odometerKm ?? 0,
       lat: reading.lat,
       lng: reading.lng,
@@ -530,6 +577,10 @@ export async function syncTataFleetEdge(): Promise<TataSyncResult> {
     let duplicates = 0;
     let analysed = 0;
     let anomaliesRaised = 0;
+    let invalid = 0;
+    let degraded = 0;
+    const validationIssues: string[] = [];
+    const drift = new Set<string>();
 
     for (const ping of pings) {
       const asset = resolveAsset(ping, assetIndex);
@@ -537,6 +588,12 @@ export async function syncTataFleetEdge(): Promise<TataSyncResult> {
         unmatched.add(ping.externalDeviceId);
         continue;
       }
+
+      // Fleet Edge changing its payload shape must be reported, not absorbed. A
+      // field that quietly disappears does not break a screen — it empties a
+      // calculation, which is far harder to notice and far worse to act on.
+      const summary = describeDrift(detectSchemaDrift(ping.rawPayload));
+      if (summary) drift.add(summary);
 
       // This is a snapshot endpoint, so a parked vehicle returns the identical
       // eventDateTime on every run. Inserting unconditionally would write one
@@ -571,29 +628,75 @@ export async function syncTataFleetEdge(): Promise<TataSyncResult> {
         },
       });
 
-      const created = await db.telemetryReading.create({
-        data: {
-          assetId: asset.id,
-          recordedAt: ping.timestamp,
-          lat: ping.latitude,
-          lng: ping.longitude,
-          speedKph: ping.speedKph,
-          headingDeg: ping.headingDeg ?? null,
-          odometerKm: ping.odometerKm,
-          engineHours: ping.engineHours,
-          fuelLevelPct: ping.fuelLevelPct,
-          fuelLevelL: ping.fuelLevelLitres,
-          ignitionOn: ping.ignitionState,
-          source: "GPS_API",
-          providerId: provider?.id ?? asset.telematicsProviderId ?? null,
-          sessionId: session?.id ?? null,
-          raw: ping.rawPayload as Prisma.InputJsonValue,
-        },
+      // The tank size the vehicle reports beats a hand-typed one: fuel-theft
+      // detection sizes a siphon against it, and so does the sender's noise
+      // band. Only tanks the adapter actually read are counted — see
+      // `interpretFleetEdgeFuel` for why the secondary pair is not one of them.
+      const fuel = ping.fuelInterpretation;
+      const reportedCapacity =
+        fuel?.secondaryIncluded && fuel.primaryCapacityL != null && fuel.secondaryCapacityL != null
+          ? fuel.primaryCapacityL + fuel.secondaryCapacityL
+          : (fuel?.primaryCapacityL ??
+             toFiniteNumber((ping.rawPayload as RawFields).primaryFuelTankCapacity));
+
+      // Same validator as every other ingestion path, so a value Fleet Edge
+      // sends cannot be stored here on terms the push routes would refuse.
+      const check = normaliseReading(ping, {
+        fuelCapacityL: reportedCapacity ?? asset.fuelCapacity,
+        lastOdometerKm: previous?.odometerKm ?? null,
       });
 
-      // The tank size the vehicle reports beats a hand-typed one: fuel-theft
-      // detection sizes a siphon against it.
-      const reportedCapacity = toFiniteNumber((ping.rawPayload as RawFields).primaryFuelTankCapacity);
+      if (!check.accepted || !check.reading) {
+        invalid++;
+        validationIssues.push(
+          `${ping.externalDeviceId}: ${check.issues.map((i) => `${i.field} — ${i.reason}`).join("; ")}`,
+        );
+        continue;
+      }
+      if (check.degraded) {
+        degraded++;
+        validationIssues.push(
+          `${ping.externalDeviceId}: ${check.issues.map((i) => `${i.field} — ${i.reason}`).join("; ")}`,
+        );
+      }
+
+      const r = check.reading;
+
+      // The pre-check above is the fast path; this is the race. Two runs
+      // overlapping — a slow sync still in flight when the next cron fires —
+      // both pass the check and both insert. `TelemetryReading` carries a
+      // unique constraint on (assetId, recordedAt, source) for exactly this,
+      // and a violation here means the other run already stored the sample.
+      let created: { id: string };
+      try {
+        created = await db.telemetryReading.create({
+          data: {
+            assetId: asset.id,
+            recordedAt: r.recordedAt,
+            lat: r.lat,
+            lng: r.lng,
+            speedKph: r.speedKph,
+            headingDeg: r.headingDeg,
+            odometerKm: r.odometerKm,
+            engineHours: r.engineHours,
+            fuelLevelPct: r.fuelLevelPct,
+            fuelLevelL: r.fuelLevelL,
+            ignitionOn: r.ignitionOn,
+            source: "GPS_API",
+            providerId: provider?.id ?? asset.telematicsProviderId ?? null,
+            sessionId: session?.id ?? null,
+            raw: ping.rawPayload as Prisma.InputJsonValue,
+          },
+        });
+      } catch (e) {
+        // P2002 = unique violation. The concurrent run won; its row is the same
+        // observation, so this is a duplicate, not a failure.
+        if (typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002") {
+          duplicates++;
+          continue;
+        }
+        throw e;
+      }
 
       if (previous) {
         analysed++;
@@ -601,14 +704,14 @@ export async function syncTataFleetEdge(): Promise<TataSyncResult> {
           asset,
           previous as AnalyticsReading,
           {
-            recordedAt: ping.timestamp,
-            lat: ping.latitude,
-            lng: ping.longitude,
-            speedKph: ping.speedKph,
-            odometerKm: ping.odometerKm,
-            fuelLevelL: ping.fuelLevelLitres,
-            fuelLevelPct: ping.fuelLevelPct,
-            ignitionOn: ping.ignitionState,
+            recordedAt: r.recordedAt,
+            lat: r.lat,
+            lng: r.lng,
+            speedKph: r.speedKph,
+            odometerKm: r.odometerKm,
+            fuelLevelL: r.fuelLevelL,
+            fuelLevelPct: r.fuelLevelPct,
+            ignitionOn: r.ignitionOn,
           },
           created.id,
           reportedCapacity,
@@ -619,30 +722,26 @@ export async function syncTataFleetEdge(): Promise<TataSyncResult> {
       await db.asset.update({
         where: { id: asset.id },
         data: {
-          ...(ping.latitude != null && ping.longitude != null ? { lat: ping.latitude, lng: ping.longitude } : {}),
-          ...(ping.speedKph != null ? { speed: ping.speedKph } : {}),
-          ...(ping.fuelLevelPct != null ? { fuelLevelPct: ping.fuelLevelPct, fuelLevelAt: ping.timestamp } : {}),
-          // Without this the asset's odometer stays frozen at whatever was typed
-          // when the record was created, while the map moves — the same machine
-          // reading as both 89,399 km and somewhere 7 km further along.
-          // Guarded against a provider glitch winding a meter backwards.
-          ...(ping.odometerKm != null && ping.odometerKm >= asset.meterValue && asset.primaryMeter === "ODOMETER"
-            ? { meterValue: ping.odometerKm }
-            : {}),
-          ...(ping.engineHours != null && ping.engineHours >= asset.hourMeterValue
-            ? { hourMeterValue: ping.engineHours }
-            : {}),
+          ...assetCacheUpdate(r, asset),
           ...(reportedCapacity != null && reportedCapacity > 0 ? { fuelCapacity: reportedCapacity } : {}),
-          lastSeen: ping.timestamp,
         },
       });
       stored++;
     }
 
     if (provider) {
+      // A required field vanishing from the feed is a data-integrity incident,
+      // not a healthy sync. Surfacing it on the provider row is what makes it
+      // visible on Tracking → Sessions instead of only in a log nobody reads.
+      const driftNotes = [...drift];
+      const breaking = driftNotes.filter((d) => d.includes("MISSING REQUIRED"));
       await db.telematicsProvider.update({
         where: { id: provider.id },
-        data: { lastSyncAt: new Date(), lastSyncStatus: "OK", lastSyncError: null },
+        data: {
+          lastSyncAt: new Date(),
+          lastSyncStatus: breaking.length ? "SCHEMA_DRIFT" : "OK",
+          lastSyncError: breaking.length ? breaking.join(" || ").slice(0, 500) : null,
+        },
       });
     }
 
@@ -653,6 +752,10 @@ export async function syncTataFleetEdge(): Promise<TataSyncResult> {
       ...(duplicates ? { duplicates } : {}),
       ...(analysed ? { analysed } : {}),
       ...(anomaliesRaised ? { anomaliesRaised } : {}),
+      ...(invalid ? { invalid } : {}),
+      ...(degraded ? { degraded } : {}),
+      ...(validationIssues.length ? { validationIssues: validationIssues.slice(0, 20) } : {}),
+      ...(drift.size ? { schemaDrift: [...drift] } : {}),
       unmatched: [...unmatched],
       ...(failures.length ? { providerFailures: failures } : {}),
     };

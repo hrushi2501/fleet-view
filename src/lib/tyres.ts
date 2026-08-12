@@ -33,7 +33,8 @@ export type TyreHealth = {
   wearPct: number;
   treadRemainingMm: number;
   kmRun: number;
-  lifeUsedPct: number;
+  /** Null when no expected life is on record — 0% used would read as a fresh casing. */
+  lifeUsedPct: number | null;
   /** Rupees per kilometre actually delivered. */
   costPerKm: number | null;
   /** Projected total km at the current wear rate. */
@@ -61,7 +62,7 @@ export function tyreHealth(t: TyreLite, currentAssetMeter: number | null): TyreH
     : 0;
   const kmRun = t.totalKm + sinceFit;
 
-  const lifeUsedPct = t.expectedLifeKm > 0 ? (kmRun / t.expectedLifeKm) * 100 : 0;
+  const lifeUsedPct = t.expectedLifeKm > 0 ? (kmRun / t.expectedLifeKm) * 100 : null;
   const costPerKm = kmRun > 0 && t.cost > 0 ? t.cost / kmRun : null;
   // Extrapolate: if x% of tread is gone after kmRun, full life is kmRun / (x/100).
   const projectedLifeKm = wearPct > 5 && kmRun > 0 ? kmRun / (wearPct / 100) : null;
@@ -158,7 +159,8 @@ export type ComponentLite = {
 export type ComponentHealth = {
   component: ComponentLite;
   hoursRun: number;
-  lifeUsedPct: number;
+  /** Null when no expected life is on record. */
+  lifeUsedPct: number | null;
   costPerHour: number | null;
   status: "good" | "monitor" | "replace";
   flags: string[];
@@ -170,11 +172,16 @@ export function componentHealth(c: ComponentLite, currentAssetMeter: number | nu
       ? Math.max(0, currentAssetMeter - c.fittedMeter)
       : 0;
   const hoursRun = c.hoursUsed + sinceFit;
-  const lifeUsedPct = c.expectedLifeHours > 0 ? (hoursRun / c.expectedLifeHours) * 100 : 0;
+  const lifeUsedPct = c.expectedLifeHours > 0 ? (hoursRun / c.expectedLifeHours) * 100 : null;
 
   const flags: string[] = [];
   let status: ComponentHealth["status"] = "good";
-  if (lifeUsedPct >= 100) { status = "replace"; flags.push(`Past its ${c.expectedLifeHours.toLocaleString("en-IN")}-hour expected life.`); }
+  if (lifeUsedPct == null) {
+    // Previously this fell through as 0% used and a "good" verdict. A bucket or
+    // undercarriage with no expected life on record is not a healthy one; it is
+    // an unjudged one, and saying so is what gets the field filled in.
+    flags.push("No expected life on record — how much of this component is used up cannot be judged.");
+  } else if (lifeUsedPct >= 100) { status = "replace"; flags.push(`Past its ${c.expectedLifeHours.toLocaleString("en-IN")}-hour expected life.`); }
   else if (lifeUsedPct >= 80) { status = "monitor"; flags.push(`${lifeUsedPct.toFixed(0)}% of expected life used — plan the rebuild.`); }
   if (c.rebuildCount > 1) flags.push(`Rebuilt ${c.rebuildCount} times.`);
 

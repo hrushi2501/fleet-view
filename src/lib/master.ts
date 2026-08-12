@@ -11,6 +11,9 @@
 //      record it reads from, and a fleet that quietly has no acquisition costs
 //      will report a depreciation of zero and look profitable.
 
+import { businessDay } from "./business-time";
+import { calendarDaysUntil } from "./utils";
+
 export type MeterType = "ODOMETER" | "HOURS";
 
 export type ReadingLite = {
@@ -56,7 +59,10 @@ export function checkReading(
       isRollback: true,
       implausible: false,
       previous,
-      message: `Reading ${value.toLocaleString("en-IN")} is below the previous ${previous.value.toLocaleString("en-IN")} recorded on ${previous.date.toISOString().slice(0, 10)}. A meter does not run backwards.`,
+      // This message is quoted back at an operator accused of a rollback, so the
+      // date has to be the one he would recognise from his own shift, not the
+      // UTC day the server happens to be in.
+      message: `Reading ${value.toLocaleString("en-IN")} is below the previous ${previous.value.toLocaleString("en-IN")} recorded on ${businessDay(previous.date)}. A meter does not run backwards.`,
     };
   }
 
@@ -143,7 +149,12 @@ export type AttendanceSummary = {
   leave: number;
   halfDays: number;
   hours: number;
-  attendancePct: number;
+  /**
+   * Null when the period holds no working days at all. 0% reads as a person who
+   * never turned up — which is what a payroll clerk would act on — when in fact
+   * nobody has marked the register yet.
+   */
+  attendancePct: number | null;
 };
 
 export function attendanceSummary(records: AttendanceLite[]): AttendanceSummary {
@@ -162,7 +173,7 @@ export function attendanceSummary(records: AttendanceLite[]): AttendanceSummary 
     leave,
     halfDays: half,
     hours: records.reduce((s, r) => s + r.hours, 0),
-    attendancePct: workingDays > 0 ? (credited / workingDays) * 100 : 0,
+    attendancePct: workingDays > 0 ? (credited / workingDays) * 100 : null,
   };
 }
 
@@ -188,7 +199,9 @@ export function personDocStatus(docs: PersonDocLite[], now = new Date()): { find
     const d = latest.get(t);
     if (!d) return { docType: t, state: "missing" as const, days: null };
     if (!d.expiryDate) return { docType: t, state: "no-expiry" as const, days: null };
-    const days = Math.floor((d.expiryDate.getTime() - now.getTime()) / 86400000);
+    // Whole IST calendar days — a medical or a licence is valid through the
+    // whole of its expiry date. See docState in M13 for the same rule.
+    const days = calendarDaysUntil(d.expiryDate, now);
     return { docType: t, state: days < 0 ? ("expired" as const) : days <= 30 ? ("expiring" as const) : ("valid" as const), days };
   });
 

@@ -14,7 +14,9 @@
     "backup": "./scripts-backup.sh",
     "setup:production": "node prisma/setup-production.mjs",
     "db:rls": "psql \"$DATABASE_URL_UNPOOLED\" -f prisma/sql/enable-rls.sql",
-    "check": "npm run lint && tsc --noEmit"
+    "db:telemetry-index": "psql \"$DATABASE_URL_UNPOOLED\" -f prisma/sql/telemetry-unique-index.sql",
+    "test": "node --import ./scripts/test-setup.mjs --test 'src/**/*.test.ts'",
+    "check": "npm run lint && tsc --noEmit && npm test"
   },
   "prisma": {
     "seed": "node prisma/seed.mjs"

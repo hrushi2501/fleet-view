@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { checkSharedSecret } from "@/lib/auth";
 import { syncTataFleetEdge, isTataEnabled, missingConfigKeys } from "@/lib/tata-fleet-edge";
 
 export const dynamic = "force-dynamic";
@@ -14,14 +15,13 @@ export const maxDuration = 120;
  * Returns 200 with `skipped` when the integration is switched off or
  * unconfigured — a disabled integration is not a failed cron, and paging the
  * team every 15 minutes over a deliberate off switch trains them to ignore it.
+ *
+ * The secret check fails closed: with CRON_SECRET unset the route answers 503
+ * rather than accepting a default that is public in this repository.
  */
 export async function GET(req: Request) {
-  const auth = req.headers.get("authorization");
-  const { searchParams } = new URL(req.url);
-  const secret = process.env.CRON_SECRET || "mcc-cron-2026";
-  if (auth !== `Bearer ${secret}` && searchParams.get("key") !== secret) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = checkSharedSecret(req, "CRON_SECRET");
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   if (!isTataEnabled()) {
     return NextResponse.json({

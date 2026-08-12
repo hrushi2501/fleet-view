@@ -21,7 +21,15 @@ const LPH_BENCH: Record<string, [number, number]> = {
   EXCAVATOR: [10, 20], GRADER: [12, 25], ROLLER: [5, 12], BACKHOE: [4, 9], CRANE: [6, 16],
   PLANT: [15, 40], CRUSHER: [20, 50],
 };
-const MAX_SEG = (cls: string) => (LPH_BENCH[cls] ? 24 : 700); // max plausible meter delta between fills
+/**
+ * Largest meter movement between two fills that is still credible — 700 km for
+ * a road vehicle, 24 engine-hours for plant. Beyond this the pair is almost
+ * always a missed fill or a mistyped meter rather than a real run, and averaging
+ * it in would silently flatter the mileage of whichever asset has the worst
+ * paperwork. Segments above it are excluded from efficiency *and* from the
+ * spend that efficiency is measured against.
+ */
+const MAX_SEG = (cls: string) => (LPH_BENCH[cls] ? 24 : 700);
 
 export type AssetFuel = {
   asset: AssetLite;
@@ -48,6 +56,11 @@ export function analyzeAsset(asset: AssetLite, txnsAll: FuelTxn[]): AssetFuel {
   const spend = txns.reduce((s, t) => s + t.amount, 0);
 
   let segTravel = 0, segLitres = 0;
+  // Spend belonging to the same fills that back segTravel. Cost per km divided
+  // total spend by *measured* distance, so every fill whose segment was
+  // rejected (no meter reading, a rollback, a 900 km gap) inflated the rate for
+  // the ones that remained — and that number is quoted per vehicle as a cost.
+  let segSpend = 0;
   const flags: FuelFlag[] = [];
   const segMileages: number[] = [];
 
@@ -69,7 +82,14 @@ export function analyzeAsset(asset: AssetLite, txnsAll: FuelTxn[]): AssetFuel {
         else if (delta > MAX_SEG(asset.assetClass)) reasons.push(`Meter jump ${Math.round(delta)} (check reading)`);
         else if (delta > 0 && p.quantity > 0) {
           const eff = isEquip ? p.quantity / delta : delta / p.quantity; // L/hr or km/L
-          if (eff > 0 && isFinite(eff)) { segMileages.push(eff); segTravel += delta; segLitres += p.quantity; }
+          if (eff > 0 && isFinite(eff)) {
+            segMileages.push(eff);
+            segTravel += delta;
+            segLitres += p.quantity;
+            // The fill that powered this segment, so numerator and denominator
+            // describe the same journeys.
+            segSpend += p.amount;
+          }
         }
       }
     }
@@ -101,14 +121,18 @@ export function analyzeAsset(asset: AssetLite, txnsAll: FuelTxn[]): AssetFuel {
   const bench = isEquip ? LPH_BENCH[asset.assetClass] : KMPL_BENCH[asset.assetClass] ?? [0, 0];
   let status: AssetFuel["status"] = "na";
   if (efficiency && bench[1] > 0) {
-    if (isEquip) status = efficiency > bench[1] ? "high" : efficiency < bench[0] ? "good" : "good"; // lower L/hr is better
+    // Equipment is measured in L/hr, where lower is better, so only burning
+    // *above* the benchmark is a problem. (The previous form had both branches
+    // of its inner ternary returning "good", which read as a bug even though
+    // the outcome was right.)
+    if (isEquip) status = efficiency > bench[1] ? "high" : "good";
     else status = efficiency < bench[0] ? "low" : efficiency > bench[1] ? "high" : "good";
   }
 
   return {
     asset, unit, fills: txns.length, litres, spend,
     travel: segTravel, efficiency,
-    costPerUnit: efficiency && segTravel > 0 ? spend / segTravel : null,
+    costPerUnit: segTravel > 0 && segSpend > 0 ? segSpend / segTravel : null,
     benchLow: bench[0], benchHigh: bench[1], status,
     lastFill: txns.length ? txns[txns.length - 1].date : null,
     lastMeter: txns.length ? txns[txns.length - 1].meterValue : 0,
@@ -125,7 +149,10 @@ export function analyzeFleet(assets: AssetLite[], txns: FuelTxn[]) {
   const totalLitres = rows.reduce((s, r) => s + r.litres, 0);
   const totalKm = rows.filter((r) => r.unit === "km/L").reduce((s, r) => s + r.travel, 0);
   const kmLitres = rows.filter((r) => r.unit === "km/L").reduce((s, r) => s + (r.efficiency ? r.travel / r.efficiency : 0), 0);
-  const avgFleetKmpl = kmLitres > 0 ? totalKm / kmLitres : 0;
+  // Null, not zero. A fleet with no measurable segments has *unknown* mileage;
+  // 0 km/L reads as a fleet burning fuel and going nowhere, and it is the kind
+  // of number that gets screenshotted into a meeting.
+  const avgFleetKmpl = kmLitres > 0 && totalKm > 0 ? totalKm / kmLitres : null;
   const allFlags = rows.flatMap((r) => r.flags.map((f) => ({ ...f, code: r.asset.code })));
   const highFlags = allFlags.filter((f) => f.level === "high");
 

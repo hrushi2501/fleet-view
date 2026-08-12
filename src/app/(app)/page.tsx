@@ -5,6 +5,7 @@ import { TrendArea, MultiBar, Donut } from "@/components/charts";
 import { inr, num, timeAgo, ASSET_CLASS_LABEL, SEVERITY_COLOR, healthColor } from "@/lib/utils";
 import { Truck, Fuel, TriangleAlert, Activity, Wrench, ShieldAlert, ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { businessDayShort } from "@/lib/business-time";
 
 export const dynamic = "force-dynamic";
 
@@ -51,11 +52,11 @@ export default async function Dashboard() {
   const fuelByDay: Record<string, number> = {};
   for (let i = 13; i >= 0; i--) {
   // eslint-disable-next-line react-hooks/purity
-    const d = new Date(Date.now() - i * 86400000).toISOString().slice(5, 10);
+    const d = businessDayShort(new Date(Date.now() - i * 86400000));
     fuelByDay[d] = 0;
   }
   for (const f of fuelIssues) {
-    const k = new Date(f.date).toISOString().slice(5, 10);
+    const k = businessDayShort(new Date(f.date));
     if (k in fuelByDay) fuelByDay[k] += f.quantity;
   }
   const fuelTrend = Object.entries(fuelByDay).map(([day, litres]) => ({ day, litres: Math.round(litres) }));
@@ -119,11 +120,17 @@ export default async function Dashboard() {
           />
           <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label="Distance Covered" value={`${num(telemetry.totals.distanceKm)} km`} sub="Odometer delta" accent="brand" icon={<Activity className="h-5 w-5" />} />
-            <StatCard label="Diesel Burned" value={`${num(telemetry.totals.litresBurned)} L`} sub={`${num(telemetry.totals.litresFilled)} L filled`} accent="amber" icon={<Fuel className="h-5 w-5" />} />
+            <StatCard
+              label="Diesel Burned"
+              value={telemetry.totals.avgKmPerL != null ? `${num(telemetry.totals.litresBurned)} L` : "—"}
+              sub={telemetry.totals.avgKmPerL != null ? `${num(telemetry.totals.litresFilled)} L filled` : "Not measurable from this telemetry"}
+              accent="amber"
+              icon={<Fuel className="h-5 w-5" />}
+            />
             <StatCard
               label="Fleet Efficiency"
               value={telemetry.totals.avgKmPerL != null ? `${telemetry.totals.avgKmPerL} km/L` : "—"}
-              sub="Total distance ÷ total burn"
+              sub={`Total distance ÷ total burn · ${telemetry.totals.confidence.toLowerCase()} confidence`}
               accent={telemetry.perAsset.some((a) => a.belowNorm) ? "rose" : "emerald"}
               icon={<Activity className="h-5 w-5" />}
             />
@@ -135,6 +142,14 @@ export default async function Dashboard() {
               icon={<TriangleAlert className="h-5 w-5" />}
             />
           </div>
+          {telemetry.totals.vehiclesWithInsufficientData > 0 && (
+            <p className="mt-2 text-[11px] text-slate-500">
+              Insufficient telemetry data for reliable fuel analysis on{" "}
+              {telemetry.totals.vehiclesWithInsufficientData} of {telemetry.totals.vehiclesReporting} reporting
+              vehicle{telemetry.totals.vehiclesReporting === 1 ? "" : "s"} — those vehicles are excluded from the
+              efficiency figure rather than averaged into it. Open a vehicle to see what its telemetry is missing.
+            </p>
+          )}
           {telemetry.totals.worstGapHours > 1 && (
             <p className="mt-2 text-[11px] text-slate-500">
               Longest gap between samples in this window: {telemetry.totals.worstGapHours} h. Sparse sampling

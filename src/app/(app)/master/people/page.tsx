@@ -54,8 +54,12 @@ export default async function PeopleMasterPage() {
   const totalMissing = rows.reduce((s, r) => s + r.docs.missing, 0);
   const totalExpired = rows.reduce((s, r) => s + r.docs.expired, 0);
   const contractors = drivers.filter((d) => d.employmentType === "CONTRACTOR").length;
-  const withAtt = rows.filter((r) => r.att.days > 0);
-  const avgAtt = withAtt.length ? withAtt.reduce((s, r) => s + r.att.attendancePct, 0) / withAtt.length : 0;
+  // Only people whose attendance was actually marked can be averaged; folding
+  // in an unmarked person as 0% would report the workforce as absent.
+  const withAtt = rows.filter((r) => r.att.attendancePct != null);
+  const avgAtt = withAtt.length
+    ? withAtt.reduce((s, r) => s + r.att.attendancePct!, 0) / withAtt.length
+    : null;
 
   return (
     <div className="space-y-6">
@@ -74,7 +78,7 @@ export default async function PeopleMasterPage() {
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <StatCard label="People" value={num(drivers.length)} sub={`${num(contractors)} contractor-supplied`} accent="brand" icon={<Users className="h-5 w-5" />} />
-        <StatCard label="Attendance" value={`${avgAtt.toFixed(0)}%`} sub="last 30 days" accent={avgAtt >= 90 ? "emerald" : "amber"} icon={<CalendarCheck className="h-5 w-5" />} />
+        <StatCard label="Attendance" value={avgAtt != null ? `${avgAtt.toFixed(0)}%` : "—"} sub={avgAtt != null ? `last 30 days · ${withAtt.length} marked` : "nobody marked in the last 30 days"} accent={avgAtt != null && avgAtt >= 90 ? "emerald" : "amber"} icon={<CalendarCheck className="h-5 w-5" />} />
         <StatCard label="Missing Documents" value={num(totalMissing)} sub="never recorded" accent={totalMissing > 0 ? "rose" : "emerald"} icon={<FileX2 className="h-5 w-5" />} />
         <StatCard label="Expired Documents" value={num(totalExpired)} sub="need renewal" accent={totalExpired > 0 ? "rose" : "emerald"} icon={<TriangleAlert className="h-5 w-5" />} />
         <StatCard label="Attendance Records" value={num(attendance.length)} sub="last 30 days" accent="violet" icon={<UserCheck className="h-5 w-5" />} />
@@ -110,7 +114,7 @@ export default async function PeopleMasterPage() {
                     {p.contractorName && <p className="mt-0.5 text-xs text-slate-400">{p.contractorName}</p>}
                   </td>
                   <td className="px-5 py-3">
-                    {att.days > 0 ? (
+                    {att.attendancePct != null ? (
                       <div className="w-24">
                         <Progress value={att.attendancePct} />
                         <p className="mt-0.5 text-xs text-slate-400">{att.attendancePct.toFixed(0)}% · {att.present}P {att.absent}A</p>

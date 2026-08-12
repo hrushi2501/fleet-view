@@ -2,6 +2,7 @@ import React from "react";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { SupervisorAttendanceApproval } from "@/components/SupervisorAttendanceApproval";
+import { loadAttendanceView } from "../data";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Supervisor Attendance Approvals | FleetView ERP",
-  description: "Supervisor verification queue for driver check-ins, GPS proofs, selfies, safety checklists & working hours.",
+  description: "Supervisor review queue for unmarked and open driver shifts, with the check-in evidence on record.",
 };
 
 export default async function SupervisorApprovalsPage() {
@@ -20,6 +21,10 @@ export default async function SupervisorApprovalsPage() {
   if (session.role === "DRIVER") {
     redirect("/driver/checkin");
   }
+
+  // Same loader as the register tab, so the standalone approvals route and the
+  // tabbed one can never disagree about which shifts are outstanding.
+  const view = await loadAttendanceView();
 
   return (
     <div className="space-y-6">
@@ -32,11 +37,11 @@ export default async function SupervisorApprovalsPage() {
         </Link>
         <h1 className="text-2xl font-bold tracking-tight text-ink-900">Supervisor Attendance Approvals</h1>
         <p className="text-sm text-slate-500">
-          Verify driver check-in selfies, GPS location proofs, safety checklist passes, overtime hours &amp; approve shift logs.
+          Shifts that ran without a register entry, shifts still open, and the check-in evidence recorded against each.
         </p>
       </div>
 
-      <SupervisorAttendanceApproval />
+      <SupervisorAttendanceApproval view={view} />
     </div>
   );
 }

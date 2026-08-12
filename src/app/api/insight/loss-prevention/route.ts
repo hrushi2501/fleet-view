@@ -1,14 +1,24 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { requirePermission } from "@/lib/auth";
 import { scorecard, offenderProfiles, type CaseLite } from "@/lib/loss-prevention";
 import { getFraudIntelligence } from "@/app/(app)/loss-prevention/actions";
 
+/**
+ * Open fraud cases, named offenders and amounts at risk. This was readable by
+ * anyone who could reach the URL — it names drivers and vendors under suspicion,
+ * which is both the client's commercial data and a personal-data exposure.
+ */
 export async function GET() {
+  const auth = await requirePermission("loss.view");
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
   try {
     const [cases, assets, drivers, fraudIntel] = await Promise.all([
       db.fraudCase.findMany({
         include: { asset: { select: { code: true } }, driver: { select: { name: true } }, _count: { select: { evidence: true, recoveries: true } } },
         orderBy: [{ status: "asc" }, { score: "desc" }, { openedAt: "desc" }],
+        take: 2000,
       }),
       db.asset.findMany({ select: { id: true, code: true, registrationNo: true, name: true } }),
       db.driver.findMany({ select: { id: true, name: true, empCode: true } }),

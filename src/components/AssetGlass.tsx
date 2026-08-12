@@ -17,14 +17,23 @@ type Detail = {
   costByHead: Record<string, number>; totalCost: number;
   usage?: {
     segments: number; windowHours: number; distanceKm: number;
-    litresBurned: number; litresFilled: number; avgKmPerL: number | null;
+    distanceSource: "ODOMETER" | "GPS" | "NONE"; gpsDistanceKm: number | null;
+    litresBurned: number; litresBurnedUncertainty: number; litresFilled: number;
+    refuelEvents: number; avgKmPerL: number | null;
     suspectSegments: number; litresUnaccounted: number; worstGapHours: number;
+    confidence: "HIGH" | "MEDIUM" | "LOW";
+    confidenceReasons: string[];
+    insufficientData: boolean;
     norm: { low: number; high: number; unit: string } | null;
   };
+  refuels?: {
+    at: string; fromL: number; toL: number; litresAdded: number;
+    confidence: string; hoursObserved: number;
+  }[];
   segments?: {
     from: string; to: string; hours: number; distanceKm: number | null;
-    litresConsumed: number | null; kmPerL: number | null; event: string;
-    excessLitres: number; confidence: string; reasons: string[];
+    fuelDeltaL: number | null; litresConsumed: number | null; kmPerL: number | null;
+    event: string; excessLitres: number; confidence: string; reasons: string[];
   }[];
   telemetry?: {
     recordedAt: string; source: string; provider: string | null;
@@ -50,14 +59,42 @@ function renderValue(v: unknown) {
   return String(v);
 }
 
-function Chip({ label, value }: { label: string; value: string }) {
+function Chip({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="rounded-xl border border-white/50 bg-white/40 px-3 py-2 backdrop-blur-sm">
       <p className="text-[10px] uppercase tracking-wider text-slate-500">{label}</p>
       <p className="text-sm font-semibold text-ink-900">{value}</p>
+      {sub && <p className="text-[10px] text-slate-500">{sub}</p>}
     </div>
   );
 }
+
+const CONFIDENCE_STYLE: Record<string, string> = {
+  HIGH: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  MEDIUM: "bg-amber-50 text-amber-800 ring-amber-200",
+  LOW: "bg-slate-100 text-slate-600 ring-slate-300",
+};
+
+/**
+ * Fields the adapter deliberately does not use. Showing them unannotated in a
+ * panel headed "Live Telemetry" invites someone to read 1,500 L of fuel off a
+ * vehicle that has a 300 L tank.
+ */
+const RAW_FIELD_NOTES: Record<string, string> = {
+  secondaryFuelLevel1: "not used — no second tank fitted",
+  secondaryFuelTankCapacity1: "not used — placeholder value",
+  engineRunHour: "not used — carries the odometer, not hours",
+  defLevel: "raw sensor value, unscaled",
+};
+
+const SEGMENT_STYLE: Record<string, string> = {
+  STATIONARY_DROP: "bg-rose-50 text-rose-700 ring-rose-200",
+  EXCESS_CONSUMPTION: "bg-amber-50 text-amber-800 ring-amber-200",
+  IMPLAUSIBLE_DROP: "bg-violet-50 text-violet-700 ring-violet-200",
+  REFUEL: "bg-sky-50 text-sky-700 ring-sky-200",
+  NOISE: "bg-slate-100 text-slate-500 ring-slate-300",
+  NORMAL: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+};
 
 export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () => void }) {
   const [data, setData] = useState<Detail | null>(null);
@@ -156,50 +193,122 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
               {/* usage & fuel analysis — derived from consecutive samples */}
               {data.usage && data.usage.segments > 0 && (
                 <div className="rounded-2xl border border-white/50 bg-white/45 p-4 backdrop-blur-sm lg:col-span-2">
-                  <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-ink-900">
+                  <h3 className="mb-3 flex flex-wrap items-center gap-2 text-sm font-semibold text-ink-900">
                     <Gauge className="h-4 w-4 text-violet-600" /> Usage &amp; Fuel Analysis
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${
+                        CONFIDENCE_STYLE[data.usage.confidence] ?? CONFIDENCE_STYLE.LOW
+                      }`}
+                    >
+                      {data.usage.confidence.toLowerCase()} confidence
+                    </span>
                   </h3>
 
+                  {data.usage.insufficientData && (
+                    <p className="mb-3 rounded-xl bg-slate-100 px-3 py-2 text-[12px] text-slate-700 ring-1 ring-inset ring-slate-300">
+                      <strong>Insufficient telemetry data for reliable fuel analysis.</strong> Consumption and
+                      efficiency are withheld rather than shown as a precise-looking number this data cannot
+                      support. Distance and the measured tank levels are still shown, and the reasons are
+                      listed below — they say what has to improve before these figures mean anything.
+                    </p>
+                  )}
+
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                    <Chip label="Distance" value={`${data.usage.distanceKm.toLocaleString("en-IN")} km`} />
-                    <Chip label="Diesel burned" value={`${data.usage.litresBurned} L`} />
+                    <Chip
+                      label="Distance"
+                      value={`${data.usage.distanceKm.toLocaleString("en-IN")} km`}
+                      sub={data.usage.distanceSource === "ODOMETER" ? "from odometer" : data.usage.distanceSource === "GPS" ? "from GPS track" : "no source"}
+                    />
+                    <Chip
+                      label="Diesel burned"
+                      value={data.usage.insufficientData ? "—" : `${data.usage.litresBurned} L`}
+                      sub={data.usage.insufficientData ? "not measurable" : `±${data.usage.litresBurnedUncertainty} L sender tolerance`}
+                    />
                     <Chip
                       label="Efficiency"
-                      value={data.usage.avgKmPerL != null ? `${data.usage.avgKmPerL} km/L` : "—"}
+                      value={data.usage.avgKmPerL != null && !data.usage.insufficientData ? `${data.usage.avgKmPerL} km/L` : "—"}
+                      sub={data.usage.avgKmPerL != null && !data.usage.insufficientData ? "distance ÷ measured burn" : undefined}
                     />
                     <Chip
                       label="Norm"
                       value={data.usage.norm ? `${data.usage.norm.low}–${data.usage.norm.high} km/L` : "—"}
                     />
-                    <Chip label="Unaccounted" value={`${data.usage.litresUnaccounted} L`} />
+                    <Chip
+                      label="Refuelled"
+                      value={`${data.usage.litresFilled} L`}
+                      sub={`${data.usage.refuelEvents} confirmed fill${data.usage.refuelEvents === 1 ? "" : "s"}`}
+                    />
                   </div>
 
-                  {data.usage.norm && data.usage.avgKmPerL != null && data.usage.avgKmPerL < data.usage.norm.low && (
-                    <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-[12px] text-rose-800 ring-1 ring-inset ring-rose-200">
-                      Running at <strong>{data.usage.avgKmPerL} km/L</strong> against a norm of{" "}
-                      {data.usage.norm.low}–{data.usage.norm.high} km/L — roughly{" "}
-                      <strong>{Math.round((1 - data.usage.avgKmPerL / data.usage.norm.low) * 100)}% worse</strong>{" "}
-                      than the worst the norm allows. Either the vehicle is working far harder than the norm
-                      assumes, or diesel is leaving the tank without moving it.
-                    </p>
+                  <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {/* Unaccounted fuel is an accusation in waiting, so it is
+                        only stated when the data can carry it. */}
+                    <Chip
+                      label="Unaccounted"
+                      value={data.usage.insufficientData ? "—" : `${data.usage.litresUnaccounted} L`}
+                      sub={
+                        data.usage.insufficientData
+                          ? "not assessable"
+                          : data.usage.litresUnaccounted > 0
+                            ? "beyond journey + idling + tolerance"
+                            : "journey explains the fuel"
+                      }
+                    />
+                    <Chip label="Window" value={`${data.usage.windowHours} h`} sub={`${data.usage.segments + 1} samples`} />
+                    <Chip label="Longest gap" value={`${data.usage.worstGapHours} h`} sub="between samples" />
+                  </div>
+
+                  {data.usage.norm &&
+                    data.usage.avgKmPerL != null &&
+                    data.usage.avgKmPerL < data.usage.norm.low &&
+                    data.usage.confidence !== "LOW" && (
+                      <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-[12px] text-rose-800 ring-1 ring-inset ring-rose-200">
+                        Running at <strong>{data.usage.avgKmPerL} km/L</strong> against a norm of{" "}
+                        {data.usage.norm.low}–{data.usage.norm.high} km/L — roughly{" "}
+                        <strong>{Math.round((1 - data.usage.avgKmPerL / data.usage.norm.low) * 100)}% worse</strong>{" "}
+                        than the worst the norm allows. Either the vehicle is working far harder than the norm
+                        assumes, or diesel is leaving the tank without moving it.
+                      </p>
+                    )}
+
+                  {data.usage.confidenceReasons.length > 0 && (
+                    <div className="mt-3 rounded-xl bg-white/50 px-3 py-2 ring-1 ring-inset ring-white/60">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                        How much this measurement can carry
+                      </p>
+                      <ul className="mt-1 space-y-0.5">
+                        {data.usage.confidenceReasons.map((r, i) => (
+                          <li key={i} className="text-[11px] text-slate-600">· {r}</li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
 
-                  {data.usage.worstGapHours > 1 && (
-                    <p className="mt-2 text-[11px] text-slate-500">
-                      Longest gap between samples: {data.usage.worstGapHours} h. Fuel-theft detection needs
-                      15-minute sampling to separate a siphon from a hard shift — treat findings below as
-                      indicative, not conclusive.
-                    </p>
+                  {data.refuels && data.refuels.length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                        Sensor-detected fills
+                      </p>
+                      <ul className="mt-1 space-y-0.5">
+                        {data.refuels.map((r, i) => (
+                          <li key={i} className="text-[11px] text-slate-600">
+                            {fmtDate(r.at)} · <strong>+{r.litresAdded} L</strong> ({r.fromL} → {r.toL} L)
+                            {" · "}seen across {r.hoursObserved} h · {r.confidence.toLowerCase()} confidence
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
 
                   {data.segments && data.segments.length > 0 && (
                     <div className="mt-3 overflow-x-auto">
-                      <table className="w-full min-w-[560px] text-left text-[12px]">
+                      <table className="w-full min-w-[680px] text-left text-[12px]">
                         <thead className="text-[11px] uppercase tracking-wider text-slate-500">
                           <tr>
                             <th className="py-1.5 pr-3">Window</th>
                             <th className="py-1.5 pr-3">Distance</th>
-                            <th className="py-1.5 pr-3">Diesel</th>
+                            <th className="py-1.5 pr-3">Tank moved</th>
+                            <th className="py-1.5 pr-3">Counted as burn</th>
                             <th className="py-1.5 pr-3">km/L</th>
                             <th className="py-1.5">Verdict</th>
                           </tr>
@@ -211,18 +320,15 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                                 {fmtDate(s.to)} <span className="text-slate-400">· {s.hours}h</span>
                               </td>
                               <td className="py-1.5 pr-3">{s.distanceKm != null ? `${s.distanceKm} km` : "—"}</td>
+                              <td className="py-1.5 pr-3 text-slate-500">
+                                {s.fuelDeltaL != null ? `${s.fuelDeltaL > 0 ? "+" : ""}${s.fuelDeltaL} L` : "—"}
+                              </td>
                               <td className="py-1.5 pr-3">{s.litresConsumed != null ? `${s.litresConsumed} L` : "—"}</td>
                               <td className="py-1.5 pr-3">{s.kmPerL ?? "—"}</td>
                               <td className="py-1.5">
                                 <span
                                   className={`rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${
-                                    s.event === "STATIONARY_DROP"
-                                      ? "bg-rose-50 text-rose-700 ring-rose-200"
-                                      : s.event === "EXCESS_CONSUMPTION"
-                                        ? "bg-amber-50 text-amber-800 ring-amber-200"
-                                        : s.event === "REFUEL"
-                                          ? "bg-sky-50 text-sky-700 ring-sky-200"
-                                          : "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                                    SEGMENT_STYLE[s.event] ?? SEGMENT_STYLE.NORMAL
                                   }`}
                                 >
                                   {s.event.replace(/_/g, " ").toLowerCase()}
@@ -237,6 +343,13 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                           ))}
                         </tbody>
                       </table>
+                      <p className="mt-2 text-[11px] text-slate-500">
+                        &ldquo;Tank moved&rdquo; is the raw sender difference; &ldquo;counted as burn&rdquo; is
+                        what survived validation. A tank that moves less than the sender can resolve is marked
+                        <em> noise</em> and contributes nothing to the totals above — the window&rsquo;s
+                        consumption comes from its start and end levels plus any confirmed fills, so a wobble
+                        that goes down and back up cannot be charged twice.
+                      </p>
                     </div>
                   )}
                 </div>
@@ -257,6 +370,7 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                     Vehicle reported {timeAgo(data.telemetry.recordedAt)}
                     {data.telemetry.lastSyncAt && <> · last polled {timeAgo(data.telemetry.lastSyncAt)}</>}
                     {data.telemetry.lastSyncStatus && <> · sync {data.telemetry.lastSyncStatus}</>}
+                    {" · "}struck-through fields are reported by the vehicle but not trusted by the ERP.
                   </p>
                   <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-sm sm:grid-cols-3 lg:grid-cols-4">
                     {Object.entries(data.telemetry.raw ?? {})
@@ -265,7 +379,12 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                       .map(([k, v]) => (
                         <div key={k}>
                           <dt className="text-[11px] text-slate-500">{humanise(k)}</dt>
-                          <dd className="font-medium text-ink-900">{renderValue(v)}</dd>
+                          <dd className={RAW_FIELD_NOTES[k] ? "font-medium text-slate-400 line-through" : "font-medium text-ink-900"}>
+                            {renderValue(v)}
+                          </dd>
+                          {RAW_FIELD_NOTES[k] && (
+                            <p className="text-[10px] text-slate-400">{RAW_FIELD_NOTES[k]}</p>
+                          )}
                         </div>
                       ))}
                   </dl>

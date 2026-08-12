@@ -158,9 +158,16 @@ export default async function HirePage() {
                   {u.breakdownHours > 0 && <div className="flex justify-between"><dt className="text-slate-500">Breakdown hrs</dt><dd className="font-medium text-rose-600">{num(u.breakdownHours)}</dd></div>}
                 </dl>
                 <div className="mt-4">
-                  <div className="mb-1 flex justify-between text-xs"><span className="font-medium text-slate-600">Utilisation (last 30d)</span><span className="text-slate-500">{u.utilPct.toFixed(0)}%</span></div>
-                  <Progress value={u.utilPct} />
-                  <p className="mt-1 text-[11px] text-slate-400">Present {u.presentDays}/{u.periodDays} days · {u.presencePct.toFixed(0)}% presence</p>
+                  <div className="mb-1 flex justify-between text-xs">
+                    <span className="font-medium text-slate-600">Utilisation (last 30d)</span>
+                    <span className="text-slate-500">{u.utilPct != null ? `${u.utilPct.toFixed(0)}%` : "—"}</span>
+                  </div>
+                  <Progress value={u.utilPct ?? 0} />
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Present {u.presentDays}/{u.periodDays} days
+                    {u.presencePct != null && ` · ${u.presencePct.toFixed(0)}% presence`}
+                    {" · against a "}{u.workingHoursPerDay} h day
+                  </p>
                 </div>
               </div>
 

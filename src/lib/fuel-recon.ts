@@ -186,11 +186,38 @@ export function expectedLitres(meterDelta: number, norm: Norm): number {
   return norm.unit === "LPH" ? meterDelta * mid : meterDelta / mid;
 }
 
-export type IssueVariance = { expected: number; actual: number; variancePct: number; beyondTolerance: boolean };
+export type IssueVariance = {
+  expected: number | null;
+  actual: number;
+  /** Null when there is no metered work to compare against — not 0%. */
+  variancePct: number | null;
+  beyondTolerance: boolean;
+  /** Why a comparison could not be made, when it could not. */
+  reason?: string;
+};
 
+/**
+ * Litres issued against litres the metered work justifies.
+ *
+ * When the meter did not move — no reading taken, or the machine genuinely did
+ * nothing — there is no expectation to compare against. That used to return
+ * "0% variance", which reads on screen as *verified correct* and is the
+ * opposite of the truth: it is the case we know least about.
+ */
 export function issueVariance(actualL: number, meterDelta: number, norm: Norm): IssueVariance {
   const expected = expectedLitres(meterDelta, norm);
-  if (expected <= 0) return { expected: 0, actual: actualL, variancePct: 0, beyondTolerance: false };
+  if (expected <= 0) {
+    return {
+      expected: null,
+      actual: actualL,
+      variancePct: null,
+      beyondTolerance: false,
+      reason:
+        meterDelta <= 0
+          ? "No metered work between fills — nothing to compare the issue against."
+          : "No usable consumption norm for this class.",
+    };
+  }
   const variancePct = ((actualL - expected) / expected) * 100;
   return { expected, actual: actualL, variancePct, beyondTolerance: Math.abs(variancePct) > norm.tolerancePct };
 }

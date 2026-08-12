@@ -13,6 +13,8 @@
 //   other       <- manual CostTransaction rows (tyres, insurance, EMI, tolls…)
 //   depreciation<- computed from acquisition cost and asset life
 
+import { parseBusinessDay } from "./business-time";
+
 export const COST_HEADS = ["FUEL", "MAINTENANCE", "HIRE", "TYRE", "OPERATOR", "INSURANCE", "EMI", "TOLL", "DEPRECIATION", "OTHER"] as const;
 export type CostHead = (typeof COST_HEADS)[number];
 
@@ -39,6 +41,13 @@ export type Depreciation = {
   bookValue: number;
   ageYears: number;
   fullyDepreciated: boolean;
+  /**
+   * False when the machine has no acquisition cost or no in-service date, so
+   * nothing here was actually computed. The zeros that come back in that case
+   * are the absence of a figure, not a machine that costs nothing to own — and
+   * a fleet full of them reports a flattering, entirely fictional profit.
+   */
+  known: boolean;
 };
 
 /**
@@ -52,9 +61,13 @@ export function depreciation(a: DepInput, asOf = new Date()): Depreciation {
   const life = Math.max(1, a.usefulLifeYears);
   const salvage = Math.min(a.salvageValue, cost);
 
-  const start = a.inServiceDate ?? (a.yearMfg > 1970 ? new Date(a.yearMfg, 0, 1) : null);
+  // `new Date(year, 0, 1)` builds 1 January in the *server's* timezone, which is
+  // UTC on Vercel and IST on a laptop — the same asset then ages by different
+  // amounts depending on where the page rendered. Anchor it to the business
+  // calendar instead.
+  const start = a.inServiceDate ?? (a.yearMfg > 1970 ? parseBusinessDay(`${a.yearMfg}-01-01`) : null);
   if (!cost || !start) {
-    return { annual: 0, monthly: 0, accumulated: 0, bookValue: cost, ageYears: 0, fullyDepreciated: false };
+    return { annual: 0, monthly: 0, accumulated: 0, bookValue: cost, ageYears: 0, fullyDepreciated: false, known: false };
   }
 
   const ageYears = Math.max(0, (asOf.getTime() - start.getTime()) / (365.25 * 86400000));
@@ -66,13 +79,13 @@ export function depreciation(a: DepInput, asOf = new Date()): Depreciation {
     const bookValue = Math.max(salvage, cost * Math.pow(1 - rate, ageYears));
     const accumulated = cost - bookValue;
     const annual = bookValue * rate;
-    return { annual, monthly: annual / 12, accumulated, bookValue, ageYears, fullyDepreciated: bookValue <= salvage + 1 };
+    return { annual, monthly: annual / 12, accumulated, bookValue, ageYears, fullyDepreciated: bookValue <= salvage + 1, known: true };
   }
 
   const annual = (cost - salvage) / life;
   const accumulated = Math.min(cost - salvage, annual * ageYears);
   const bookValue = cost - accumulated;
-  return { annual, monthly: annual / 12, accumulated, bookValue, ageYears, fullyDepreciated: ageYears >= life };
+  return { annual, monthly: annual / 12, accumulated, bookValue, ageYears, fullyDepreciated: ageYears >= life, known: true };
 }
 
 /* ------------------------------- asset costs ------------------------------- */
@@ -139,9 +152,11 @@ export type ProjectPnL = {
   revenue: number;
   cost: number;
   margin: number;
-  marginPct: number;
+  /** Null when no revenue has been booked — there is no base to take a percentage of. */
+  marginPct: number | null;
   budget: number;
-  budgetUsedPct: number;
+  /** Null when the project carries no budget — spend cannot be a share of nothing. */
+  budgetUsedPct: number | null;
   overBudget: boolean;
   byHead: { head: string; amount: number }[];
 };
@@ -159,9 +174,13 @@ export function projectPnL(
     revenue,
     cost,
     margin,
-    marginPct: revenue > 0 ? (margin / revenue) * 100 : 0,
+    // A project that has burnt ₹40 lakh and billed nothing yet is not running at
+    // a 0% margin — breakeven — which is exactly how a 0 renders on the P&L
+    // table. Same for a project with real spend and no budget line: 0% used
+    // reads as untouched.
+    marginPct: revenue > 0 ? (margin / revenue) * 100 : null,
     budget,
-    budgetUsedPct: budget > 0 ? (cost / budget) * 100 : 0,
+    budgetUsedPct: budget > 0 ? (cost / budget) * 100 : null,
     overBudget: budget > 0 && cost > budget,
     byHead: [...costsByHead].sort((a, b) => b.amount - a.amount),
   };

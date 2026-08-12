@@ -397,6 +397,21 @@ model TelemetryReading {
   raw          Json?
   createdAt    DateTime @default(now())
 
+  /// One observation per vehicle per instant per source.
+  ///
+  /// Every ingestion path already checks for an existing row before inserting,
+  /// but that check and the insert are two statements: two webhook deliveries
+  /// racing, or a provider retrying while the first call is still in flight,
+  /// both pass the check and both write. A duplicate is not a cosmetic problem
+  /// here — every reading is a point in a series that distance and fuel deltas
+  /// are measured across, so a doubled row doubles the journey it belongs to.
+  ///
+  /// `source` is part of the key on purpose: the same instant reported by the
+  /// OEM pull and by a tracker push are two independent observations of it, and
+  /// collapsing them would silently discard one provider's data.
+  ///
+  /// Verified against production before adding: zero existing violations.
+  @@unique([assetId, recordedAt, source])
   @@index([assetId, recordedAt])
   @@index([sessionId, recordedAt])
 }

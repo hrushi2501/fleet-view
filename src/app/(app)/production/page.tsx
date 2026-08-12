@@ -74,7 +74,8 @@ export default async function ProductionPage() {
         logsByAsset.get(a.id)!, f.litres, f.spend, normFor(a.assetClass)
       );
     })
-    .sort((x, y) => y.output - x.output);
+    // Unmeasured output sorts last rather than being treated as zero output.
+    .sort((x, y) => (y.output ?? -1) - (x.output ?? -1));
 
   const allLogs: LogLite[] = [...logsByAsset.values()].flat();
   const totalTonnage = allLogs.reduce((s, l) => s + l.tonnage, 0);
@@ -156,7 +157,7 @@ export default async function ProductionPage() {
                       </td>
                       <td className="px-5 py-3 text-slate-600">{ASSET_CLASS_LABEL[r.asset.assetClass] ?? r.asset.assetClass}</td>
                       <td className="px-5 py-3 text-right">
-                        <span className={`font-bold ${statusColor(r.status)}`}>{r.output.toFixed(1)}</span>
+                        <span className={`font-bold ${statusColor(r.status)}`}>{r.output != null ? r.output.toFixed(1) : "—"}</span>
                         <span className="block text-xs text-slate-400">{UNIT_LABEL[r.unit]}</span>
                       </td>
                       <td className="px-5 py-3 text-right text-xs text-slate-500">
@@ -164,7 +165,7 @@ export default async function ProductionPage() {
                       </td>
                       <td className="px-5 py-3 text-right text-slate-600">{num(r.workedHours)} h</td>
                       <td className="px-5 py-3 text-right">
-                        <span className={r.idlePct > 30 ? "font-semibold text-rose-600" : "text-slate-500"}>{r.idlePct.toFixed(0)}%</span>
+                        <span className={r.idlePct != null && r.idlePct > 30 ? "font-semibold text-rose-600" : "text-slate-500"}>{r.idlePct != null ? `${r.idlePct.toFixed(0)}%` : "—"}</span>
                       </td>
                       <td className="px-5 py-3 text-right text-slate-600">{num(r.litres)} L</td>
                       <td className="px-5 py-3 text-right font-medium text-ink-900">{perUnitL != null ? `${perUnitL.toFixed(2)} L/${unitName}` : "—"}</td>

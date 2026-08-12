@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { requirePermission } from "@/lib/auth";
 
+/**
+ * Both handlers were open: GET returned every alert in the fleet and PATCH let
+ * anyone acknowledge, assign or resolve one — i.e. silence a live alert without
+ * an account. `fleet.view` is the coarsest gate that still excludes drivers;
+ * acknowledging really wants its own `alerts.manage` permission in the
+ * catalogue, which is a change for the owners of `rbac.ts` consumers to make.
+ */
 export async function GET(request: NextRequest) {
+  const auth = await requirePermission("fleet.view");
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
   try {
     const url = new URL(request.url);
     const severity = url.searchParams.get("severity");
@@ -16,8 +27,11 @@ export async function GET(request: NextRequest) {
 
     const alerts = await db.alert.findMany({
       where,
-      include: { asset: true },
-      orderBy: [{ status: "asc" }, { createdAt: "desc" }]
+      // Only the asset code is used below; `include: { asset: true }` pulled
+      // every asset column — acquisition cost, QR token, device id — per alert.
+      include: { asset: { select: { code: true } } },
+      orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+      take: 2000,
     });
 
     const open = alerts.filter((a) => a.status === "Open").length;
@@ -50,6 +64,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const auth = await requirePermission("fleet.view");
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
   try {
     const body = await request.json();
     const { id, action, supervisor } = body as { id: string; action: string; supervisor?: string };

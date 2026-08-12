@@ -85,8 +85,13 @@ export default async function ExecutivePage() {
     tareKg: x.tareKg, netKg: x.netKg, billedKg: x.billedKg, rate: x.rate, amount: x.amount,
     assetId: x.assetId, vendor: x.vendor, pairedTicketNo: x.pairedTicketNo,
   })));
-  const dispatched = pairs.reduce((s, p) => s + p.dispatch.netKg, 0);
-  const shortKg = pairs.reduce((s, p) => s + Math.max(0, p.shortageKg), 0);
+  // Only trips whose load was actually weighed at both ends can measure transit
+  // loss. A dispatch with no receipt scores as a 100% shortage inside
+  // `reconcilePairs`, which is the right flag for that ticket but ruins the KPI:
+  // a week of missing paperwork would read as the fleet losing all its material.
+  const matchedPairs = pairs.filter((p) => p.receipt);
+  const dispatched = matchedPairs.reduce((s, p) => s + p.dispatch.netKg, 0);
+  const shortKg = matchedPairs.reduce((s, p) => s + Math.max(0, p.shortageKg), 0);
 
   // Master data
   const completeness = assets.length

@@ -104,17 +104,30 @@ export function supportedQty(contract: ContractLite, logs: LogLite[]): { qty: nu
   return { qty, workedHours, presentDays, breakdownHours, idleHours, km, trips };
 }
 
+/**
+ * Hours in a working day, used as the denominator for utilisation.
+ *
+ * Configurable because it is a commercial assumption, not a fact: a single-shift
+ * site and a double-shift quarry produce very different utilisation from the
+ * identical logs, and the figure is used to argue about hire contracts.
+ */
+export const WORKING_HOURS_PER_DAY = Number(process.env.WORKING_HOURS_PER_DAY) > 0
+  ? Number(process.env.WORKING_HOURS_PER_DAY)
+  : 8;
+
 /** Utilisation of a hired machine — low utilisation on a day-rate contract is money burnt. */
 export function utilisation(contract: ContractLite, logs: LogLite[], periodDays: number) {
   const sup = supportedQty(contract, logs);
-  const capacityHours = periodDays * 8;
+  const capacityHours = periodDays * WORKING_HOURS_PER_DAY;
   return {
     presentDays: sup.presentDays,
     periodDays,
     workedHours: sup.workedHours,
     idleHours: sup.idleHours,
     breakdownHours: sup.breakdownHours,
-    presencePct: periodDays > 0 ? (sup.presentDays / periodDays) * 100 : 0,
-    utilPct: capacityHours > 0 ? (sup.workedHours / capacityHours) * 100 : 0,
+    /** Null when the period is unknown — never 0%, which reads as "never turned up". */
+    presencePct: periodDays > 0 ? (sup.presentDays / periodDays) * 100 : null,
+    utilPct: capacityHours > 0 ? (sup.workedHours / capacityHours) * 100 : null,
+    workingHoursPerDay: WORKING_HOURS_PER_DAY,
   };
 }

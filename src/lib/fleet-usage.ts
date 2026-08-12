@@ -7,7 +7,7 @@
  * `fleet-analytics.ts`; this only groups it by vehicle and totals it.
  */
 import { db } from "@/lib/db";
-import { analyseReadings, summarise, type UsageSummary } from "@/lib/fleet-analytics";
+import { analyseUsage, describeUsage, type Confidence, type UsageSummary } from "@/lib/fleet-analytics";
 
 export type AssetUsage = {
   assetId: string;
@@ -19,7 +19,11 @@ export type AssetUsage = {
   fuelLevelPct: number | null;
   usage: UsageSummary;
   norm: { low: number; high: number } | null;
-  /** True when measured efficiency is worse than the norm's lower bound. */
+  /**
+   * True when measured efficiency is worse than the norm's lower bound *and*
+   * the measurement is good enough to say so. A LOW-confidence figure is not
+   * evidence of a badly performing vehicle, it is evidence of thin telemetry.
+   */
   belowNorm: boolean;
 };
 
@@ -35,6 +39,10 @@ export type FleetUsage = {
     valueUnaccounted: number;
     suspectSegments: number;
     worstGapHours: number;
+    /** The weakest confidence among the vehicles rolled up here. */
+    confidence: Confidence;
+    /** Vehicles whose telemetry cannot support a fuel figure at all. */
+    vehiclesWithInsufficientData: number;
   };
 };
 
@@ -91,7 +99,7 @@ export async function fleetUsage(sinceDays = 30): Promise<FleetUsage> {
     const norm = kmplFor(asset.id, asset.assetClass);
     const idle = lphFor(asset.assetClass);
 
-    const segments = analyseReadings(
+    const { usage } = analyseUsage(
       rows.map((r) => ({
         recordedAt: r.recordedAt, lat: r.lat, lng: r.lng, speedKph: r.speedKph,
         odometerKm: r.odometerKm, fuelLevelL: r.fuelLevelL,
@@ -102,7 +110,11 @@ export async function fleetUsage(sinceDays = 30): Promise<FleetUsage> {
       idle?.normHigh ?? null,
     );
 
-    const usage = summarise(segments);
+    // Opt-in trace of exactly how each vehicle's figure was reached. Off by
+    // default because it is several lines per vehicle per request.
+    if (process.env.FUEL_ANALYSIS_DEBUG === "true") {
+      console.info(describeUsage(`${asset.code} (${asset.registrationNo ?? "no reg"})`, usage));
+    }
 
     perAsset.push({
       assetId: asset.id,
@@ -114,7 +126,12 @@ export async function fleetUsage(sinceDays = 30): Promise<FleetUsage> {
       fuelLevelPct: asset.fuelLevelPct,
       usage,
       norm: norm ? { low: norm.normLow, high: norm.normHigh } : null,
-      belowNorm: !!(norm && usage.avgKmPerL != null && usage.avgKmPerL < norm.normLow),
+      belowNorm: !!(
+        norm &&
+        usage.avgKmPerL != null &&
+        usage.avgKmPerL < norm.normLow &&
+        usage.confidence !== "LOW"
+      ),
     });
   }
 
@@ -126,27 +143,42 @@ export async function fleetUsage(sinceDays = 30): Promise<FleetUsage> {
     return (a.usage.avgKmPerL ?? 99) - (b.usage.avgKmPerL ?? 99);
   });
 
-  const distanceKm = sum(perAsset.map((a) => a.usage.distanceKm));
-  const litresBurned = sum(perAsset.map((a) => a.usage.litresBurned));
-  const litresUnaccounted = sum(perAsset.map((a) => a.usage.litresUnaccounted));
+  // Vehicles whose own analysis is unusable are excluded from the fleet
+  // efficiency figure rather than averaged into it — one badly-sampled vehicle
+  // should not drag the fleet number somewhere no vehicle actually is.
+  const measurable = perAsset.filter((a) => !a.usage.insufficientData);
+
+  const distanceKm = sum(measurable.map((a) => a.usage.distanceKm));
+  const litresBurned = sum(measurable.map((a) => a.usage.litresBurned));
+  const litresUnaccounted = sum(measurable.map((a) => a.usage.litresUnaccounted));
 
   return {
     perAsset,
     totals: {
       vehiclesReporting: perAsset.length,
-      distanceKm: round(distanceKm),
+      distanceKm: round(sum(perAsset.map((a) => a.usage.distanceKm))),
       litresBurned: round(litresBurned),
       litresFilled: round(sum(perAsset.map((a) => a.usage.litresFilled))),
       // Fleet efficiency is total distance over total burn — never an average
       // of per-vehicle figures, which would weigh a pickup like a tipper.
-      avgKmPerL: litresBurned > 0 ? round(distanceKm / litresBurned) : null,
+      avgKmPerL: litresBurned > 0 && distanceKm > 0 ? round(distanceKm / litresBurned) : null,
       litresUnaccounted: round(litresUnaccounted),
       valueUnaccounted: Math.round(litresUnaccounted * rate),
       suspectSegments: perAsset.reduce((s, a) => s + a.usage.suspectSegments, 0),
       worstGapHours: perAsset.reduce((m, a) => Math.max(m, a.usage.worstGapHours), 0),
+      confidence: weakest(perAsset.map((a) => a.usage.confidence)),
+      vehiclesWithInsufficientData: perAsset.length - measurable.length,
     },
   };
 }
 
 const sum = (xs: number[]) => xs.reduce((s, x) => s + x, 0);
 const round = (n: number) => Math.round(n * 100) / 100;
+
+/** A rollup is only as trustworthy as its weakest input. */
+function weakest(levels: Confidence[]): Confidence {
+  if (levels.length === 0) return "LOW";
+  if (levels.includes("LOW")) return "LOW";
+  if (levels.includes("MEDIUM")) return "MEDIUM";
+  return "HIGH";
+}

@@ -3,6 +3,7 @@
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
+import { parseBusinessDay, businessMonth } from "@/lib/business-time";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -15,14 +16,14 @@ function refresh() {
 
 /** Manual cost line — tyres, insurance, EMI, tolls. Fuel/maintenance/hire come from their modules. */
 export async function saveCost(fd: FormData) {
-  const date = new Date(s(fd, "date") || new Date().toISOString().slice(0, 10));
+  const date = parseBusinessDay(s(fd, "date"));
   await db.costTransaction.create({
     data: {
       assetId: s(fd, "assetId") || null,
       projectId: s(fd, "projectId") || null,
       costHead: s(fd, "costHead") || "OTHER",
       amount: n(fd, "amount"),
-      period: date.toISOString().slice(0, 7),
+      period: businessMonth(date),
       date,
     },
   });
@@ -56,14 +57,14 @@ export async function deleteCost(id: string) {
 export async function saveRevenue(fd: FormData) {
   const projectId = s(fd, "projectId");
   if (!projectId) throw new Error("Project is required");
-  const date = new Date(s(fd, "date") || new Date().toISOString().slice(0, 10));
+  const date = parseBusinessDay(s(fd, "date"));
   await db.projectRevenue.create({
     data: {
       projectId,
       description: s(fd, "description"),
       amount: n(fd, "amount"),
       billType: s(fd, "billType") || "RA_BILL",
-      period: date.toISOString().slice(0, 7),
+      period: businessMonth(date),
       date,
     },
   });

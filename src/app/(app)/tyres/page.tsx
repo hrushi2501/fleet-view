@@ -280,8 +280,8 @@ export default async function TyresPage({ searchParams }: { searchParams: Promis
                         <td className="px-5 py-3 text-right text-slate-600">{num(c.hoursRun)}</td>
                         <td className="px-5 py-3">
                           <div className="w-24">
-                            <Progress value={Math.min(100, c.lifeUsedPct)} />
-                            <p className="mt-0.5 text-xs text-slate-400">{c.lifeUsedPct.toFixed(0)}% of {num(c.component.expectedLifeHours)}h</p>
+                            <Progress value={c.lifeUsedPct != null ? Math.min(100, c.lifeUsedPct) : 0} />
+                            <p className="mt-0.5 text-xs text-slate-400">{c.lifeUsedPct != null ? `${c.lifeUsedPct.toFixed(0)}% of ${num(c.component.expectedLifeHours)}h` : "expected life not set"}</p>
                           </div>
                         </td>
                         <td className="px-5 py-3 text-right font-medium text-ink-900">{c.costPerHour != null ? `₹${c.costPerHour.toFixed(2)}` : "—"}</td>

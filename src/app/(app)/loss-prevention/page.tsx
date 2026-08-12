@@ -75,8 +75,8 @@ export default async function LossPreventionPage() {
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <StatCard label="Open Cases" value={num(sc.openCases)} sub={`${num(sc.totalCases)} total`} accent="rose" icon={<ShieldAlert className="h-5 w-5" />} />
         <StatCard label="Live Exposure" value={inr(sc.atRisk, { compact: true })} sub="open cases only" accent="rose" icon={<IndianRupee className="h-5 w-5" />} />
-        <StatCard label="Recovered" value={inr(sc.recovered, { compact: true })} sub={`${sc.recoveryRate.toFixed(0)}% of pursued`} accent="emerald" icon={<HandCoins className="h-5 w-5" />} />
-        <StatCard label="Avg Time to Resolve" value={`${sc.avgDaysToResolve.toFixed(1)}d`} sub={`${num(sc.falsePositives)} false positives`} accent="brand" icon={<Clock className="h-5 w-5" />} />
+        <StatCard label="Recovered" value={inr(sc.recovered, { compact: true })} sub={sc.recoveryRate != null ? `${sc.recoveryRate.toFixed(0)}% of pursued` : "no cases pursued yet"} accent="emerald" icon={<HandCoins className="h-5 w-5" />} />
+        <StatCard label="Avg Time to Resolve" value={sc.avgDaysToResolve != null ? `${sc.avgDaysToResolve.toFixed(1)}d` : "—"} sub={`${num(sc.falsePositives)} false positives`} accent="brand" icon={<Clock className="h-5 w-5" />} />
         <StatCard label="Repeat Offenders" value={num(offenders.length)} sub="2+ cases each" accent="amber" icon={<Repeat2 className="h-5 w-5" />} />
       </div>
 

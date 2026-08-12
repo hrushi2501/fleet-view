@@ -10,6 +10,8 @@
 // This module measures the output side so M5's litres and M7's rupees have a
 // denominator worth dividing by.
 
+import { businessDay } from "./business-time";
+
 export type ProdUnit = "TONNES_PER_DAY" | "M3_PER_HOUR" | "TRIPS_PER_DAY" | "CYCLES_PER_HOUR";
 
 export type LogLite = {
@@ -64,12 +66,17 @@ export type Productivity = {
   volumeM3: number;
   cycles: number;
   distanceKm: number;
-  /** Output expressed in the asset class's natural unit. */
-  output: number;
+  /**
+   * Output expressed in the asset class's natural unit, or null when there is
+   * no denominator to divide by (no shift days logged, or no worked hours).
+   * Null means "not measured"; 0 means "measured, and it produced nothing".
+   */
+  output: number | null;
   target: Norm | null;
   status: "above" | "on" | "below" | "na";
-  utilPct: number;
-  idlePct: number;
+  /** Null when no hours were logged at all — 0% would read as a machine that never worked. */
+  utilPct: number | null;
+  idlePct: number | null;
   /** Litres burnt per tonne / per m3 / per trip — the number that actually matters. */
   litresPerTonne: number | null;
   litresPerM3: number | null;
@@ -94,7 +101,10 @@ export function assetProductivity(
   norm: Norm | null
 ): Productivity {
   const unit = norm?.unit ?? unitFor(asset.assetClass);
-  const days = new Set(logs.map((l) => l.date.toISOString().slice(0, 10))).size;
+  // Shifts are counted in IST days. Grouping by the UTC date splits the night
+  // shift in two — the hours before 05:30 IST land on the previous day — which
+  // inflates the day count and deflates every "per day" output figure below it.
+  const days = new Set(logs.map((l) => businessDay(l.date))).size;
   const workedHours = logs.reduce((s, l) => s + l.workedHours, 0);
   const idleHours = logs.reduce((s, l) => s + l.idleHours, 0);
   const trips = logs.reduce((s, l) => s + l.trips, 0);
@@ -103,16 +113,23 @@ export function assetProductivity(
   const cycles = logs.reduce((s, l) => s + l.cycles, 0);
   const distanceKm = logs.reduce((s, l) => s + l.distanceKm, 0);
 
-  let output = 0;
+  // A rate with no denominator is not zero output, it is an unknown one. A
+  // dumper with no shift days logged has not "done 0 trips/day"; nobody has
+  // told us what it did. Reporting 0 puts it at the bottom of the productivity
+  // league table and triggers a below-target flag against a machine that may
+  // have been working perfectly well.
+  let output: number | null = null;
   switch (unit) {
-    case "TONNES_PER_DAY": output = days > 0 ? tonnage / days : 0; break;
-    case "M3_PER_HOUR": output = workedHours > 0 ? volumeM3 / workedHours : 0; break;
-    case "TRIPS_PER_DAY": output = days > 0 ? trips / days : 0; break;
-    case "CYCLES_PER_HOUR": output = workedHours > 0 ? cycles / workedHours : 0; break;
+    case "TONNES_PER_DAY": output = days > 0 ? tonnage / days : null; break;
+    case "M3_PER_HOUR": output = workedHours > 0 ? volumeM3 / workedHours : null; break;
+    case "TRIPS_PER_DAY": output = days > 0 ? trips / days : null; break;
+    case "CYCLES_PER_HOUR": output = workedHours > 0 ? cycles / workedHours : null; break;
   }
 
+  // A measured zero *is* judged against the target — a machine that logged
+  // shifts and hauled nothing is genuinely below band, not unrated.
   let status: Productivity["status"] = "na";
-  if (norm && norm.targetHigh > 0 && output > 0) {
+  if (norm && norm.targetHigh > 0 && output != null) {
     status = output < norm.targetLow ? "below" : output > norm.targetHigh ? "above" : "on";
   }
 
@@ -120,11 +137,11 @@ export function assetProductivity(
   const flags: string[] = [];
 
   if (status === "below") {
-    flags.push(`Output ${output.toFixed(1)} ${UNIT_LABEL[unit]} is below the ${norm!.targetLow}–${norm!.targetHigh} target band.`);
+    flags.push(`Output ${output!.toFixed(1)} ${UNIT_LABEL[unit]} is below the ${norm!.targetLow}–${norm!.targetHigh} target band.`);
   }
   // Idle burns diesel and hire charges while producing nothing.
-  const idlePct = totalHours > 0 ? (idleHours / totalHours) * 100 : 0;
-  if (idlePct > 30) flags.push(`${idlePct.toFixed(0)}% of logged time was idle — diesel and hire charges accrue with no output.`);
+  const idlePct = totalHours > 0 ? (idleHours / totalHours) * 100 : null;
+  if (idlePct != null && idlePct > 30) flags.push(`${idlePct.toFixed(0)}% of logged time was idle — diesel and hire charges accrue with no output.`);
   if (litres > 0 && tonnage === 0 && volumeM3 === 0 && trips === 0) {
     flags.push(`${litres.toFixed(0)} L consumed with no production recorded at all.`);
   }
@@ -138,7 +155,7 @@ export function assetProductivity(
     output,
     target: norm,
     status,
-    utilPct: totalHours > 0 ? (workedHours / totalHours) * 100 : 0,
+    utilPct: totalHours > 0 ? (workedHours / totalHours) * 100 : null,
     idlePct,
     litres,
     fuelSpend,

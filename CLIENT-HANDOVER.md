@@ -60,7 +60,9 @@ One truck reports live, through a **Tata Fleet Edge Basic Pull** subscription.
 
 - **Covered vehicle:** RJ21GE3220 only
 - **Subscription valid:** 10 Aug 2026 → **09 Sep 2026**
-- **Refresh:** once daily (see *Known limitations* below)
+- **Refresh:** every 2 minutes. Fleet Edge allows roughly one call a minute, so the
+  occasional rate-limit response is expected traffic shaping, not a fault — the
+  provider status shows `RATE_LIMITED` and the next run simply succeeds.
 - **Where to see it:** **Live Tracking** for the map, **Assets & Equipment → TRU-053**
   for meter and fuel level
 
@@ -136,18 +138,61 @@ so its depreciation and cost figures become meaningful.
 
 ---
 
+## 📊 How the system treats uncertain data
+
+The fuel, mileage and loss figures follow one rule: **a wrong number is worse than no
+number.** Where the data cannot support a figure, the screen says so instead of printing
+something that looks precise.
+
+- **"Insufficient telemetry data for reliable fuel analysis"** means the vehicle was not
+  sampled often enough over the period to measure what it burnt. Distance and tank
+  levels are still shown; consumption and km/L are withheld.
+- **Confidence — high / medium / low** appears next to every fuel analysis. It reflects
+  how much of the period was actually observed, whether the odometer was working, and
+  how wide the gaps between samples were. Do not act on a *low* figure.
+- **A dash (—)** always means *not known*, never *zero*. A vehicle showing "—" for
+  mileage has not been measured; it is not a vehicle doing nothing.
+- **Unaccounted diesel** is only reported once the journey, idling time and the fuel
+  sender's own tolerance have all been allowed for — and never when confidence is low.
+  It is a prompt to look, not a finding of theft.
+
+Fuel senders on a 300 L tank drift by a litre or two even with the engine off, and slosh
+by several litres while driving. The system ignores movement inside that band rather
+than counting it as fuel burnt.
+
+---
+
+## ⚙️ Settings that affect the numbers
+
+| Setting | Where | Effect if wrong |
+|---|---|---|
+| `dieselRate` | **Settings** in the app | Every rupee figure on fuel and loss cases |
+| `BUSINESS_TIMEZONE` | environment (default `Asia/Kolkata`) | Which day/month a fuel issue, cost or attendance record falls into |
+| `WORKING_HOURS_PER_DAY` | environment (default `8`) | Hire utilisation percentages used in vendor discussions |
+| `FLEET_INGEST_KEY` | environment | **Must be set.** Controls who may push telemetry into your fleet data |
+| Consumption norms | **Fuel → Norms** | The km/L band each vehicle class is judged against |
+
+Norms shipped as industry defaults. Review them against your own fleet's real
+performance before treating "below norm" as a finding.
+
+---
+
 ## ⚠️ Known limitations
 
 1. **Automated backups.** The database has none — backups are taken manually. Move to a
    plan with daily backups (and India-region hosting for DPDP) before the fleet depends
    on this system.
-2. **Tracking refreshes once a day, not continuously.** The hosting plan is currently
-   Vercel Hobby, which permits only one scheduled job per day. Live tracking is built to
-   poll every 15 minutes and will do so as soon as the account moves to a paid plan.
+2. **Telemetry history has gaps.** Continuous 2-minute polling is recent; earlier data
+   was collected hourly or less. Until a period is fully covered, fuel analysis over it
+   will correctly report low confidence. Roughly 80% of the first window was unobserved.
 3. **One vehicle is tracked**, and only until 09 Sep 2026. See *Live tracking* above.
-4. **Custom domain** not yet configured, e.g. `fleet.mahadevconstructions.com`.
-5. **Multi-factor authentication** is not yet enabled for the administrator account.
-6. **AI photo-reading** runs on a free, rate-limited key — fine for current volume,
+4. **A database index is pending deployment.** The next `npm run db:deploy` applies a
+   uniqueness rule that prevents the same telemetry sample being counted twice if a
+   provider retries. Until then a rare duplicate is possible; the application already
+   checks for one on every insert.
+5. **Custom domain** not yet configured, e.g. `fleet.mahadevconstructions.com`.
+6. **Multi-factor authentication** is not yet enabled for the administrator account.
+7. **AI photo-reading** runs on a free, rate-limited key — fine for current volume,
    needs a paid key at scale.
 
 ---

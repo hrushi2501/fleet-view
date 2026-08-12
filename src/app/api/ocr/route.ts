@@ -195,6 +195,9 @@ export async function POST(req: Request) {
       recommendedUiAction,
     });
   } catch (e) {
+    // Provider SDK errors quote the failing request — endpoint, headers and at
+    // times the key — so the detail stays server-side.
+    console.error("[API] /ocr POST error:", e);
     return NextResponse.json({
       value: null,
       litres: null,
@@ -202,7 +205,7 @@ export async function POST(req: Request) {
       confidence: "low",
       numericConfidence: 0,
       recommendedUiAction: "RETAKE_REQUIRED",
-      error: e instanceof Error ? e.message.slice(0, 200) : "ocr failed",
+      error: "Could not read the photo. Please retake it.",
     });
   }
 }

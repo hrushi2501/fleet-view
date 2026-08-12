@@ -1,3 +1,16 @@
+/** A record of which tanks were read, which were ignored, and why. */
+export interface FuelInterpretation {
+  primaryLitres: number | null;
+  primaryCapacityL: number | null;
+  /** What the vehicle claims it has fitted. */
+  tanksReported: number | null;
+  secondaryLitres: number | null;
+  secondaryCapacityL: number | null;
+  /** False when the secondary reading was rejected as implausible. */
+  secondaryIncluded: boolean;
+  notes: string[];
+}
+
 /**
  * Normalized telemetry payload structure across all GPS / CAN-bus / OEM providers
  */
@@ -14,6 +27,12 @@ export interface TelemetryPing {
   fuelLevelPct: number | null;
   fuelLevelLitres: number | null;
   ignitionState: boolean | null;
+  /**
+   * How the fuel figure above was arrived at. Fuel numbers drive theft
+   * accusations, so which tank was read — and which was deliberately ignored —
+   * must be inspectable rather than buried in the adapter.
+   */
+  fuelInterpretation?: FuelInterpretation;
   rawPayload: Record<string, unknown>;
   /**
    * Every provider-side identifier the payload carried. Fleet Edge returns
@@ -157,6 +176,95 @@ export function parseFleetEdgeTimestamp(raw: unknown): Date {
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
+/**
+ * Plausible range for a road vehicle's fuel tank, litres. A tank outside this
+ * is not a tank, it is a placeholder — Fleet Edge fills unused slots with
+ * sentinel values rather than omitting them.
+ */
+const MIN_CREDIBLE_TANK_L = 20;
+const MAX_CREDIBLE_TANK_L = 2000;
+
+/**
+ * Decides what the vehicle's fuel level actually is.
+ *
+ * The live payload for RJ21GE3220 reports, on every single sample:
+ *
+ *   noOfFuelTanks              1
+ *   primaryFuelLevel           214 – 276      primaryFuelTankCapacity     300
+ *   secondaryFuelLevel1        1500           secondaryFuelTankCapacity1  55555
+ *
+ * The secondary pair never varies, describes a 55,555 L tank holding 1,500 L,
+ * and contradicts the vehicle's own statement that it has one tank. Those are
+ * unused-slot sentinels, not a measurement. Adding them to the primary level
+ * would put a constant 1,500 L into every fuel calculation in the ERP.
+ *
+ * A second tank is therefore only counted when the vehicle says it has one,
+ * the capacity is credible for a road vehicle, and the level fits inside it.
+ */
+export function interpretFleetEdgeFuel(e: RawPingItem): FuelInterpretation {
+  const notes: string[] = [];
+
+  const primaryLitres = toNum(e.primaryFuelLevel ?? e.PrimaryFuelLevel);
+  const primaryCapacityL = toNum(e.primaryFuelTankCapacity);
+  const tanksReported = toNum(e.noOfFuelTanks);
+  const secondaryLitres = toNum(e.secondaryFuelLevel1 ?? e.SecondaryFuelLevel1);
+  const secondaryCapacityL = toNum(e.secondaryFuelTankCapacity1 ?? e.SecondaryFuelTankCapacity1);
+
+  let secondaryIncluded = false;
+
+  if (secondaryLitres != null || secondaryCapacityL != null) {
+    const capacityCredible =
+      secondaryCapacityL != null &&
+      secondaryCapacityL >= MIN_CREDIBLE_TANK_L &&
+      secondaryCapacityL <= MAX_CREDIBLE_TANK_L;
+    const fitsInTank =
+      secondaryLitres != null && secondaryCapacityL != null && secondaryLitres <= secondaryCapacityL;
+    const vehicleClaimsTwo = tanksReported != null && tanksReported >= 2;
+
+    if (vehicleClaimsTwo && capacityCredible && fitsInTank) {
+      secondaryIncluded = true;
+      notes.push(
+        `Second tank included: ${secondaryLitres} L of ${secondaryCapacityL} L, ` +
+          `and the vehicle reports ${tanksReported} tanks.`,
+      );
+    } else {
+      const why: string[] = [];
+      if (!vehicleClaimsTwo) why.push(`vehicle reports ${tanksReported ?? "no"} fuel tank(s)`);
+      if (!capacityCredible) why.push(`capacity ${secondaryCapacityL} L is outside ${MIN_CREDIBLE_TANK_L}–${MAX_CREDIBLE_TANK_L} L`);
+      if (!fitsInTank) why.push(`level ${secondaryLitres} L does not fit capacity ${secondaryCapacityL} L`);
+      notes.push(
+        `Second tank ignored (${why.join("; ")}). Its raw values are preserved in the payload ` +
+          `but excluded from every fuel figure until the unit is verified with Fleet Edge.`,
+      );
+    }
+  }
+
+  if (primaryLitres != null && primaryCapacityL != null && primaryLitres > primaryCapacityL * 1.05) {
+    notes.push(`Primary level ${primaryLitres} L exceeds the ${primaryCapacityL} L tank — treated as unusable.`);
+  }
+
+  return {
+    primaryLitres,
+    primaryCapacityL,
+    tanksReported,
+    secondaryLitres,
+    secondaryCapacityL,
+    secondaryIncluded,
+    notes,
+  };
+}
+
+/**
+ * An `engineRunHour` at least this close to the odometer is the odometer
+ * echoed into the wrong field, not a running total.
+ *
+ * The live fleet returns 89,513.6 "hours" against 89,513 km. Ten years of
+ * continuous running would be 87,600 h, and a vehicle averaging 1 km per engine
+ * hour has not been driven anywhere. Anything above half the odometer implies a
+ * lifetime average below 2 km/h and cannot be a real hour meter.
+ */
+const ENGINE_HOUR_ECHO_RATIO = 0.5;
+
 export class TataFleetEdgeAdapter implements ITelemetryProviderAdapter {
   readonly providerCode = "TATA_FLEET_EDGE";
   readonly providerName = "Tata Fleet Edge";
@@ -185,8 +293,20 @@ export class TataFleetEdgeAdapter implements ITelemetryProviderAdapter {
         // would feed false distances into fuel-theft detection.
         const hasFix = e.gpsFix !== false;
 
-        const litres = toNum(e.primaryFuelLevel ?? e.PrimaryFuelLevel);
-        const capacity = toNum(e.primaryFuelTankCapacity);
+        // Fleet Edge reports tank levels in litres, not percent and not a raw
+        // sensor count: primaryFuelLevel tracks primaryFuelTankCapacity (300)
+        // and moves between 214 and 276 on a tank the register also holds as
+        // 300 L. Percentage is derived from it, never the other way round.
+        const fuel = interpretFleetEdgeFuel(e);
+        const capacity =
+          fuel.primaryCapacityL != null && fuel.secondaryIncluded && fuel.secondaryCapacityL != null
+            ? fuel.primaryCapacityL + fuel.secondaryCapacityL
+            : fuel.primaryCapacityL;
+        const litres =
+          fuel.primaryLitres != null && fuel.secondaryIncluded && fuel.secondaryLitres != null
+            ? fuel.primaryLitres + fuel.secondaryLitres
+            : fuel.primaryLitres;
+
         const fuelLevelPct =
           toNum(e.fuelLevelPercent) ??
           (litres != null && capacity != null && capacity > 0
@@ -195,13 +315,14 @@ export class TataFleetEdgeAdapter implements ITelemetryProviderAdapter {
 
         const odometerKm = toNum(e.odometer);
         const rawEngineHours = toNum(e.engineRunHour);
-        // The live fleet returns engineRunHour identical to odometer (89399 for
-        // both) — 89,399 hours is ten years of continuous running, so it is the
-        // odometer echoed into the wrong field. Storing it would make every
-        // hour-based service schedule read as wildly overdue. The original
-        // value stays in rawPayload for anyone auditing this later.
+        // Fleet Edge echoes the odometer into engineRunHour on this
+        // subscription. Storing it would make every hour-based service schedule
+        // read as wildly overdue, and would put a nonsense denominator into any
+        // litres-per-hour figure. The original value stays in rawPayload for
+        // anyone auditing this later.
         const engineHours =
-          rawEngineHours != null && odometerKm != null && Math.round(rawEngineHours) === Math.round(odometerKm)
+          rawEngineHours != null && odometerKm != null && odometerKm > 0 &&
+          rawEngineHours >= odometerKm * ENGINE_HOUR_ECHO_RATIO
             ? null
             : rawEngineHours;
 
@@ -219,6 +340,7 @@ export class TataFleetEdgeAdapter implements ITelemetryProviderAdapter {
           fuelLevelPct,
           fuelLevelLitres: litres,
           ignitionState: typeof e.ignitionOn === "boolean" ? e.ignitionOn : null,
+          fuelInterpretation: fuel,
           rawPayload: e as Record<string, unknown>,
           identifiers: { registrationNo, chassisNo, imei },
         };

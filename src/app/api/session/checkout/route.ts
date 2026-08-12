@@ -35,8 +35,16 @@ export async function POST(req: Request) {
   const num = (k: string) => (body[k] != null && isFinite(Number(body[k])) ? Number(body[k]) : null);
   const endOdo = num("odometer");
 
+  // Explicit columns: `reconstructPath` uses eight of them, and the row also
+  // carries `raw`, the full provider payload. A long shift is thousands of
+  // samples, so pulling the blob for each was the bulk of this request.
   const readings = await db.telemetryReading.findMany({
-    where: { sessionId: active.id }, orderBy: { recordedAt: "asc" },
+    where: { sessionId: active.id },
+    orderBy: { recordedAt: "asc" },
+    select: {
+      id: true, recordedAt: true, lat: true, lng: true, speedKph: true,
+      odometerKm: true, fuelLevelPct: true, ignitionOn: true, source: true,
+    },
   });
   const path = reconstructPath(readings.map((r): ReadingLite => ({
     id: r.id, recordedAt: r.recordedAt, lat: r.lat, lng: r.lng, speedKph: r.speedKph,

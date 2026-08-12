@@ -1,145 +1,84 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import { Card, StatCard, Badge, SectionTitle } from "@/components/ui";
-import { BarChart, DonutChart, LineChart } from "@/components/charts";
+import { Card, StatCard, SectionTitle } from "@/components/ui";
+import { DonutChart, LineChart } from "@/components/charts";
 import {
   CheckCircle2,
-  XCircle,
   Clock,
   Search,
   Download,
-  Eye,
-  Check,
   X,
   MapPin,
-  Camera,
-  ShieldCheck,
-  Calendar,
-  User,
-  FileText,
-  Filter,
+  ClipboardX,
+  Info,
+  FileQuestion,
+  History,
 } from "lucide-react";
-import mockData from "@/lib/mock-data.json";
+import {
+  dash,
+  HoursCell,
+  StatusBadge,
+  type AttendanceRow,
+  type AttendanceView,
+} from "@/components/AttendanceDashboard";
 
-export type PendingApproval = {
-  id: string;
-  driverId: string;
-  driverName: string;
-  driverEmpCode: string;
-  vehicleCode: string;
-  vehicleName: string;
-  projectName: string;
-  siteName: string;
-  shift: "DAY" | "NIGHT";
-  checkIn: string;
-  checkOut: string;
-  workingHours: number;
-  overtimeHours: number;
-  date: string;
-  selfieUrl: string;
-  lat: number;
-  lng: number;
-  geofencePassed: boolean;
-  safetyChecklist: { name: string; status: boolean }[];
-  status: "PENDING" | "APPROVED" | "REJECTED";
-  supervisorNotes?: string;
-};
+/**
+ * The supervisor's review queue over real shift records.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * WHAT THIS SCREEN NO LONGER CLAIMS
+ *
+ * It used to synthesise 15 approval rows from `mock-data.json` and decorate each
+ * with a "GPS Verified" badge, a stock-photo "cabin selfie", a seven-item safety
+ * checklist and a hardcoded "93.3% geofence pass rate". None of those have a
+ * column anywhere in `prisma/schema.prisma`: `TripSession` records `startLat`,
+ * `startLng`, `trackingSource` and `scanMethod`, and that is the whole of the
+ * evidence the ERP actually captures. Presenting a checklist nobody filled in as
+ * a passed verification is the worst failure mode on a payroll screen — it turns
+ * a supervisor's sign-off into an endorsement of something they never saw.
+ *
+ * Approve/Reject buttons are also gone. They only ever mutated React state: the
+ * decision vanished on refresh while the UI said "Decision Recorded". There is
+ * no approval column on `Attendance` and no server action to write one, so the
+ * queue is read-only until that model exists.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+export function SupervisorAttendanceApproval({ view }: { view: AttendanceView }) {
+  const { rows, trend, breakdown, today, windowDays } = view;
 
-function generatePendingApprovals(): PendingApproval[] {
-  return mockData.drivers.slice(0, 15).map((driver, idx) => {
-    const vehicle = mockData.vehicles[idx % mockData.vehicles.length];
-    const site = mockData.sites[idx % mockData.sites.length];
-    const project = mockData.projects[idx % mockData.projects.length];
-
-    const isOvertime = idx % 2 === 0;
-    const workingHours = isOvertime ? 11.5 : 8.5;
-    const overtimeHours = isOvertime ? 3.0 : 0;
-
-    return {
-      id: `appr-${idx + 1}`,
-      driverId: driver.id,
-      driverName: driver.name,
-      driverEmpCode: driver.empCode,
-      vehicleCode: vehicle.code,
-      vehicleName: vehicle.name,
-      projectName: project.name,
-      siteName: site.name,
-      shift: idx % 3 === 0 ? "NIGHT" : "DAY",
-      checkIn: idx % 3 === 0 ? "07:30 PM" : "07:30 AM",
-      checkOut: idx % 3 === 0 ? "07:00 AM" : "05:00 PM",
-      workingHours,
-      overtimeHours,
-      date: new Date().toISOString().slice(0, 10),
-      selfieUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=300&fit=crop",
-      lat: 26.9124 + (idx * 0.002),
-      lng: 75.7873 + (idx * 0.002),
-      geofencePassed: idx !== 4, // 1 record failed geofence for testing
-      safetyChecklist: [
-        { name: "Brakes & Handbrake", status: true },
-        { name: "Tyres & Pressure", status: true },
-        { name: "Engine Oil & Coolant", status: true },
-        { name: "Headlights & Indicators", status: true },
-        { name: "Horn & Reverse Alarm", status: true },
-        { name: "Seatbelt & Safety Glass", status: true },
-        { name: "Reverse Camera", status: idx !== 2 ? true : false },
-      ],
-      status: idx === 0 ? "PENDING" : idx % 4 === 0 ? "APPROVED" : "PENDING",
-    };
-  });
-}
-
-export function SupervisorAttendanceApproval({ dbSessions }: { dbSessions?: any[] }) {
-  const [approvals, setApprovals] = useState<PendingApproval[]>(() => {
-    if (dbSessions && dbSessions.length > 0) return dbSessions;
-    return generatePendingApprovals();
-  });
-  const [activeTab, setActiveTab] = useState<"PENDING" | "ALL" | "ANALYTICS">("PENDING");
+  const [activeTab, setActiveTab] = useState<"REVIEW" | "ALL" | "ANALYTICS">("REVIEW");
   const [search, setSearch] = useState("");
+  const [viewGpsRecord, setViewGpsRecord] = useState<AttendanceRow | null>(null);
+  const [viewHistoryRecord, setViewHistoryRecord] = useState<AttendanceRow | null>(null);
 
-  // Modal States
-  const [viewGpsRecord, setViewGpsRecord] = useState<PendingApproval | null>(null);
-  const [viewSelfieRecord, setViewSelfieRecord] = useState<PendingApproval | null>(null);
-  const [viewChecklistRecord, setViewChecklistRecord] = useState<PendingApproval | null>(null);
-  const [viewTimelineRecord, setViewTimelineRecord] = useState<PendingApproval | null>(null);
-  const [viewHistoryRecord, setViewHistoryRecord] = useState<PendingApproval | null>(null);
-  const [actionRecord, setActionRecord] = useState<{ record: PendingApproval; type: "APPROVE" | "REJECT" } | null>(null);
-  const [supervisorNote, setSupervisorNote] = useState("");
+  // A shift that ran without a register entry, or one still open, is what a
+  // supervisor has to act on. Everything else is already reconciled.
+  const needsReview = useMemo(() => rows.filter((r) => r.source === "SESSION" || r.running), [rows]);
 
-  // Handle Approve / Reject Submission
-  const handleConfirmAction = () => {
-    if (!actionRecord) return;
-    setApprovals((prev) =>
-      prev.map((item) =>
-        item.id === actionRecord.record.id
-          ? {
-              ...item,
-              status: actionRecord.type === "APPROVE" ? "APPROVED" : "REJECTED",
-              supervisorNotes: supervisorNote,
-            }
-          : item
-      )
+  const totals = useMemo(() => {
+    const recordedHours = rows.reduce((s, r) => s + (r.workingHours ?? 0), 0);
+    return {
+      unmarked: rows.filter((r) => r.status === "NOT_MARKED").length,
+      running: rows.filter((r) => r.running).length,
+      marked: rows.filter((r) => r.source === "REGISTER").length,
+      recordedHours,
+    };
+  }, [rows]);
+
+  const filtered = useMemo(() => {
+    const base = activeTab === "REVIEW" ? needsReview : rows;
+    const q = search.trim().toLowerCase();
+    if (!q) return base;
+    return base.filter((r) =>
+      [r.driverName, r.driverEmpCode, r.vehicleCode, r.projectName].some((f) => (f ?? "").toLowerCase().includes(q))
     );
-    setActionRecord(null);
-    setSupervisorNote("");
-  };
+  }, [rows, needsReview, activeTab, search]);
 
-  // Filtered List
-  const filteredApprovals = useMemo(() => {
-    return approvals.filter((item) => {
-      const matchSearch =
-        item.driverName.toLowerCase().includes(search.toLowerCase()) ||
-        item.driverEmpCode.toLowerCase().includes(search.toLowerCase()) ||
-        item.vehicleCode.toLowerCase().includes(search.toLowerCase());
-
-      if (activeTab === "PENDING") return matchSearch && item.status === "PENDING";
-      return matchSearch;
-    });
-  }, [approvals, activeTab, search]);
-
-  // Export CSV
+  /** Exports the queue as shown — every field read from the database. */
   const handleExportCSV = () => {
     const headers = [
+      "Date",
       "Driver Name",
       "Emp Code",
       "Vehicle",
@@ -148,68 +87,89 @@ export function SupervisorAttendanceApproval({ dbSessions }: { dbSessions?: any[
       "Check In",
       "Check Out",
       "Working Hrs",
-      "Overtime Hrs",
-      "Geofence",
       "Status",
-      "Supervisor Note",
+      "Tracking Source",
+      "Check-in Method",
+      "Check-in Lat",
+      "Check-in Lng",
+      "Marked By",
     ];
-    const rows = filteredApprovals.map((item) => [
-      `"${item.driverName}"`,
-      `"${item.driverEmpCode}"`,
-      `"${item.vehicleCode}"`,
-      `"${item.projectName}"`,
-      item.shift,
-      item.checkIn,
-      item.checkOut,
-      item.workingHours,
-      item.overtimeHours,
-      item.geofencePassed ? "PASSED" : "FAILED",
-      item.status,
-      `"${item.supervisorNotes || ""}"`,
+    const rowsOut = filtered.map((r) => [
+      r.date,
+      `"${r.driverName}"`,
+      `"${dash(r.driverEmpCode)}"`,
+      `"${dash(r.vehicleCode)}"`,
+      `"${dash(r.projectName)}"`,
+      dash(r.shift),
+      dash(r.checkIn),
+      r.checkOut ?? (r.running ? "IN PROGRESS" : "—"),
+      r.workingHours === null ? "" : r.workingHours.toFixed(1),
+      r.status,
+      dash(r.trackingSource),
+      dash(r.scanMethod),
+      r.lat === null ? "" : r.lat.toFixed(6),
+      r.lng === null ? "" : r.lng.toFixed(6),
+      `"${dash(r.markedBy)}"`,
     ]);
 
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
+    const csv = [headers.join(","), ...rowsOut.map((e) => e.join(","))].join("\n");
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `supervisor_attendance_approvals_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute("href", encodeURI("data:text/csv;charset=utf-8," + csv));
+    link.setAttribute("download", `supervisor_attendance_review_${today}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
+
+  /** A driver's own recorded days, straight out of the rows already loaded. */
+  const historyRows = useMemo(
+    () => (viewHistoryRecord ? rows.filter((r) => r.driverId === viewHistoryRecord.driverId) : []),
+    [rows, viewHistoryRecord]
+  );
 
   return (
     <div className="space-y-6">
       {/* Top Metrics Banner */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard
-          label="Pending Approvals"
-          value={approvals.filter((a) => a.status === "PENDING").length.toString()}
-          sub="Requires review"
-          icon={<Clock className="h-5 w-5 text-amber-600" />}
+          label="Shifts Not In Register"
+          value={totals.unmarked.toString()}
+          sub={`Ran in last ${windowDays} days`}
+          icon={<ClipboardX className="h-5 w-5 text-amber-600" />}
           accent="amber"
         />
         <StatCard
-          label="Approved Today"
-          value={approvals.filter((a) => a.status === "APPROVED").length.toString()}
-          sub="Verified records"
+          label="Running Shifts"
+          value={totals.running.toString()}
+          sub="Checked in, not out"
+          icon={<Clock className="h-5 w-5 text-brand-600" />}
+          accent="brand"
+        />
+        <StatCard
+          label="Register Entries"
+          value={totals.marked.toString()}
+          sub="Marked attendance"
           icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />}
           accent="emerald"
         />
         <StatCard
-          label="Total Overtime Hours"
-          value={`${approvals.reduce((s, a) => s + a.overtimeHours, 0).toFixed(1)} hrs`}
-          sub="Eligible for OT pay"
-          icon={<Calendar className="h-5 w-5 text-brand-600" />}
-          accent="brand"
-        />
-        <StatCard
-          label="Geofence Pass Rate"
-          value="93.3%"
-          sub="Site GPS verified"
-          icon={<ShieldCheck className="h-5 w-5 text-violet-600" />}
+          label="Recorded Hours"
+          value={`${totals.recordedHours.toFixed(1)} hrs`}
+          sub="Completed shifts only"
+          icon={<Clock className="h-5 w-5 text-violet-600" />}
           accent="violet"
         />
+      </div>
+
+      {/* Approval decisions have nowhere to be stored, so the screen says so
+          rather than offering buttons that quietly discard the decision. */}
+      <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+        <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+        <p className="text-xs text-amber-900">
+          <span className="font-bold">Review only.</span> The schema records no attendance approval state, so a decision made
+          here cannot be persisted or audited. Close a gap by marking the day in the attendance register (Master → People);
+          the row then moves out of this queue.
+        </p>
       </div>
 
       {/* Tabs & Search */}
@@ -217,34 +177,28 @@ export function SupervisorAttendanceApproval({ dbSessions }: { dbSessions?: any[
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setActiveTab("PENDING")}
+              onClick={() => setActiveTab("REVIEW")}
               className={`rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
-                activeTab === "PENDING"
-                  ? "bg-brand-500 text-white shadow-md shadow-brand-500/20"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                activeTab === "REVIEW" ? "bg-brand-500 text-white shadow-md shadow-brand-500/20" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
               }`}
             >
-              Pending Approval ({approvals.filter((a) => a.status === "PENDING").length})
+              Needs Review ({needsReview.length})
             </button>
             <button
               onClick={() => setActiveTab("ALL")}
               className={`rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
-                activeTab === "ALL"
-                  ? "bg-brand-500 text-white shadow-md shadow-brand-500/20"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                activeTab === "ALL" ? "bg-brand-500 text-white shadow-md shadow-brand-500/20" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
               }`}
             >
-              All Records ({approvals.length})
+              All Records ({rows.length})
             </button>
             <button
               onClick={() => setActiveTab("ANALYTICS")}
               className={`rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
-                activeTab === "ANALYTICS"
-                  ? "bg-brand-500 text-white shadow-md shadow-brand-500/20"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                activeTab === "ANALYTICS" ? "bg-brand-500 text-white shadow-md shadow-brand-500/20" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
               }`}
             >
-              Attendance Analytics 📊
+              Attendance Analytics
             </button>
           </div>
 
@@ -262,7 +216,8 @@ export function SupervisorAttendanceApproval({ dbSessions }: { dbSessions?: any[
               </div>
               <button
                 onClick={handleExportCSV}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 shadow-sm"
+                disabled={filtered.length === 0}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Download className="h-4 w-4" /> Export
               </button>
@@ -271,353 +226,185 @@ export function SupervisorAttendanceApproval({ dbSessions }: { dbSessions?: any[
         </div>
       </Card>
 
-      {/* Main Approvals Table View */}
+      {/* Main Review Table */}
       {activeTab !== "ANALYTICS" ? (
-        <Card className="overflow-hidden p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-600">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 border-b border-slate-100">
-                <tr>
-                  <th className="px-5 py-3.5 font-semibold">Driver Details</th>
-                  <th className="px-5 py-3.5 font-semibold">Vehicle & Project</th>
-                  <th className="px-5 py-3.5 font-semibold">Shift & Hours</th>
-                  <th className="px-5 py-3.5 font-semibold">Verification Proofs</th>
-                  <th className="px-5 py-3.5 font-semibold">Status</th>
-                  <th className="px-5 py-3.5 font-semibold text-right">Supervisor Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredApprovals.length === 0 ? (
+        rows.length === 0 ? (
+          <Card className="flex flex-col items-center gap-2 px-6 py-16 text-center">
+            <FileQuestion className="h-10 w-10 text-slate-300" />
+            <p className="text-sm font-semibold text-slate-700">Nothing to review</p>
+            <p className="max-w-md text-xs text-slate-500">
+              No attendance was marked and no trip sessions were opened in the last {windowDays} days.
+            </p>
+          </Card>
+        ) : (
+          <Card className="overflow-hidden p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm text-slate-600">
+                <thead className="border-b border-slate-100 bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
                   <tr>
-                    <td colSpan={6} className="px-5 py-8 text-center text-slate-400">
-                      No pending attendance records awaiting approval.
-                    </td>
+                    <th className="px-5 py-3.5 font-semibold">Driver Details</th>
+                    <th className="px-5 py-3.5 font-semibold">Vehicle & Project</th>
+                    <th className="px-5 py-3.5 font-semibold">Shift & Hours</th>
+                    <th className="px-5 py-3.5 font-semibold">Recorded Evidence</th>
+                    <th className="px-5 py-3.5 font-semibold">Status</th>
                   </tr>
-                ) : (
-                  filteredApprovals.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-5 py-4">
-                        <div className="font-bold text-ink-900">{item.driverName}</div>
-                        <div className="text-xs text-slate-400">{item.driverEmpCode}</div>
-                        <button
-                          onClick={() => setViewHistoryRecord(item)}
-                          className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-brand-600 hover:underline"
-                        >
-                          <Clock className="h-3 w-3" /> Driver History
-                        </button>
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="font-semibold text-slate-800">{item.vehicleCode}</div>
-                        <div className="text-xs text-slate-500 truncate max-w-[180px]">{item.projectName}</div>
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="font-bold text-ink-900">{item.workingHours} hrs total</div>
-                        {item.overtimeHours > 0 && (
-                          <Badge color="bg-amber-100 text-amber-800 ring-amber-600/20">
-                            +{item.overtimeHours} hrs OT
-                          </Badge>
-                        )}
-                        <div className="text-xs text-slate-400 mt-0.5">
-                          {item.checkIn} → {item.checkOut}
-                        </div>
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {/* GPS Button */}
-                          <button
-                            onClick={() => setViewGpsRecord(item)}
-                            className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold border ${
-                              item.geofencePassed
-                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                : "bg-rose-50 text-rose-700 border-rose-200"
-                            }`}
-                          >
-                            <MapPin className="h-3 w-3" /> {item.geofencePassed ? "GPS Verified" : "GPS Outside"}
-                          </button>
-                          {/* Selfie Button */}
-                          <button
-                            onClick={() => setViewSelfieRecord(item)}
-                            className="inline-flex items-center gap-1 rounded-lg bg-slate-100 text-slate-700 px-2 py-1 text-xs font-semibold hover:bg-slate-200 border border-slate-200"
-                          >
-                            <Camera className="h-3 w-3" /> Selfie
-                          </button>
-                          {/* Checklist Button */}
-                          <button
-                            onClick={() => setViewChecklistRecord(item)}
-                            className="inline-flex items-center gap-1 rounded-lg bg-slate-100 text-slate-700 px-2 py-1 text-xs font-semibold hover:bg-slate-200 border border-slate-200"
-                          >
-                            <ShieldCheck className="h-3 w-3" /> Safety
-                          </button>
-                          {/* Timeline Button */}
-                          <button
-                            onClick={() => setViewTimelineRecord(item)}
-                            className="inline-flex items-center gap-1 rounded-lg bg-brand-50 text-brand-700 px-2 py-1 text-xs font-semibold hover:bg-brand-100 border border-brand-200"
-                          >
-                            Timeline
-                          </button>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4">
-                        {item.status === "PENDING" && (
-                          <Badge color="bg-amber-100 text-amber-700 ring-amber-600/20">Pending Review</Badge>
-                        )}
-                        {item.status === "APPROVED" && (
-                          <Badge color="bg-emerald-100 text-emerald-700 ring-emerald-600/20">Approved</Badge>
-                        )}
-                        {item.status === "REJECTED" && (
-                          <Badge color="bg-rose-100 text-rose-700 ring-rose-600/20">Rejected</Badge>
-                        )}
-                      </td>
-                      <td className="px-5 py-4 text-right">
-                        {item.status === "PENDING" ? (
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => setActionRecord({ record: item, type: "APPROVE" })}
-                              className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 shadow-sm"
-                            >
-                              <Check className="h-3.5 w-3.5" /> Approve
-                            </button>
-                            <button
-                              onClick={() => setActionRecord({ record: item, type: "REJECT" })}
-                              className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-700 shadow-sm"
-                            >
-                              <X className="h-3.5 w-3.5" /> Reject
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-slate-400 italic">Decision Recorded</span>
-                        )}
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filtered.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-5 py-8 text-center text-slate-400">
+                        {activeTab === "REVIEW"
+                          ? "Every shift in the window is marked in the register and closed."
+                          : "No records match your search."}
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+                  ) : (
+                    filtered.map((item) => (
+                      <tr key={item.id} className="transition-colors hover:bg-slate-50/80">
+                        <td className="px-5 py-4">
+                          <div className="font-bold text-ink-900">{item.driverName}</div>
+                          <div className="text-xs text-slate-400">{dash(item.driverEmpCode)}</div>
+                          <button
+                            onClick={() => setViewHistoryRecord(item)}
+                            className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-brand-600 hover:underline"
+                          >
+                            <History className="h-3 w-3" /> Driver History
+                          </button>
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="font-semibold text-slate-800">{dash(item.vehicleCode)}</div>
+                          <div className="max-w-[180px] truncate text-xs text-slate-500">{dash(item.projectName)}</div>
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="font-bold text-ink-900">
+                            <HoursCell row={item} />
+                          </div>
+                          <div className="mt-0.5 text-xs text-slate-400">
+                            {item.date} · {dash(item.shift)}
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            {dash(item.checkIn)} → {item.checkOut ?? (item.running ? "in progress" : "—")}
+                          </div>
+                        </td>
+                        <td className="px-5 py-4">
+                          {/* Only what the session row actually holds. No pass/fail
+                              verdict is rendered because none is computed anywhere. */}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700">
+                              Tracking: {dash(item.trackingSource)}
+                            </span>
+                            <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700">
+                              Check-in: {dash(item.scanMethod)}
+                            </span>
+                            {item.lat !== null && item.lng !== null && (
+                              <button
+                                onClick={() => setViewGpsRecord(item)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-brand-200 bg-brand-50 px-2 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-100"
+                              >
+                                <MapPin className="h-3 w-3" /> Position
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-5 py-4">
+                          <StatusBadge status={item.status} />
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )
       ) : (
-        /* Analytics View */
+        /* Analytics View — aggregated from the same rows on the server */
         <div className="space-y-6 animate-fade-up">
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <Card className="p-5">
-              <SectionTitle title="Weekly Attendance Trend" subtitle="Daily present count vs absent/leave" />
-              <LineChart
-                data={[
-                  { label: "Mon", Present: 45, Absent: 3, Late: 2 },
-                  { label: "Tue", Present: 47, Absent: 2, Late: 1 },
-                  { label: "Wed", Present: 44, Absent: 4, Late: 2 },
-                  { label: "Thu", Present: 48, Absent: 1, Late: 1 },
-                  { label: "Fri", Present: 46, Absent: 2, Late: 2 },
-                  { label: "Sat", Present: 42, Absent: 5, Late: 3 },
-                  { label: "Sun", Present: 38, Absent: 8, Late: 4 },
-                ]}
-                lines={[
-                  { key: "Present", color: "#10b981", name: "Present" },
-                  { key: "Absent", color: "#f43f5e", name: "Absent" },
-                  { key: "Late", color: "#f59e0b", name: "Late" },
-                ]}
-              />
+              <SectionTitle title="Weekly Attendance Trend" subtitle="Marked register entries per day, last 7 days" />
+              {trend.some((d) => d.Present + d.Absent + d.Leave > 0) ? (
+                <LineChart
+                  data={trend}
+                  lines={[
+                    { key: "Present", color: "#10b981", name: "Present" },
+                    { key: "Absent", color: "#f43f5e", name: "Absent" },
+                    { key: "Leave", color: "#8b5cf6", name: "Leave" },
+                  ]}
+                />
+              ) : (
+                <p className="py-16 text-center text-xs text-slate-400">No attendance marked in the last 7 days.</p>
+              )}
             </Card>
 
             <Card className="p-5">
-              <SectionTitle title="Attendance Distribution" subtitle="Status breakdown today" />
-              <DonutChart
-                data={[
-                  { name: "Present", value: 38, color: "#10b981" },
-                  { name: "Running Shift", value: 18, color: "#3b82f6" },
-                  { name: "Late Arrival", value: 3, color: "#f59e0b" },
-                  { name: "Absent", value: 4, color: "#f43f5e" },
-                  { name: "On Leave", value: 2, color: "#8b5cf6" },
-                ]}
-              />
+              <SectionTitle title="Attendance Distribution" subtitle={`Status breakdown for ${today}`} />
+              {breakdown.length > 0 ? (
+                <DonutChart data={breakdown} />
+              ) : (
+                <p className="py-16 text-center text-xs text-slate-400">Nothing recorded for today.</p>
+              )}
             </Card>
           </div>
         </div>
       )}
 
-      {/* GPS Location Modal */}
+      {/* Check-in Position Modal — the coordinates the session stored, and
+          nothing inferred from them. Sessions carry no site reference, so no
+          geofence verdict can honestly be shown here. */}
       {viewGpsRecord && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl animate-fade-up">
-            <div className="flex items-center justify-between pb-3 border-b">
-              <h3 className="font-bold text-ink-900">GPS Location Proof</h3>
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="font-bold text-ink-900">Check-in Position</h3>
               <button onClick={() => setViewGpsRecord(null)} className="p-1 text-slate-400 hover:text-slate-700">
                 <X className="h-5 w-5" />
               </button>
             </div>
             <div className="mt-4 space-y-3">
               <div className="rounded-xl bg-slate-100 p-4 text-center">
-                <MapPin className="mx-auto h-10 w-10 text-brand-600 mb-2" />
-                <p className="font-bold text-slate-900">{viewGpsRecord.siteName}</p>
+                <MapPin className="mx-auto mb-2 h-10 w-10 text-brand-600" />
+                <p className="font-bold text-slate-900">{viewGpsRecord.driverName}</p>
                 <p className="text-xs text-slate-500">
-                  Lat: {viewGpsRecord.lat.toFixed(4)} | Lng: {viewGpsRecord.lng.toFixed(4)}
+                  {viewGpsRecord.lat?.toFixed(5)}, {viewGpsRecord.lng?.toFixed(5)}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {viewGpsRecord.date} · {dash(viewGpsRecord.checkIn)}
                 </p>
               </div>
-              <div
-                className={`p-3 rounded-xl font-semibold text-xs text-center ${
-                  viewGpsRecord.geofencePassed
-                    ? "bg-emerald-100 text-emerald-800"
-                    : "bg-rose-100 text-rose-800"
-                }`}
-              >
-                {viewGpsRecord.geofencePassed
-                  ? "✓ Verified inside project site geofence"
-                  : "⚠ Alert: Check-in outside authorized geofence radius"}
-              </div>
+              <p className="rounded-xl bg-slate-50 p-3 text-center text-xs text-slate-500">
+                Position as reported by <span className="font-semibold">{dash(viewGpsRecord.trackingSource)}</span> at check-in.
+                No site geofence is recorded against a trip session, so this is not a pass/fail check.
+              </p>
             </div>
           </div>
         </div>
       )}
 
-      {/* View Selfie Modal */}
-      {viewSelfieRecord && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl text-center animate-fade-up">
-            <div className="flex items-center justify-between pb-3 border-b">
-              <h3 className="font-bold text-ink-900">Driver Cabin Selfie</h3>
-              <button onClick={() => setViewSelfieRecord(null)} className="p-1 text-slate-400 hover:text-slate-700">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="mt-4">
-              <img
-                src={viewSelfieRecord.selfieUrl}
-                alt="Selfie"
-                className="w-full h-64 object-cover rounded-xl border border-slate-200"
-              />
-              <p className="mt-2 text-xs font-semibold text-slate-700">{viewSelfieRecord.driverName}</p>
-              <p className="text-[11px] text-slate-400">Captured at {viewSelfieRecord.checkIn}</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* View Safety Checklist Modal */}
-      {viewChecklistRecord && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl animate-fade-up">
-            <div className="flex items-center justify-between pb-3 border-b">
-              <h3 className="font-bold text-ink-900">Safety Checklist Items</h3>
-              <button onClick={() => setViewChecklistRecord(null)} className="p-1 text-slate-400 hover:text-slate-700">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="mt-4 space-y-2">
-              {viewChecklistRecord.safetyChecklist.map((item, idx) => (
-                <div
-                  key={idx}
-                  className={`flex items-center justify-between p-2.5 rounded-lg text-xs font-semibold ${
-                    item.status ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"
-                  }`}
-                >
-                  <span>{item.name}</span>
-                  <span>{item.status ? "✓ PASS" : "✕ FAIL"}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Attendance Timeline Modal */}
-      {viewTimelineRecord && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl animate-fade-up">
-            <div className="flex items-center justify-between pb-3 border-b">
-              <h3 className="font-bold text-ink-900">Attendance Audit Timeline</h3>
-              <button onClick={() => setViewTimelineRecord(null)} className="p-1 text-slate-400 hover:text-slate-700">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="mt-4 space-y-4 text-xs">
-              {[
-                { time: viewTimelineRecord.checkIn, title: "QR Scan & Login", desc: "Cabin QR scanned successfully" },
-                { time: viewTimelineRecord.checkIn, title: "GPS & Geofence Verification", desc: "Location confirmed inside site" },
-                { time: viewTimelineRecord.checkIn, title: "Selfie Capture", desc: "Photo audit captured" },
-                { time: viewTimelineRecord.checkIn, title: "Safety Checklist Passed", desc: "All 7 safety items verified" },
-                { time: viewTimelineRecord.checkOut, title: "Shift Completed & Checkout", desc: `${viewTimelineRecord.workingHours} hrs logged` },
-              ].map((step, idx) => (
-                <div key={idx} className="flex gap-3 items-start">
-                  <div className="h-6 w-6 rounded-full bg-brand-500 text-white font-bold flex items-center justify-center shrink-0">
-                    {idx + 1}
-                  </div>
-                  <div>
-                    <p className="font-bold text-slate-900">{step.title}</p>
-                    <p className="text-slate-500">{step.desc}</p>
-                    <span className="text-[10px] text-slate-400">{step.time}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Driver History Modal */}
+      {/* Driver History Modal — this driver's own rows in the loaded window */}
       {viewHistoryRecord && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl animate-fade-up">
-            <div className="flex items-center justify-between pb-3 border-b">
-              <h3 className="font-bold text-ink-900">{viewHistoryRecord.driverName} - Attendance History</h3>
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="font-bold text-ink-900">{viewHistoryRecord.driverName} — Recorded Days</h3>
               <button onClick={() => setViewHistoryRecord(null)} className="p-1 text-slate-400 hover:text-slate-700">
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="mt-4 space-y-3">
-              <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl">
-                <span className="text-xs font-semibold text-slate-600">30-Day Attendance Rate</span>
-                <span className="text-sm font-bold text-emerald-600">96.5%</span>
-              </div>
-              <div className="space-y-2">
-                {["2026-08-01", "2026-07-31", "2026-07-30", "2026-07-29"].map((d, i) => (
-                  <div key={i} className="flex justify-between items-center text-xs p-2.5 border-b">
-                    <span>{d}</span>
-                    <Badge color="bg-emerald-100 text-emerald-700">Present (9.5 hrs)</Badge>
+            <div className="mt-4 max-h-80 space-y-2 overflow-y-auto">
+              {historyRows.length === 0 ? (
+                <p className="py-8 text-center text-xs text-slate-400">No records in the last {windowDays} days.</p>
+              ) : (
+                historyRows.map((r) => (
+                  <div key={r.id} className="flex items-center justify-between gap-3 border-b py-2.5 text-xs">
+                    <span className="text-slate-600">{r.date}</span>
+                    <span className="font-semibold text-slate-800">
+                      <HoursCell row={r} />
+                    </span>
+                    <StatusBadge status={r.status} />
                   </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Approve / Reject Decision Confirmation Modal */}
-      {actionRecord && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl animate-fade-up space-y-4">
-            <h3 className="text-lg font-bold text-ink-900">
-              {actionRecord.type === "APPROVE" ? "Approve Attendance" : "Reject Attendance"}
-            </h3>
-            <p className="text-xs text-slate-500">
-              Record for <span className="font-bold">{actionRecord.record.driverName}</span> ({actionRecord.record.workingHours} hrs)
-            </p>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Supervisor Notes / Remarks</label>
-              <textarea
-                rows={3}
-                placeholder="Enter approval note or reason for rejection..."
-                value={supervisorNote}
-                onChange={(e) => setSupervisorNote(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 p-3 text-sm focus:border-brand-500 focus:outline-none"
-              />
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setActionRecord(null)}
-                className="px-4 py-2 rounded-xl border border-slate-300 text-sm font-medium text-slate-700"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmAction}
-                className={`px-4 py-2 rounded-xl font-bold text-sm text-white ${
-                  actionRecord.type === "APPROVE" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-rose-600 hover:bg-rose-700"
-                }`}
-              >
-                Confirm {actionRecord.type === "APPROVE" ? "Approval" : "Rejection"}
-              </button>
+                ))
+              )}
             </div>
           </div>
         </div>

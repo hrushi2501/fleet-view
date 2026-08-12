@@ -1,11 +1,18 @@
 "use client";
 
 import React, { useState } from "react";
-import { AttendanceDashboard } from "@/components/AttendanceDashboard";
+import { AttendanceDashboard, type AttendanceView } from "@/components/AttendanceDashboard";
 import { SupervisorAttendanceApproval } from "@/components/SupervisorAttendanceApproval";
 import { ShieldCheck, ClipboardList } from "lucide-react";
 
-export function AttendanceClientTabs({ dbSessions }: { dbSessions?: any[] }) {
+/**
+ * Both tabs render the one `AttendanceView` the page resolved from the database.
+ * They previously took a loosely-typed `dbSessions?: any[]` and each fell back to
+ * its own mock generator when it was empty or absent, so the register and the
+ * approvals queue could show different — and equally invented — versions of the
+ * same day. A single required prop makes that impossible.
+ */
+export function AttendanceClientTabs({ view }: { view: AttendanceView }) {
   const [activeTab, setActiveTab] = useState<"REGISTER" | "APPROVALS">("REGISTER");
 
   return (
@@ -45,8 +52,8 @@ export function AttendanceClientTabs({ dbSessions }: { dbSessions?: any[] }) {
       </div>
 
       {/* Render Selected View */}
-      {activeTab === "REGISTER" && <AttendanceDashboard dbSessions={dbSessions} />}
-      {activeTab === "APPROVALS" && <SupervisorAttendanceApproval dbSessions={dbSessions} />}
+      {activeTab === "REGISTER" && <AttendanceDashboard view={view} />}
+      {activeTab === "APPROVALS" && <SupervisorAttendanceApproval view={view} />}
     </div>
   );
 }

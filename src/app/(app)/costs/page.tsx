@@ -271,10 +271,10 @@ export default async function CostsPage() {
                       <td className="px-5 py-3 text-right text-slate-600">{inr(pn.cost, { compact: true })}</td>
                       <td className={`px-5 py-3 text-right font-bold ${pn.margin >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{inr(pn.margin, { compact: true })}</td>
                       <td className="px-5 py-3 text-right">
-                        {pn.revenue > 0 ? <span className={`font-semibold ${pn.marginPct >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{pn.marginPct.toFixed(1)}%</span> : <span className="text-slate-300">—</span>}
+                        {pn.marginPct != null ? <span className={`font-semibold ${pn.marginPct >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{pn.marginPct.toFixed(1)}%</span> : <span className="text-slate-300">—</span>}
                       </td>
                       <td className="px-5 py-3">
-                        {pn.budget > 0 ? (
+                        {pn.budgetUsedPct != null ? (
                           <div className="w-28">
                             <Progress value={Math.min(100, pn.budgetUsedPct)} />
                             <p className={`mt-0.5 text-xs ${pn.overBudget ? "font-semibold text-rose-600" : "text-slate-400"}`}>{pn.budgetUsedPct.toFixed(0)}% used</p>

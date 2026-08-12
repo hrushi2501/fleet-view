@@ -1,9 +1,24 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
-import { analyseReadings, summarise } from "@/lib/fleet-analytics";
+import { analyseUsage, describeUsage } from "@/lib/fleet-analytics";
 
 export const dynamic = "force-dynamic";
+
+/** Fields a device or relay may have posted alongside its reading. Rows written
+ *  before the ingest route stopped persisting the shared key still hold it, and
+ *  this response is readable by every signed-in user. */
+const RAW_SECRET_FIELDS = new Set(["key", "token", "secret", "password", "apikey", "api_key", "authorization"]);
+
+function redactRaw(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw ?? null;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (RAW_SECRET_FIELDS.has(k.toLowerCase())) continue;
+    out[k] = v;
+  }
+  return out;
+}
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!(await getSession())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -18,18 +33,35 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       workOrders: { orderBy: { reportedAt: "desc" }, take: 5 },
       fuelTxns: { where: { type: "ISSUE" }, orderBy: { date: "desc" }, take: 5 },
       costs: true,
-      // Latest sample from the OEM feed, carried whole so the UI can show every
-      // field the vehicle reports rather than the handful with typed columns.
-      telemetry: {
-        orderBy: { recordedAt: "desc" },
-        take: 200,
-        include: { provider: { select: { name: true, lastSyncAt: true, lastSyncStatus: true } } },
-      },
     },
   });
   if (!asset) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const latest = asset.telemetry[0] ?? null;
+  // Two queries rather than one join: the usage maths needs 200 samples but only
+  // the typed columns, while `raw` — the whole provider payload, the largest
+  // column in the schema — is shown for the newest sample alone. Fetching 200
+  // raw blobs to display one was the single heaviest read in the app.
+  const [history, latest] = await Promise.all([
+    db.telemetryReading.findMany({
+      where: { assetId: asset.id },
+      orderBy: { recordedAt: "desc" },
+      take: 200,
+      select: {
+        recordedAt: true, lat: true, lng: true, speedKph: true, odometerKm: true,
+        fuelLevelL: true, fuelLevelPct: true, ignitionOn: true,
+      },
+    }),
+    db.telemetryReading.findFirst({
+      where: { assetId: asset.id },
+      orderBy: { recordedAt: "desc" },
+      select: {
+        recordedAt: true, source: true, speedKph: true, headingDeg: true,
+        odometerKm: true, engineHours: true, fuelLevelPct: true, fuelLevelL: true,
+        ignitionOn: true, raw: true,
+        provider: { select: { name: true, lastSyncAt: true, lastSyncStatus: true } },
+      },
+    }),
+  ]);
 
   // Derived usage: distance, burn, efficiency and unexplained loss, measured
   // between consecutive samples rather than read off any single one.
@@ -40,8 +72,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     where: { assetClass: asset.assetClass, unit: "LPH" },
   });
 
-  const segments = analyseReadings(
-    asset.telemetry.map((t) => ({
+  const { segments, usage } = analyseUsage(
+    history.map((t) => ({
       recordedAt: t.recordedAt,
       lat: t.lat, lng: t.lng, speedKph: t.speedKph,
       odometerKm: t.odometerKm, fuelLevelL: t.fuelLevelL,
@@ -51,7 +83,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     asset.fuelCapacity || null,
     idleNorm?.normHigh ?? null,
   );
-  const usage = summarise(segments);
+
+  if (process.env.FUEL_ANALYSIS_DEBUG === "true") {
+    console.info(describeUsage(`${asset.code} (${asset.registrationNo ?? "no reg"})`, usage));
+  }
 
   const costByHead: Record<string, number> = {};
   for (const c of asset.costs) costByHead[c.costHead] = (costByHead[c.costHead] || 0) + c.amount;
@@ -70,12 +105,18 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     fuel: asset.fuelTxns.map((f) => ({ date: f.date, quantity: f.quantity, sensorRise: f.sensorRise, variancePct: f.variancePct, anomaly: f.anomaly })),
     costByHead, totalCost,
     usage: { ...usage, norm: norm ? { low: norm.normLow, high: norm.normHigh, unit: norm.unit } : null },
+    // Sensor-detected fills, so the UI can show that a tank rise was recognised
+    // as a fill rather than quietly cancelling out against consumption.
+    refuels: usage.diagnostics.fuel.refuels.map((r) => ({
+      at: r.at, fromL: r.fromL, toL: r.toL, litresAdded: r.litresAdded,
+      lat: r.lat, lng: r.lng, confidence: r.confidence, hoursObserved: r.hoursObserved,
+    })),
     segments: segments
       .slice(-12)
       .reverse()
       .map((s) => ({
         from: s.from, to: s.to, hours: s.hours,
-        distanceKm: s.distanceKm, litresConsumed: s.litresConsumed,
+        distanceKm: s.distanceKm, fuelDeltaL: s.fuelDeltaL, litresConsumed: s.litresConsumed,
         kmPerL: s.kmPerL, event: s.event, excessLitres: s.excessLitres,
         confidence: s.confidence, reasons: s.reasons,
       })),
@@ -92,7 +133,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       fuelLevelPct: latest.fuelLevelPct,
       fuelLevelL: latest.fuelLevelL,
       ignitionOn: latest.ignitionOn,
-      raw: latest.raw ?? null,
+      raw: redactRaw(latest.raw),
     },
   });
 }

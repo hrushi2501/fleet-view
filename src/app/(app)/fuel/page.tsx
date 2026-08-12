@@ -10,6 +10,7 @@ import { Fuel, TriangleAlert, Droplets, Gauge, ShieldAlert, IndianRupee, Trendin
 import Link from "next/link";
 
 import { FuelSubNav } from "@/components/FuelSubNav";
+import { businessMonth } from "@/lib/business-time";
 
 export const dynamic = "force-dynamic";
 
@@ -48,8 +49,10 @@ export default async function FuelPage() {
   const usingTelemetry = telemetry.totals.distanceKm > 0;
 
   // Ranked by measured efficiency when telemetry exists, since fuel slips may
-  // not have been entered yet.
-  const rankable = telemetry.perAsset.filter((a) => a.usage.avgKmPerL != null);
+  // not have been entered yet. Vehicles whose telemetry cannot support a fuel
+  // figure are left out entirely — "worst mileage, investigate" is a real
+  // accusation and thin sampling is not evidence for it.
+  const rankable = telemetry.perAsset.filter((a) => a.usage.avgKmPerL != null && !a.usage.insufficientData);
   const telBest = [...rankable].sort((a, b) => b.usage.avgKmPerL! - a.usage.avgKmPerL!).slice(0, 5);
   const telWorst = [...rankable].sort((a, b) => a.usage.avgKmPerL! - b.usage.avgKmPerL!).slice(0, 5);
 
@@ -62,7 +65,7 @@ export default async function FuelPage() {
 
   // monthly spend
   const byMonth: Record<string, number> = {};
-  for (const t of issues) { const k = new Date(t.date).toISOString().slice(0, 7); byMonth[k] = (byMonth[k] || 0) + t.amount; }
+  for (const t of issues) { const k = businessMonth(new Date(t.date)); byMonth[k] = (byMonth[k] || 0) + t.amount; }
   const spendTrend = Object.entries(byMonth).slice(-6).map(([m, v]) => ({ month: m.slice(2), spend: Math.round(v) }));
 
   const effColor = (s: string) => s === "good" ? "text-emerald-600" : s === "low" ? "text-rose-600" : s === "high" ? "text-amber-600" : "text-slate-400";

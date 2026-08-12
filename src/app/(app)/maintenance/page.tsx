@@ -452,7 +452,7 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
             <StatCard label="Overdue" value={num(overdue.length)} sub="past interval" accent="rose" icon={<TriangleAlert className="h-5 w-5" />} />
             <StatCard label="Due Now" value={num(dueNow.length)} sub={`${num(upcoming.length)} coming up`} accent="amber" icon={<CalendarClock className="h-5 w-5" />} />
             <StatCard label="Forecast Spend" value={inr(forecastCost, { compact: true })} sub="overdue + due tasks" accent="brand" icon={<IndianRupee className="h-5 w-5" />} />
-            <StatCard label="Planned Ratio" value={`${rel.plannedRatio.toFixed(0)}%`} sub={`${rel.breakdowns} breakdowns / 12mo`} accent={rel.plannedRatio >= 60 ? "emerald" : "amber"} icon={<Activity className="h-5 w-5" />} />
+            <StatCard label="Planned Ratio" value={rel.plannedRatio != null ? `${rel.plannedRatio.toFixed(0)}%` : "—"} sub={rel.plannedRatio != null ? `${rel.breakdowns} breakdowns / 12mo` : "no work orders in the period"} accent={rel.plannedRatio != null && rel.plannedRatio >= 60 ? "emerald" : "amber"} icon={<Activity className="h-5 w-5" />} />
             <StatCard label="MTBF / MTTR" value={rel.mtbfDays ? `${rel.mtbfDays.toFixed(0)}d` : "—"} sub={rel.mttrHours ? `${rel.mttrHours.toFixed(1)}h to repair` : "no breakdowns"} accent="violet" icon={<Wrench className="h-5 w-5" />} />
           </div>
 
