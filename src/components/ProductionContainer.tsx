@@ -12,9 +12,9 @@ export function ProductionContainer({ children }: { children: React.ReactNode })
       {/* Top Banner & Tab Navigation */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200/80 pb-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Production &amp; Output Management</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Work &amp; Production</h1>
           <p className="text-sm text-slate-500">
-            Integrated portal for site output overview, diesel efficiency &amp; daily work entry logs.
+            Site par kitna kaam hua — output, machine hours aur diesel, ek jagah.
           </p>
         </div>
 
@@ -28,7 +28,7 @@ export function ProductionContainer({ children }: { children: React.ReactNode })
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            <LayoutDashboard className="h-4 w-4" /> Production Overview
+            <LayoutDashboard className="h-4 w-4" /> Output Summary
           </button>
           <button
             onClick={() => setActiveTab("ENTRY")}
@@ -38,7 +38,7 @@ export function ProductionContainer({ children }: { children: React.ReactNode })
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            <ScrollText className="h-4 w-4" /> Daily Work Entry
+            <ScrollText className="h-4 w-4" /> Daily Entry
           </button>
         </div>
       </div>

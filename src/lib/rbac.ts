@@ -142,7 +142,7 @@ export const DEFAULT_ROLES: { name: string; label: string; description: string; 
     approvalLimit: 2000000, isSystem: true,
   },
   {
-    name: "SiteManager", label: "Site Manager",
+    name: "SiteManager", label: "Site Supervisor",
     description: "Runs one or more sites. Logs production and hire days; cannot approve invoices.",
     permissions: [
       "fleet.view", "fuel.view", "fuel.receipt", "hire.view", "hire.edit",

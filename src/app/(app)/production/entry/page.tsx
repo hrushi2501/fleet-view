@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { ProductionEntryForm } from "@/components/ProductionEntryForm";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { requirePage } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,7 @@ export const metadata = {
 };
 
 export default async function ProductionEntryPage() {
+  await requirePage("production.edit");
   const session = await getSession();
   if (!session) redirect("/login");
 

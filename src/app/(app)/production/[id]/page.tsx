@@ -1,13 +1,11 @@
-import React from "react";
-import { VehicleProductionDetails } from "@/components/VehicleProductionDetails";
+import { redirect } from "next/navigation";
 
-export const metadata = {
-  title: "Vehicle Production Details | FleetView ERP",
-  description: "Detailed vehicle production analytics, machine type KPIs, cycle time, fuel efficiency and output trends.",
-};
-
-export default async function VehicleProductionDetailsPage({ params }: { params: Promise<{ id: string }> }) {
+/** Moved under `/sites/work`. Redirects the individual record to its new home. */
+export default async function MovedDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = await params;
-
-  return <VehicleProductionDetails vehicleId={id} />;
+  redirect(`/sites/work/${id}`);
 }

@@ -6,10 +6,12 @@ import { inr, num, timeAgo, ASSET_CLASS_LABEL, SEVERITY_COLOR, healthColor } fro
 import { Truck, Fuel, TriangleAlert, Activity, Wrench, ShieldAlert, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { businessDayShort } from "@/lib/business-time";
+import { requirePage } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
 export default async function Dashboard() {
+  await requirePage(null);
   const [assets, statusGroups, fuelIssues, openCritical, expiringDocs, costs, recentAlerts] = await Promise.all([
     db.asset.findMany(),
     db.asset.groupBy({ by: ["status"], _count: true }),
@@ -78,13 +80,10 @@ export default async function Dashboard() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Executive Dashboard</h1>
-          <p className="text-sm text-slate-500">Fleet-wide command view · {num(totalAssets)} assets across 5 active projects</p>
+          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Dashboard</h1>
+          <p className="text-sm text-slate-500">Aaj kya chal raha hai · {num(totalAssets)} vehicles and machines</p>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/simple" className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-600">
-            👴 Owner View (Simple)
-          </Link>
           <Badge color="bg-emerald-100 text-emerald-700 ring-emerald-600/20">
             <span className="pulse-dot mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" /> Live
           </Badge>
@@ -115,8 +114,8 @@ export default async function Dashboard() {
       {telemetry.totals.vehiclesReporting > 0 && (
         <section className="mt-6">
           <SectionTitle
-            title="Measured from Telemetry — Last 30 Days"
-            subtitle={`${telemetry.totals.vehiclesReporting} vehicle${telemetry.totals.vehiclesReporting === 1 ? "" : "s"} reporting · odometer and tank readings straight from the OEM feed`}
+            title="Measured from the Vehicles — Last 30 Days"
+            subtitle={`${telemetry.totals.vehiclesReporting} vehicle${telemetry.totals.vehiclesReporting === 1 ? "" : "s"} reporting · odometer and tank readings straight from the vehicles themselves`}
           />
           <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label="Distance Covered" value={`${num(telemetry.totals.distanceKm)} km`} sub="Odometer delta" accent="brand" icon={<Activity className="h-5 w-5" />} />
@@ -176,7 +175,7 @@ export default async function Dashboard() {
           <TrendArea data={fuelTrend} dataKey="litres" xKey="day" />
         </Card>
         <Card>
-          <SectionTitle title="Recent Alerts" action={<Link href="/alerts" className="text-xs font-medium text-brand-600 hover:underline">View all</Link>} />
+          <SectionTitle title="Recent Alerts" action={<Link href="/maintenance/reminders" className="text-xs font-medium text-brand-600 hover:underline">View all</Link>} />
           <div className="space-y-3">
             {recentAlerts.map((a) => (
               <div key={a.id} className="flex items-start gap-3">

@@ -30,7 +30,7 @@ export function VehicleProductionDetails({ vehicleId }: { vehicleId: string }) {
       <Card className="p-8 text-center my-8">
         <p className="text-base font-bold text-slate-800">Vehicle Not Found</p>
         <p className="text-xs text-slate-500 mt-1">The requested vehicle ID does not exist in the fleet database.</p>
-        <Link href="/production" className="mt-4 inline-block text-xs font-bold text-brand-600 hover:underline">
+        <Link href="/sites/work" className="mt-4 inline-block text-xs font-bold text-brand-600 hover:underline">
           ← Return to Production Overview
         </Link>
       </Card>

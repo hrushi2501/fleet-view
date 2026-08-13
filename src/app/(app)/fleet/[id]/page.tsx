@@ -5,10 +5,12 @@ import { AssetEntry, DeleteButton } from "@/components/EntryForms";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Gauge, Fuel, Wrench, ShieldCheck, MapPin } from "lucide-react";
+import { requirePage } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
 export default async function AssetDetail({ params }: { params: Promise<{ id: string }> }) {
+  await requirePage("fleet.view");
   const { id } = await params;
   const asset = await db.asset.findUnique({
     where: { id },
@@ -194,7 +196,7 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
                   <td className="py-2 font-medium text-ink-900">{num(f.quantity)}</td>
                   <td className="py-2 text-slate-600">{num(f.sensorRise)}</td>
                   <td className={`py-2 font-medium ${f.variancePct > 10 ? "text-rose-600" : "text-slate-600"}`}>{f.variancePct.toFixed(1)}%</td>
-                  <td className="py-2">{f.anomaly ? <Badge color="bg-rose-100 text-rose-700 ring-rose-600/20">Anomaly</Badge> : <Badge color="bg-emerald-100 text-emerald-700 ring-emerald-600/20">OK</Badge>}</td>
+                  <td className="py-2">{f.anomaly ? <Badge color="bg-rose-100 text-rose-700 ring-rose-600/20">Check</Badge> : <Badge color="bg-emerald-100 text-emerald-700 ring-emerald-600/20">OK</Badge>}</td>
                 </tr>
               ))}
             </tbody>

@@ -17,6 +17,7 @@ import {
   IndianRupee, FolderKanban, Boxes,
 } from "lucide-react";
 import Link from "next/link";
+import { requirePage } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,18 @@ const MOB_BADGE: Record<string, string> = {
   CANCELLED: "bg-slate-100 text-slate-500 ring-slate-400/20",
 };
 
+/**
+ * Sites, the projects they belong to, and which machines are committed where.
+ *
+ * `/projects` and `/operations` both pointed here in the restructure and both
+ * are already contained in this screen: it grew out of `/operations` and had
+ * the project cards, budgets and the `ProjectEntry` form folded into it before
+ * the consolidation started. Their routes redirect rather than being rendered
+ * twice, because two copies of the same allocation table on one page would be
+ * worse than either page was on its own.
+ */
 export default async function SitesPage() {
+  await requirePage("production.view");
   /* ───────── data fetch ───────── */
   const [projects, sites, plans, allocations, mobs, assets] = await Promise.all([
     db.project.findMany({ include: { _count: { select: { assets: true } } }, orderBy: { code: "asc" } }),

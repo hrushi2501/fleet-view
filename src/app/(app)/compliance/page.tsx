@@ -5,10 +5,12 @@ import { ComplianceEntry } from "@/components/EntryForms";
 import { num, fmtDate, STATUS_COLOR } from "@/lib/utils";
 import { ShieldCheck, ShieldAlert, ShieldX, FileText } from "lucide-react";
 import Link from "next/link";
+import { requirePage } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
 export default async function CompliancePage() {
+  await requirePage("compliance.view");
   const [docs, assets] = await Promise.all([
     db.complianceDoc.findMany({ include: { asset: true }, orderBy: { expiryDate: "asc" } }),
     db.asset.findMany({ orderBy: { code: "asc" } }),

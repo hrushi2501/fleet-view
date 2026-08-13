@@ -8,6 +8,7 @@ import { scoreBreakdownRisk } from "@/lib/analytics";
 import { inr, num, fmtDate, timeAgo, STATUS_COLOR, ASSET_CLASS_LABEL } from "@/lib/utils";
 import { Wrench, TriangleAlert, Clock, BadgeCheck, Brain, CalendarClock, Activity, IndianRupee, Users, LayoutGrid, ListFilter, AlertCircle } from "lucide-react";
 import Link from "next/link";
+import { requirePage } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,7 @@ const DUE_LABEL: Record<string, string> = { overdue: "Overdue", due: "Due now", 
 const WINDOW_DAYS = 365;
 
 export default async function MaintenancePage({ searchParams }: { searchParams: Promise<{ tab?: string; view?: string }> }) {
+  await requirePage("maintenance.view");
   const resolvedParams = await searchParams;
   const tab = resolvedParams?.tab || "workorders";
   const view = resolvedParams?.view || "table";

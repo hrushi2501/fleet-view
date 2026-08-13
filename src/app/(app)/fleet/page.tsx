@@ -1,55 +1,42 @@
-import { db } from "@/lib/db";
-import { FleetTable } from "@/components/FleetTable";
-import { AssetEntry } from "@/components/EntryForms";
-import { StatCard } from "@/components/ui";
-import { num } from "@/lib/utils";
-import { Truck, CircleCheck, CirclePause, Wrench } from "lucide-react";
+import { requirePage } from "@/lib/access";
+import { PageTabs, resolveTab, type Tab } from "@/components/PageTabs";
+import { Register } from "./_sections/Register";
+import { VehicleRecords } from "./_sections/VehicleRecords";
 
 export const dynamic = "force-dynamic";
 
-export default async function FleetPage() {
-  const [assets, projects] = await Promise.all([
-    db.asset.findMany({ include: { project: true }, orderBy: { code: "asc" } }),
-    db.project.findMany({ orderBy: { code: "asc" } }),
-  ]);
-  const projOpts = projects.map((p) => ({ id: p.id, label: `${p.code} — ${p.name}` }));
-  const rows = assets.map((a) => ({
-    id: a.id,
-    code: a.code,
-    name: a.name,
-    assetClass: a.assetClass,
-    ownershipType: a.ownershipType,
-    status: a.status,
-    healthScore: a.healthScore,
-    utilization: a.utilization,
-    meterValue: a.meterValue,
-    primaryMeter: a.primaryMeter,
-    registrationNo: a.registrationNo,
-    project: a.project?.code ?? "—",
-  }));
+/**
+ * Everything the company runs, in one place.
+ *
+ * Two routes folded in here: the old `/fleet` register and `/master/assets`,
+ * which held the identity numbers and meter history for the same machines.
+ * Splitting them was a filing decision, not an operational one — the person
+ * asking "is this tipper's registration on file?" is the person looking at the
+ * tipper — so they are now two tabs over one list.
+ */
+const TABS: Tab[] = [
+  { key: "register", label: "Vehicles & Equipment" },
+  { key: "records", label: "Vehicle Details" },
+];
 
-  const active = assets.filter((a) => a.status === "Active").length;
-  const idle = assets.filter((a) => a.status === "Idle").length;
-  const maint = assets.filter((a) => a.status === "Under-Maintenance" || a.status === "Breakdown").length;
+export default async function FleetPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  await requirePage("fleet.view");
+  const tab = resolveTab((await searchParams).tab, TABS);
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Assets &amp; Equipment</h1>
-          <p className="text-sm text-slate-500">Unified register — owned, leased, hired &amp; contractor fleet</p>
-        </div>
-        <AssetEntry projects={projOpts} />
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-ink-900">Fleet</h1>
+        <p className="text-sm text-slate-500">Gaadi aur machine — kaunsi hai, kahan hai, kiske paas hai</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Total Assets" value={num(assets.length)} accent="brand" icon={<Truck className="h-5 w-5" />} />
-        <StatCard label="Active" value={num(active)} accent="emerald" icon={<CircleCheck className="h-5 w-5" />} />
-        <StatCard label="Idle" value={num(idle)} accent="amber" icon={<CirclePause className="h-5 w-5" />} />
-        <StatCard label="In Workshop / Down" value={num(maint)} accent="rose" icon={<Wrench className="h-5 w-5" />} />
-      </div>
+      <PageTabs tabs={TABS} active={tab} basePath="/fleet" />
 
-      <FleetTable rows={rows} />
+      {tab === "register" ? <Register /> : <VehicleRecords />}
     </div>
   );
 }

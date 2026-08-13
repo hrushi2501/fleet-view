@@ -5,10 +5,12 @@ import { sodViolations, PERMISSIONS, ALL_CODES, type RoleLite } from "@/lib/rbac
 import { inr, num } from "@/lib/utils";
 import { ShieldCheck, TriangleAlert, Users, KeyRound } from "lucide-react";
 import Link from "next/link";
+import { requireAdminPage } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
 export default async function RolesPage() {
+  await requireAdminPage("admin.roles");
   const [roles, users] = await Promise.all([
     db.role.findMany({ include: { _count: { select: { users: true } } }, orderBy: { name: "asc" } }),
     db.user.findMany({ include: { roleRef: true }, orderBy: { name: "asc" } }),

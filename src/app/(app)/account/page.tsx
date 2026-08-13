@@ -2,10 +2,12 @@ import { getSession, ROLE_LABEL } from "@/lib/auth";
 import { Card, SectionTitle } from "@/components/ui";
 import { ChangePasswordForm } from "@/components/AccountForms";
 import { UserCircle } from "lucide-react";
+import { requirePage } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
 export default async function AccountPage() {
+  await requirePage(null);
   const user = await getSession();
   return (
     <div className="mx-auto max-w-xl space-y-6">

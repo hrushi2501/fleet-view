@@ -3,10 +3,12 @@ import { Card, SectionTitle, Badge } from "@/components/ui";
 import { inr, num } from "@/lib/utils";
 import { FileDown, FileText } from "lucide-react";
 import { REPORT_CATALOGUE } from "@/lib/reporting";
+import { requirePage } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
 export default async function ReportsPage() {
+  await requirePage("reports.view");
   const [assets, fuelIssues, trips, wos, docs, costs] = await Promise.all([
     db.asset.findMany(),
     db.fuelTransaction.findMany({ where: { type: "ISSUE" } }),
@@ -46,12 +48,12 @@ export default async function ReportsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink-900">Reports &amp; KPIs</h1>
-        <p className="text-sm text-slate-500">Live KPI catalog with targets, plus the full report library</p>
+        <h1 className="text-2xl font-bold tracking-tight text-ink-900">Reports</h1>
+        <p className="text-sm text-slate-500">Live performance measures with their targets, plus every report you can pull</p>
       </div>
 
       <Card>
-        <SectionTitle title="KPI Catalog" subtitle="Live values vs target bands" />
+        <SectionTitle title="Performance Measures" subtitle="Where each number stands against its target" />
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
           {kpis.map((k) => (
             <div key={k.label} className="rounded-xl border border-slate-100 p-4">

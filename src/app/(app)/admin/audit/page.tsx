@@ -3,6 +3,7 @@ import { Card, SectionTitle, Badge, StatCard } from "@/components/ui";
 import { num, fmtDate, timeAgo } from "@/lib/utils";
 import { KeyRound, Activity, Users, ArrowLeft, ShieldCheck } from "lucide-react";
 import Link from "next/link";
+import { requireAdminPage } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,7 @@ const ACTION_BADGE: Record<string, string> = {
 };
 
 export default async function AuditPage() {
+  await requireAdminPage("admin.audit");
   const since = new Date(); since.setDate(since.getDate() - 90);
   const [events, total, actors] = await Promise.all([
     db.auditEvent.findMany({ orderBy: { at: "desc" }, take: 300 }),
