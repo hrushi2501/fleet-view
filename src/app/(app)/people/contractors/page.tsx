@@ -6,7 +6,7 @@ import { utilisation, unitOf, type ContractLite, type LogLite } from "@/lib/hire
 import { inr, num, fmtDate, ASSET_CLASS_LABEL } from "@/lib/utils";
 import { Handshake, TriangleAlert, IndianRupee, Gauge, CalendarClock } from "lucide-react";
 import Link from "next/link";
-import { requirePage } from "@/lib/access";
+import { requirePage, assetScope } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +22,9 @@ const RATE_LABEL: Record<string, string> = {
  * People asks about staff.
  */
 export default async function ContractorsPage() {
-  await requirePage("hire.view");
+  const access = await requirePage("hire.view");
+  // Rows, not just the page: a scoped supervisor sees their own sites.
+  const visible = assetScope(access);
   const [contracts, hiredAssets] = await Promise.all([
     db.hireContract.findMany({
       include: {
@@ -31,7 +33,7 @@ export default async function ContractorsPage() {
       },
       orderBy: [{ status: "asc" }, { vendor: "asc" }],
     }),
-    db.asset.findMany({ where: { ownershipType: { in: ["HIRED", "CONTRACTOR"] } }, orderBy: { code: "asc" } }),
+    db.asset.findMany({ where: { ownershipType: { in: ["HIRED", "CONTRACTOR"] }, ...visible }, orderBy: { code: "asc" } }),
   ]);
 
   const assetOpts = hiredAssets.map((a) => ({ id: a.id, label: `${a.code} — ${a.registrationNo ?? a.name} (${ASSET_CLASS_LABEL[a.assetClass] ?? a.assetClass})` }));

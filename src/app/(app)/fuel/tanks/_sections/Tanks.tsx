@@ -7,13 +7,16 @@ import { getDieselRate } from "@/lib/settings";
 import { Droplets, TriangleAlert, ArrowDownToLine, ArrowUpFromLine, Ruler, IndianRupee } from "lucide-react";
 import Link from "next/link";
 
-import { requirePage } from "@/lib/access";
+import { requirePage, assetScope, projectScope } from "@/lib/access";
 
 /**
  * The site tanks themselves: what is in each one and what has moved through it.
  */
 export async function Tanks() {
-  await requirePage("fuel.view");
+  const access = await requirePage("fuel.view");
+  // Rows, not just the page: a scoped supervisor sees their own sites.
+  const visible = assetScope(access);
+  const visibleProjects = projectScope(access);
   const [tanks, projects, assets, dieselRate] = await Promise.all([
     db.fuelTank.findMany({
       include: {
@@ -24,8 +27,8 @@ export async function Tanks() {
       },
       orderBy: { name: "asc" },
     }),
-    db.project.findMany({ orderBy: { code: "asc" } }),
-    db.asset.findMany({ select: { id: true, code: true, registrationNo: true, name: true } }),
+    db.project.findMany({ where: visibleProjects, orderBy: { code: "asc" } }),
+    db.asset.findMany({ where: visible, select: { id: true, code: true, registrationNo: true, name: true } }),
     getDieselRate(),
   ]);
 

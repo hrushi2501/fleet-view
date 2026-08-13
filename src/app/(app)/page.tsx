@@ -6,16 +6,18 @@ import { inr, num, timeAgo, ASSET_CLASS_LABEL, SEVERITY_COLOR, healthColor } fro
 import { Truck, Fuel, TriangleAlert, Activity, Wrench, ShieldAlert, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { businessDayShort } from "@/lib/business-time";
-import { requirePage } from "@/lib/access";
+import { requirePage, assetScope } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
 export default async function Dashboard() {
-  await requirePage(null);
+  const access = await requirePage(null);
+  // Rows, not just the page: a scoped supervisor sees their own sites.
+  const visible = assetScope(access);
   const [assets, statusGroups, fuelIssues, openCritical, expiringDocs, costs, recentAlerts] = await Promise.all([
-    db.asset.findMany(),
+    db.asset.findMany({ where: visible }),
     db.asset.groupBy({ by: ["status"], _count: true }),
-    db.fuelTransaction.findMany({ where: { type: "ISSUE" } }),
+    db.fuelTransaction.findMany({ where: { type: "ISSUE", asset: visible } }),
     db.alert.count({ where: { status: "Open", severity: "Critical" } }),
     db.complianceDoc.count({ where: { status: { in: ["Expiring", "Expired"] } } }),
     db.costTransaction.findMany(),

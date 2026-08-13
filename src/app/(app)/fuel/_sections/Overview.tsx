@@ -10,7 +10,7 @@ import { Fuel, TriangleAlert, Droplets, Gauge, ShieldAlert, IndianRupee, Trendin
 import Link from "next/link";
 
 import { businessMonth } from "@/lib/business-time";
-import { requirePage } from "@/lib/access";
+import { requirePage, assetScope } from "@/lib/access";
 
 /**
  * Diesel in, diesel out, and what it bought — the module's front page.
@@ -21,9 +21,11 @@ import { requirePage } from "@/lib/access";
  * minutes apart.
  */
 export async function Overview() {
-  await requirePage("fuel.view");
+  const access = await requirePage("fuel.view");
+  // Rows, not just the page: a scoped supervisor sees their own sites.
+  const visible = assetScope(access);
   const [issues, receipts, tanks, assets, projects] = await Promise.all([
-    db.fuelTransaction.findMany({ where: { type: "ISSUE" }, include: { asset: true }, orderBy: { date: "asc" } }),
+    db.fuelTransaction.findMany({ where: { type: "ISSUE", asset: visible }, include: { asset: true }, orderBy: { date: "asc" } }),
     db.fuelTransaction.findMany({ where: { type: "RECEIPT" } }),
     db.fuelTank.findMany(),
     db.asset.findMany({ orderBy: { code: "asc" } }),

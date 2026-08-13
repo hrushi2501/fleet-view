@@ -5,7 +5,7 @@ import { getDieselRate } from "@/lib/settings";
 import { Fuel, Truck, MapPin, IndianRupee, Clock, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 
-import { requirePage } from "@/lib/access";
+import { requirePage, assetScope } from "@/lib/access";
 
 /**
  * Every fill, with its time, place and photographs.
@@ -15,7 +15,9 @@ import { requirePage } from "@/lib/access";
  * the pump photo", which is what this is.
  */
 export async function FuelRecords() {
-  await requirePage("fuel.view");
+  const access = await requirePage("fuel.view");
+  // Rows, not just the page: a scoped supervisor sees their own sites.
+  const visible = assetScope(access);
   const [issues, assets, tanks, dieselRate] = await Promise.all([
     db.fuelTransaction.findMany({
       where: { type: "ISSUE" },
@@ -23,7 +25,7 @@ export async function FuelRecords() {
       orderBy: { date: "desc" },
       take: 100,
     }),
-    db.asset.findMany({ orderBy: { code: "asc" } }),
+    db.asset.findMany({ where: visible, orderBy: { code: "asc" } }),
     db.fuelTank.findMany(),
     getDieselRate(),
   ]);

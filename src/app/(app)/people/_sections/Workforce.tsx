@@ -22,7 +22,7 @@ import {
   IndianRupee,
 } from "lucide-react";
 import Link from "next/link";
-import { requirePage } from "@/lib/access";
+import { requirePage, assetScope, projectScope } from "@/lib/access";
 
 // Row types derived from Prisma — keeps callback params fully typed without spreading `any`.
 type DriverRow = Prisma.DriverGetPayload<Record<string, never>>;
@@ -63,7 +63,10 @@ const SEV: Record<string, string> = {
  * twice and drawing a second row of tabs under the first.
  */
 export async function Workforce({ tab }: { tab: string }) {
-  await requirePage("people.view");
+  const access = await requirePage("people.view");
+  // Rows, not just the page: a scoped supervisor sees their own sites.
+  const visible = assetScope(access);
+  const visibleProjects = projectScope(access);
   const activeTab = tab === "safety" ? "safety" : "overview";
 
   // Single data fetch for both tabs — avoids redundant DB round-trips on tab switch
@@ -80,7 +83,7 @@ export async function Workforce({ tab }: { tab: string }) {
       take: 300,
     }),
     db.competency.findMany(),
-    db.asset.findMany({ orderBy: { code: "asc" } }),
+    db.asset.findMany({ where: visible, orderBy: { code: "asc" } }),
   ]);
 
   // ---- Derived data used by Overview tab ----

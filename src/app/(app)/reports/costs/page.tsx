@@ -7,7 +7,7 @@ import { IndianRupee, TrendingUp, TrendingDown, Wallet, Recycle } from "lucide-r
 import Link from "next/link";
 
 import { supportedQty, type ContractLite, type LogLite } from "@/lib/hire";
-import { requirePage } from "@/lib/access";
+import { requirePage, assetScope } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -20,12 +20,14 @@ const WINDOW_DAYS = 365;
  * questions.
  */
 export default async function CostsPage() {
-  await requirePage("cost.view");
+  const access = await requirePage("cost.view");
+  // Rows, not just the page: a scoped supervisor sees their own sites.
+  const visible = assetScope(access);
   const now = new Date();
   const since = new Date(now); since.setDate(since.getDate() - WINDOW_DAYS);
 
   const [assets, projects, fuelAgg, woAgg, hireContracts, manualCosts, revenues, prodAgg, recentCosts, allocations, fuelTxnsForP, wosForP] = await Promise.all([
-    db.asset.findMany({ orderBy: { code: "asc" } }),
+    db.asset.findMany({ where: visible, orderBy: { code: "asc" } }),
     db.project.findMany({ orderBy: { code: "asc" } }),
     db.fuelTransaction.groupBy({ by: ["assetId"], where: { type: "ISSUE", date: { gte: since } }, _sum: { amount: true } }),
     db.workOrder.groupBy({ by: ["assetId"], where: { reportedAt: { gte: since } }, _sum: { totalCost: true, downtimeHrs: true } }),
@@ -35,7 +37,7 @@ export default async function CostsPage() {
     db.productionLog.groupBy({ by: ["assetId"], where: { date: { gte: since } }, _sum: { tonnage: true, volumeM3: true, trips: true, workedHours: true, distanceKm: true } }),
     db.costTransaction.findMany({ where: { date: { gte: since } }, include: { asset: true, project: true }, orderBy: { date: "desc" }, take: 30 }),
     db.allocation.findMany({ where: { status: { not: "CANCELLED" }, OR: [ { toDate: null }, { toDate: { gte: since } } ], fromDate: { lte: now } } }),
-    db.fuelTransaction.findMany({ where: { type: "ISSUE", date: { gte: since } }, select: { assetId: true, projectId: true, amount: true } }),
+    db.fuelTransaction.findMany({ where: { type: "ISSUE", date: { gte: since }, asset: visible }, select: { assetId: true, projectId: true, amount: true } }),
     db.workOrder.findMany({ where: { reportedAt: { gte: since } }, select: { assetId: true, projectId: true, totalCost: true } }),
   ]);
 

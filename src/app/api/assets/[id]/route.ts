@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getSession } from "@/lib/auth";
+import { requireApi, canSeeAsset } from "@/lib/access";
 import { analyseUsage, describeUsage } from "@/lib/fleet-analytics";
 
 export const dynamic = "force-dynamic";
@@ -21,8 +21,19 @@ function redactRaw(raw: unknown): unknown {
 }
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await getSession())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Previously this asked only whether a session existed. Any signed-in
+  // account — a driver included — could read any vehicle by id: its position,
+  // driver, costs, documents and full telemetry payload.
+  const auth = await requireApi("fleet.view");
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { id } = await params;
+
+  // 404 rather than 403 when the vehicle exists but is not theirs. Confirming
+  // that a record exists is itself a disclosure — it tells a scoped supervisor
+  // exactly how to enumerate the rest of the fleet.
+  if (!(await canSeeAsset(auth.access, id))) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   const asset = await db.asset.findUnique({
     where: { id },

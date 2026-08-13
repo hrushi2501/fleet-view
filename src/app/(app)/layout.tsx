@@ -1,6 +1,6 @@
 import { Sidebar } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
-import { getAccess } from "@/lib/access";
+import { getAccess, assetScope } from "@/lib/access";
 import { navFor } from "@/lib/navigation";
 import { db } from "@/lib/db";
 import { redirect } from "next/navigation";
@@ -29,8 +29,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         // eslint-disable-next-line react-hooks/purity
         const soon = new Date(Date.now() + 15 * 86400000);
         const [serviceDue, breakdowns] = await Promise.all([
-          db.asset.count({ where: { serviceDueDate: { not: null, lte: soon } } }),
-          db.workOrder.count({ where: { type: "BREAKDOWN", status: { in: ["Open", "In-Progress"] } } }),
+          db.asset.count({ where: { serviceDueDate: { not: null, lte: soon }, ...assetScope(access) } }),
+          db.workOrder.count({ where: { type: "BREAKDOWN", status: { in: ["Open", "In-Progress"] }, asset: assetScope(access) } }),
         ]);
         return { notifCount: serviceDue + breakdowns };
       })();

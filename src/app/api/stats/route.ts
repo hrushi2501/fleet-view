@@ -1,20 +1,26 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requirePermission } from "@/lib/auth";
+import { requireApi, assetScope, projectIdScope } from "@/lib/access";
 
 export async function GET() {
-  const auth = await requirePermission("fleet.view");
+  const auth = await requireApi("fleet.view");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
+  // Every figure below is a company-wide total unless it is bounded by what the
+  // caller may see. A headline count is still data: "your fleet is 4 vehicles"
+  // and "the company runs 60" are different disclosures.
+  const visibleAssets = assetScope(auth.access);
+  const byProject = projectIdScope(auth.access);
+
   const [assets, statusGroups, fuelIssues, openAlerts, expiring, costs] = await Promise.all([
-    db.asset.count(),
-    db.asset.groupBy({ by: ["status"], _count: true }),
+    db.asset.count({ where: visibleAssets }),
+    db.asset.groupBy({ by: ["status"], where: visibleAssets, _count: true }),
     // Only two columns are reduced over below; the row also carries notes,
     // photo URLs and geo — needless bytes for every fuel issue ever recorded.
-    db.fuelTransaction.findMany({ where: { type: "ISSUE" }, select: { quantity: true, sensorRise: true } }),
-    db.alert.count({ where: { status: "Open" } }),
-    db.complianceDoc.count({ where: { status: { in: ["Expiring", "Expired"] } } }),
-    db.costTransaction.aggregate({ _sum: { amount: true } }),
+    db.fuelTransaction.findMany({ where: { type: "ISSUE", asset: visibleAssets }, select: { quantity: true, sensorRise: true } }),
+    db.alert.count({ where: { status: "Open", ...(Object.keys(visibleAssets).length ? { asset: visibleAssets } : {}) } }),
+    db.complianceDoc.count({ where: { status: { in: ["Expiring", "Expired"] }, ...(Object.keys(visibleAssets).length ? { asset: visibleAssets } : {}) } }),
+    db.costTransaction.aggregate({ where: byProject, _sum: { amount: true } }),
   ]);
 
   const lossL = fuelIssues.reduce((s, f) => s + Math.max(0, f.quantity - f.sensorRise), 0);

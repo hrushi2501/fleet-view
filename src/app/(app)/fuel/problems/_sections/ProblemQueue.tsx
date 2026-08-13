@@ -5,7 +5,7 @@ import { inr, num, fmtDate, timeAgo } from "@/lib/utils";
 import { ShieldAlert, IndianRupee, HandCoins, Search } from "lucide-react";
 import Link from "next/link";
 
-import { requirePage } from "@/lib/access";
+import { requirePage, assetScope, projectScope } from "@/lib/access";
 
 const SEV: Record<string, string> = {
   HIGH: "bg-rose-100 text-rose-700 ring-rose-600/20",
@@ -34,11 +34,25 @@ const SOURCE_LABEL: Record<string, string> = {
  * table underneath is still `FuelAnomaly`.
  */
 export async function ProblemQueue() {
-  await requirePage("fuel.view");
-  const [anomalies, tanks, assets] = await Promise.all([
-    db.fuelAnomaly.findMany({ orderBy: [{ status: "asc" }, { score: "desc" }, { detectedAt: "desc" }], take: 200 }),
+  const access = await requirePage("fuel.view");
+  // Rows, not just the page: a scoped supervisor sees their own sites.
+  const visible = assetScope(access);
+  const visibleProjects = projectScope(access);
+  // `FuelAnomaly` carries a bare `assetId` with no relation to filter through,
+  // so the vehicles this caller may see are resolved first and the queue is
+  // limited to them. A finding names a vehicle and a driver; it must not appear
+  // to a supervisor who is not responsible for either.
+  const assets = await db.asset.findMany({ where: visible, select: { id: true, code: true } });
+  const scoped = Object.keys(visible).length > 0;
+  const allowedIds = assets.map((a) => a.id);
+
+  const [anomalies, tanks] = await Promise.all([
+    db.fuelAnomaly.findMany({
+      where: scoped ? { assetId: { in: allowedIds } } : {},
+      orderBy: [{ status: "asc" }, { score: "desc" }, { detectedAt: "desc" }],
+      take: 200,
+    }),
     db.fuelTank.findMany({ select: { id: true, name: true } }),
-    db.asset.findMany({ select: { id: true, code: true } }),
   ]);
 
   const tankName = new Map(tanks.map((t) => [t.id, t.name]));

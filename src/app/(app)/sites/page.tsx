@@ -17,7 +17,7 @@ import {
   IndianRupee, FolderKanban, Boxes,
 } from "lucide-react";
 import Link from "next/link";
-import { requirePage } from "@/lib/access";
+import { requirePage, assetScope, projectScope } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -46,15 +46,18 @@ const MOB_BADGE: Record<string, string> = {
  * worse than either page was on its own.
  */
 export default async function SitesPage() {
-  await requirePage("production.view");
+  const access = await requirePage("production.view");
+  // Rows, not just the page: a scoped supervisor sees their own sites.
+  const visible = assetScope(access);
+  const visibleProjects = projectScope(access);
   /* ───────── data fetch ───────── */
   const [projects, sites, plans, allocations, mobs, assets] = await Promise.all([
-    db.project.findMany({ include: { _count: { select: { assets: true } } }, orderBy: { code: "asc" } }),
+    db.project.findMany({ where: visibleProjects, include: { _count: { select: { assets: true } } }, orderBy: { code: "asc" } }),
     db.site.findMany({ include: { project: true }, orderBy: { code: "asc" } }),
     db.equipmentPlan.findMany(),
     db.allocation.findMany({ include: { asset: true, project: true, site: true }, orderBy: { fromDate: "desc" }, take: 300 }),
     db.mobilizationOrder.findMany({ include: { asset: true, toProject: true }, orderBy: { requestedDate: "desc" }, take: 100 }),
-    db.asset.findMany({ orderBy: { code: "asc" } }),
+    db.asset.findMany({ where: visible, orderBy: { code: "asc" } }),
   ]);
 
   /* ───────── option lists for forms ───────── */

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requirePermission } from "@/lib/auth";
+import { requireApi, assetScope } from "@/lib/access";
 
 const MAX_ROWS = 500;
 
@@ -13,7 +13,7 @@ const MAX_ROWS = 500;
  * included, the credential needed to check in to any machine in the fleet.
  */
 export async function GET(req: Request) {
-  const auth = await requirePermission("fleet.view");
+  const auth = await requireApi("fleet.view");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const { searchParams } = new URL(req.url);
@@ -23,7 +23,10 @@ export async function GET(req: Request) {
   const take = Number.isFinite(limit) && limit > 0 ? Math.min(limit, MAX_ROWS) : MAX_ROWS;
 
   const assets = await db.asset.findMany({
-    where: { assetClass, status },
+    // Scoped, not just permitted. A supervisor assigned to one site holds
+    // fleet.view like everyone else; what makes their access theirs is that
+    // the query never reaches another site's vehicles.
+    where: { assetClass, status, ...assetScope(auth.access) },
     select: {
       id: true, code: true, registrationNo: true, name: true, assetClass: true,
       category: true, ownershipType: true, make: true, model: true, yearMfg: true,

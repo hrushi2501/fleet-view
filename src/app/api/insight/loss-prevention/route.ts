@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requirePermission } from "@/lib/auth";
+import { requireApi, assetScope } from "@/lib/access";
 import { scorecard, offenderProfiles, type CaseLite } from "@/lib/loss-prevention";
 import { getFraudIntelligence } from "@/app/(app)/loss-prevention/actions";
 
@@ -10,7 +10,7 @@ import { getFraudIntelligence } from "@/app/(app)/loss-prevention/actions";
  * which is both the client's commercial data and a personal-data exposure.
  */
 export async function GET() {
-  const auth = await requirePermission("loss.view");
+  const auth = await requireApi("loss.view");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   try {
@@ -20,7 +20,7 @@ export async function GET() {
         orderBy: [{ status: "asc" }, { score: "desc" }, { openedAt: "desc" }],
         take: 2000,
       }),
-      db.asset.findMany({ select: { id: true, code: true, registrationNo: true, name: true } }),
+      db.asset.findMany({ where: assetScope(auth.access), select: { id: true, code: true, registrationNo: true, name: true } }),
       db.driver.findMany({ select: { id: true, name: true, empCode: true } }),
       getFraudIntelligence(),
     ]);

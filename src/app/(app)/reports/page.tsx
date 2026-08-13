@@ -3,15 +3,17 @@ import { Card, SectionTitle, Badge } from "@/components/ui";
 import { inr, num } from "@/lib/utils";
 import { FileDown, FileText } from "lucide-react";
 import { REPORT_CATALOGUE } from "@/lib/reporting";
-import { requirePage } from "@/lib/access";
+import { requirePage, assetScope } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
 export default async function ReportsPage() {
-  await requirePage("reports.view");
+  const access = await requirePage("reports.view");
+  // Rows, not just the page: a scoped supervisor sees their own sites.
+  const visible = assetScope(access);
   const [assets, fuelIssues, trips, wos, docs, costs] = await Promise.all([
-    db.asset.findMany(),
-    db.fuelTransaction.findMany({ where: { type: "ISSUE" } }),
+    db.asset.findMany({ where: visible }),
+    db.fuelTransaction.findMany({ where: { type: "ISSUE", asset: visible } }),
     db.trip.findMany(),
     db.workOrder.findMany(),
     db.complianceDoc.findMany(),

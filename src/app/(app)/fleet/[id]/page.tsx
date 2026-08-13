@@ -5,13 +5,18 @@ import { AssetEntry, DeleteButton } from "@/components/EntryForms";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Gauge, Fuel, Wrench, ShieldCheck, MapPin } from "lucide-react";
-import { requirePage } from "@/lib/access";
+import { requirePage, canSeeAsset } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
 export default async function AssetDetail({ params }: { params: Promise<{ id: string }> }) {
-  await requirePage("fleet.view");
+  const access = await requirePage("fleet.view");
   const { id } = await params;
+
+  // Holding fleet.view is permission to see *your* vehicles, not any vehicle
+  // whose id you can type. Not-found rather than forbidden: telling a scoped
+  // supervisor that a record exists is how you enumerate the rest of the fleet.
+  if (!(await canSeeAsset(access, id))) notFound();
   const asset = await db.asset.findUnique({
     where: { id },
     include: {

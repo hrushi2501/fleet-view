@@ -197,6 +197,26 @@ export async function requirePage(code: string | null): Promise<Access> {
   return access;
 }
 
+/**
+ * Guard for an API route.
+ *
+ * Unlike `requirePermission` in `auth.ts`, this hands back the caller's full
+ * access context, because for an API the permission check is only half the
+ * job: a route that confirms `fleet.view` and then returns every vehicle has
+ * enforced nothing for a supervisor scoped to one site. The scope helpers below
+ * are meant to be applied to the query in the same breath.
+ */
+export async function requireApi(
+  code: string,
+): Promise<{ ok: true; access: Access } | { ok: false; status: 401 | 403; error: string }> {
+  const access = await getAccess();
+  if (!access) return { ok: false, status: 401, error: "Not signed in." };
+  if (!access.can(code)) {
+    return { ok: false, status: 403, error: `Your role does not permit this (${code}).` };
+  }
+  return { ok: true, access };
+}
+
 /** Guard for pages only the Admin band may open. */
 export async function requireAdminPage(code: string): Promise<Access> {
   const access = await getAccess();

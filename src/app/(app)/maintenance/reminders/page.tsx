@@ -6,7 +6,7 @@ import { PushButton, SendTestPush } from "@/components/PushButton";
 import { SnoozeModal, AlertActionButtons, RaiseWoFromReminderButton } from "@/components/ReminderForms";
 import { pmDue, type ScheduleLite } from "@/lib/maintenance";
 import Link from "next/link";
-import { requirePage } from "@/lib/access";
+import { requirePage, assetScope } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -20,14 +20,16 @@ const DAY = 86400000;
  * under Maintenance and is called Service Due in the menu.
  */
 export default async function RemindersPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
-  await requirePage("maintenance.view");
+  const access = await requirePage("maintenance.view");
+  // Rows, not just the page: a supervisor scoped to a site sees that site.
+  const visible = assetScope(access);
   const resolvedParams = await searchParams;
   const tab = resolvedParams?.tab || "all";
 
   const [assets, breakdowns, expiringDocsList, alerts, schedules] = await Promise.all([
-    db.asset.findMany({ where: { serviceDueDate: { not: null } }, include: { project: true } }),
-    db.workOrder.findMany({ where: { type: "BREAKDOWN", status: { in: ["Open", "In-Progress"] } }, include: { asset: true }, orderBy: { reportedAt: "desc" } }),
-    db.complianceDoc.findMany({ where: { status: { in: ["Expiring", "Expired"] } }, include: { asset: true }, orderBy: { expiryDate: "asc" } }),
+    db.asset.findMany({ where: { serviceDueDate: { not: null }, ...visible }, include: { project: true } }),
+    db.workOrder.findMany({ where: { type: "BREAKDOWN", status: { in: ["Open", "In-Progress"] }, asset: visible }, include: { asset: true }, orderBy: { reportedAt: "desc" } }),
+    db.complianceDoc.findMany({ where: { status: { in: ["Expiring", "Expired"] }, asset: visible }, include: { asset: true }, orderBy: { expiryDate: "asc" } }),
     db.alert.findMany({ where: { status: { in: ["Open", "Acknowledged"] } }, include: { asset: true }, orderBy: { createdAt: "desc" } }),
     db.maintenanceSchedule.findMany({ where: { active: true }, include: { asset: true } }),
   ]);

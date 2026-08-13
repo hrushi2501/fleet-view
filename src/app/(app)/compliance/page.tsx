@@ -5,15 +5,17 @@ import { ComplianceEntry } from "@/components/EntryForms";
 import { num, fmtDate, STATUS_COLOR } from "@/lib/utils";
 import { ShieldCheck, ShieldAlert, ShieldX, FileText } from "lucide-react";
 import Link from "next/link";
-import { requirePage } from "@/lib/access";
+import { requirePage, assetScope } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
 export default async function CompliancePage() {
-  await requirePage("compliance.view");
+  const access = await requirePage("compliance.view");
+  // Rows, not just the page: a supervisor scoped to a site sees that site.
+  const visible = assetScope(access);
   const [docs, assets] = await Promise.all([
-    db.complianceDoc.findMany({ include: { asset: true }, orderBy: { expiryDate: "asc" } }),
-    db.asset.findMany({ orderBy: { code: "asc" } }),
+    db.complianceDoc.findMany({ where: { asset: visible }, include: { asset: true }, orderBy: { expiryDate: "asc" } }),
+    db.asset.findMany({ where: visible, orderBy: { code: "asc" } }),
   ]);
   const assetOpts = assets.map((a) => ({ id: a.id, label: `${a.code} — ${a.name}` }));
 
@@ -48,8 +50,12 @@ export default async function CompliancePage() {
         </Card>
         <Card className="lg:col-span-2 p-0">
           <div className="p-5 pb-3"><SectionTitle title="Expiry Watchlist" subtitle="Expiring & expired — needs renewal" /></div>
-          <div className="max-h-[320px] overflow-y-auto">
-            <table className="w-full text-sm">
+          {/* Scrolls in both directions. This is opened on a phone at a site
+              gate to check whether a vehicle is legal to move, and the columns
+              do not fit that width — without the horizontal scroll the last
+              column is simply unreachable. */}
+          <div className="max-h-[320px] overflow-y-auto overflow-x-auto">
+            <table className="w-full min-w-[560px] text-sm">
               <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="px-5 py-3 font-medium">Asset</th>

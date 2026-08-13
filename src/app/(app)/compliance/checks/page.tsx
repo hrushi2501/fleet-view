@@ -5,7 +5,7 @@ import { assetCompliance, renewalForecast, REQUIRED_DOCS, DOC_LABEL, type DocLit
 import { inr, num, fmtDate, ASSET_CLASS_LABEL } from "@/lib/utils";
 import { ShieldCheck, Ban, FileWarning, CalendarClock, IndianRupee, ArrowLeft, FileX2 } from "lucide-react";
 import Link from "next/link";
-import { requirePage } from "@/lib/access";
+import { requirePage, assetScope } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -24,10 +24,12 @@ const DOC_TYPES = ["RC", "Insurance", "Fitness", "Permit", "PUC", "RoadTax"];
  * check anyone can open.
  */
 export default async function ComplianceChecksPage() {
-  await requirePage("compliance.view");
+  const access = await requirePage("compliance.view");
+  // Rows, not just the page: a supervisor scoped to a site sees that site.
+  const visible = assetScope(access);
   const [assets, docs] = await Promise.all([
-    db.asset.findMany({ orderBy: { code: "asc" } }),
-    db.complianceDoc.findMany({ orderBy: { expiryDate: "asc" } }),
+    db.asset.findMany({ where: visible, orderBy: { code: "asc" } }),
+    db.complianceDoc.findMany({ where: { asset: visible }, orderBy: { expiryDate: "asc" } }),
   ]);
 
   const assetOpts = assets.map((a) => ({ id: a.id, label: `${a.code} — ${a.registrationNo ?? a.name}` }));

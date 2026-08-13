@@ -7,7 +7,7 @@ import { inr, num, fmtDate, timeAgo } from "@/lib/utils";
 import { LiveAiPoller } from "@/components/LiveAiPoller";
 import { ShieldAlert, HandCoins, IndianRupee, Clock, Repeat2, SlidersHorizontal, TriangleAlert, Fuel, Gauge } from "lucide-react";
 import Link from "next/link";
-import { requirePage } from "@/lib/access";
+import { requirePage, assetScope, projectScope } from "@/lib/access";
 
 const SEV: Record<string, string> = {
   HIGH: "bg-rose-100 text-rose-700 ring-rose-600/20",
@@ -36,14 +36,17 @@ const DOMAIN_LABEL: Record<string, string> = {
  * entries meant the queue got worked and the cases got forgotten.
  */
 export async function LossCases() {
-  await requirePage("loss.view");
+  const access = await requirePage("loss.view");
+  // Rows, not just the page: a scoped supervisor sees their own sites.
+  const visible = assetScope(access);
+  const visibleProjects = projectScope(access);
   const [cases, assets, drivers, fraudIntel] = await Promise.all([
     db.fraudCase.findMany({
       include: { asset: { select: { code: true } }, driver: { select: { name: true } }, _count: { select: { evidence: true, recoveries: true } } },
       orderBy: [{ status: "asc" }, { score: "desc" }, { openedAt: "desc" }],
       take: 300,
     }),
-    db.asset.findMany({ select: { id: true, code: true, registrationNo: true, name: true }, orderBy: { code: "asc" } }),
+    db.asset.findMany({ where: visible, select: { id: true, code: true, registrationNo: true, name: true }, orderBy: { code: "asc" } }),
     db.driver.findMany({ select: { id: true, name: true, empCode: true }, orderBy: { name: "asc" } }),
     getFraudIntelligence(),
   ]);

@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { requirePermission } from "@/lib/auth";
+import { requireApi, assetScope, projectIdScope } from "@/lib/access";
 import { toCsv } from "@/lib/reporting";
 import { NextResponse } from "next/server";
 
@@ -20,16 +20,21 @@ export async function GET(_req: Request, ctx: { params: Promise<{ key: string }>
   // Same rule as before — `reports.export`, with the legacy-Admin fallback while
   // roles are being installed — now expressed through the shared gate so every
   // route resolves permissions the same way.
-  const auth = await requirePermission("reports.export");
+  const auth = await requireApi("reports.export");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
-  const { session } = auth;
+  const session = auth.access.session;
+
+  // An export is the easiest way to walk out with more than you can see on
+  // screen, so it is bounded by the same scope as every other read.
+  const visibleAssets = assetScope(auth.access);
+  const byProject = projectIdScope(auth.access);
 
   const { key } = await ctx.params;
   let rows: Record<string, unknown>[] = [];
 
   switch (key) {
     case "fuel_issues": {
-      const d = await db.fuelTransaction.findMany({ where: { type: "ISSUE" }, include: { asset: true, project: true }, orderBy: { date: "desc" }, take: MAX_ROWS });
+      const d = await db.fuelTransaction.findMany({ where: { type: "ISSUE", asset: visibleAssets }, include: { asset: true, project: true }, orderBy: { date: "desc" }, take: MAX_ROWS });
       rows = d.map((x) => ({
         Date: x.date, Asset: x.asset?.code ?? "", Registration: x.asset?.registrationNo ?? "", Project: x.project?.code ?? "",
         Litres: x.quantity, Rate: x.rate, Amount: x.amount, Meter: x.meterValue, Source: x.source,
@@ -47,7 +52,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ key: string }>
       break;
     }
     case "production": {
-      const d = await db.productionLog.findMany({ include: { asset: true, project: true, driver: true }, orderBy: { date: "desc" }, take: MAX_ROWS });
+      const d = await db.productionLog.findMany({ where: byProject, include: { asset: true, project: true, driver: true }, orderBy: { date: "desc" }, take: MAX_ROWS });
       rows = d.map((x) => ({
         Date: x.date, Shift: x.shift, Asset: x.asset.code, Project: x.project?.code ?? "", Operator: x.driver?.name ?? "",
         Material: x.material ?? "", Trips: x.trips, Tonnes: x.tonnage, CubicMetres: x.volumeM3, Cycles: x.cycles,
@@ -56,7 +61,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ key: string }>
       break;
     }
     case "compliance": {
-      const d = await db.complianceDoc.findMany({ include: { asset: true }, orderBy: { expiryDate: "asc" }, take: MAX_ROWS });
+      const d = await db.complianceDoc.findMany({ where: { asset: visibleAssets }, include: { asset: true }, orderBy: { expiryDate: "asc" }, take: MAX_ROWS });
       rows = d.map((x) => ({
         Asset: x.asset.code, Registration: x.asset.registrationNo ?? "", Document: x.docType, Number: x.number,
         Issued: x.issueDate, Expires: x.expiryDate, Status: x.status, Cost: x.cost, Vendor: x.vendor ?? "",
@@ -74,7 +79,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ key: string }>
       break;
     }
     case "maintenance": {
-      const d = await db.workOrder.findMany({ include: { asset: true }, orderBy: { reportedAt: "desc" }, take: MAX_ROWS });
+      const d = await db.workOrder.findMany({ where: { asset: visibleAssets }, include: { asset: true }, orderBy: { reportedAt: "desc" }, take: MAX_ROWS });
       rows = d.map((x) => ({
         WorkOrder: x.woNo, Asset: x.asset.code, Type: x.type, Priority: x.priority, Status: x.status,
         Description: x.description, Labour: x.laborCost, Parts: x.partsCost, Total: x.totalCost,
@@ -101,7 +106,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ key: string }>
     }
     case "cost_per_asset": {
       const [assets, fuel, wo] = await Promise.all([
-        db.asset.findMany({ orderBy: { code: "asc" }, take: MAX_ROWS }),
+        db.asset.findMany({ where: visibleAssets, orderBy: { code: "asc" }, take: MAX_ROWS }),
         db.fuelTransaction.groupBy({ by: ["assetId"], where: { type: "ISSUE" }, _sum: { amount: true, quantity: true } }),
         db.workOrder.groupBy({ by: ["assetId"], _sum: { totalCost: true, downtimeHrs: true } }),
       ]);

@@ -8,7 +8,7 @@ import { scoreBreakdownRisk } from "@/lib/analytics";
 import { inr, num, fmtDate, timeAgo, STATUS_COLOR, ASSET_CLASS_LABEL } from "@/lib/utils";
 import { Wrench, TriangleAlert, Clock, BadgeCheck, Brain, CalendarClock, Activity, IndianRupee, Users, LayoutGrid, ListFilter, AlertCircle } from "lucide-react";
 import Link from "next/link";
-import { requirePage } from "@/lib/access";
+import { requirePage, assetScope } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +30,9 @@ const DUE_LABEL: Record<string, string> = { overdue: "Overdue", due: "Due now", 
 const WINDOW_DAYS = 365;
 
 export default async function MaintenancePage({ searchParams }: { searchParams: Promise<{ tab?: string; view?: string }> }) {
-  await requirePage("maintenance.view");
+  const access = await requirePage("maintenance.view");
+  // Rows, not just the page: a supervisor scoped to a site sees that site.
+  const visible = assetScope(access);
   const resolvedParams = await searchParams;
   const tab = resolvedParams?.tab || "workorders";
   const view = resolvedParams?.view || "table";
@@ -40,10 +42,10 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
 
 
   const [wos, assets, schedules, openWos, allWos] = await Promise.all([
-    db.workOrder.findMany({ include: { asset: true }, orderBy: { reportedAt: "desc" } }),
-    db.asset.findMany({ orderBy: { code: "asc" } }),
+    db.workOrder.findMany({ where: { asset: visible }, include: { asset: true }, orderBy: { reportedAt: "desc" } }),
+    db.asset.findMany({ where: visible, orderBy: { code: "asc" } }),
     db.maintenanceSchedule.findMany({ where: { active: true }, include: { asset: true }, orderBy: { taskName: "asc" } }),
-    db.workOrder.findMany({ where: { status: { in: ["Open", "In-Progress"] } }, include: { asset: true, lines: true, checklist: true }, orderBy: { reportedAt: "desc" } }),
+    db.workOrder.findMany({ where: { status: { in: ["Open", "In-Progress"] }, asset: visible }, include: { asset: true, lines: true, checklist: true }, orderBy: { reportedAt: "desc" } }),
     db.workOrder.findMany({ where: { reportedAt: { gte: since } } }),
   ]);
 

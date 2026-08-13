@@ -9,7 +9,7 @@ import { reconcilePairs, type TicketLite } from "@/lib/weighbridge";
 import { inr, num } from "@/lib/utils";
 import { ArrowLeft, Download, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import Link from "next/link";
-import { requirePage } from "@/lib/access";
+import { requirePage, assetScope } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -35,20 +35,22 @@ const BAND: Record<string, string> = {
  * discouraged the site managers who most needed the numbers from opening it.
  */
 export default async function ManagementSummaryPage() {
-  await requirePage("cost.view");
+  const access = await requirePage("cost.view");
+  // Rows, not just the page: a scoped supervisor sees their own sites.
+  const visible = assetScope(access);
   const since = new Date(); since.setDate(since.getDate() - 365);
 
   const [
     assets, fuelAgg, production, tanks, receipts, dips, fuelIssues,
     cases, hireInvoices, wos, schedules, docs, revenues, costTxns, tickets,
   ] = await Promise.all([
-    db.asset.findMany(),
+    db.asset.findMany({ where: visible }),
     db.fuelTransaction.aggregate({ where: { type: "ISSUE", date: { gte: since } }, _sum: { quantity: true, amount: true } }),
     db.productionLog.aggregate({ where: { date: { gte: since } }, _sum: { tonnage: true, volumeM3: true, workedHours: true, idleHours: true } }),
     db.fuelTank.findMany(),
     db.fuelReceipt.findMany(),
     db.tankDip.findMany(),
-    db.fuelTransaction.findMany({ where: { type: "ISSUE" } }),
+    db.fuelTransaction.findMany({ where: { type: "ISSUE", asset: visible } }),
     db.fraudCase.findMany(),
     db.hireInvoice.findMany(),
     db.workOrder.findMany({ where: { reportedAt: { gte: since } } }),

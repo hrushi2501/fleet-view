@@ -5,7 +5,7 @@ import { tyreHealth, componentHealth, detectSwaps, LEGAL_MIN_TREAD_MM, type Tyre
 import { inr, num, fmtDate } from "@/lib/utils";
 import { CircleDot, TriangleAlert, IndianRupee, ShieldAlert, Recycle, Warehouse } from "lucide-react";
 import Link from "next/link";
-import { requirePage } from "@/lib/access";
+import { requirePage, assetScope } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -30,15 +30,17 @@ const STATUS_BADGE: Record<string, string> = {
  * is maintenance work.
  */
 export default async function TyresPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
-  await requirePage("maintenance.view");
+  const access = await requirePage("maintenance.view");
+  // Rows, not just the page: a supervisor scoped to a site sees that site.
+  const visible = assetScope(access);
   const resolvedParams = await searchParams;
   const tab = resolvedParams?.tab || "register";
 
   const [tyres, events, components, assets, warehouses] = await Promise.all([
-    db.tyre.findMany({ include: { asset: true, warehouse: true }, orderBy: { serialNo: "asc" } }),
+    db.tyre.findMany({ where: Object.keys(visible).length ? { OR: [{ asset: visible }, { assetId: null }] } : {}, include: { asset: true, warehouse: true }, orderBy: { serialNo: "asc" } }),
     db.tyreEvent.findMany({ orderBy: { date: "desc" }, take: 500 }),
     db.majorComponent.findMany({ include: { asset: true, warehouse: true }, orderBy: { serialNo: "asc" } }),
-    db.asset.findMany({ orderBy: { code: "asc" } }),
+    db.asset.findMany({ where: visible, orderBy: { code: "asc" } }),
     db.inventoryWarehouse.findMany({ where: { active: true }, include: { tyres: { include: { asset: true } }, components: { include: { asset: true } } }, orderBy: { code: "asc" } }),
   ]);
 

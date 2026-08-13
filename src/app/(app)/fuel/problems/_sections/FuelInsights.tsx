@@ -8,7 +8,7 @@ import { NormForm, DipForm, TankForm } from "@/components/FuelForms";
 import { ShieldAlert, IndianRupee, Fuel, HandCoins, ArrowRight, Scale, Sparkles, TrendingUp, TrendingDown } from "lucide-react";
 import Link from "next/link";
 
-import { requirePage } from "@/lib/access";
+import { requirePage, assetScope, projectScope } from "@/lib/access";
 
 /** Safe DB fetch — returns empty array if the table doesn't exist yet. */
 async function safeFindMany<T>(fn: () => Promise<T[]>): Promise<T[]> {
@@ -24,7 +24,10 @@ async function safeFindMany<T>(fn: () => Promise<T[]>): Promise<T[]> {
  * was never a page in its own right.
  */
 export async function FuelInsights() {
-  await requirePage("fuel.view");
+  const access = await requirePage("fuel.view");
+  // Rows, not just the page: a scoped supervisor sees their own sites.
+  const visible = assetScope(access);
+  const visibleProjects = projectScope(access);
   const [tanks, issues, receipts, assets, norms, dieselRate] = await Promise.all([
     db.fuelTank.findMany({
       include: {
@@ -34,9 +37,9 @@ export async function FuelInsights() {
       },
       orderBy: { name: "asc" },
     }),
-    db.fuelTransaction.findMany({ where: { type: "ISSUE" }, include: { asset: true }, orderBy: { date: "asc" } }),
+    db.fuelTransaction.findMany({ where: { type: "ISSUE", asset: visible }, include: { asset: true }, orderBy: { date: "asc" } }),
     db.fuelReceipt.findMany({ orderBy: { date: "desc" } }),
-    db.asset.findMany({ orderBy: { code: "asc" } }),
+    db.asset.findMany({ where: visible, orderBy: { code: "asc" } }),
     safeFindMany(() => db.consumptionNorm.findMany({ orderBy: [{ unit: "asc" }, { assetClass: "asc" }] })),
     getDieselRate(),
   ]);
