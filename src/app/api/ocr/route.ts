@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { generateObject } from "ai";
 import { z } from "zod";
-import { visionModelForOdometer, visionModelForPump, visionModelForGauge } from "@/lib/ai";
+import { visionModelForOdometer, visionModelForPump, visionModelForGauge, ocrAvailable } from "@/lib/ai";
 import { validatePhotoVerification } from "@/lib/fuel-verification";
 
 export const dynamic = "force-dynamic";
@@ -68,6 +68,22 @@ const consistent = (o: { amount: number | null; volume: number | null; rate: num
 
 export async function POST(req: Request) {
   if (!(await getSession())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // Answered before touching the image: with no provider configured, every read
+  // below would throw and the driver would be told to retake a photo that was
+  // never at fault. Reading a meter is a convenience; recording the fuel is the
+  // job, so this reports the feature as unavailable and lets them type it.
+  if (!ocrAvailable()) {
+    return NextResponse.json({
+      value: null, litres: null, rate: null, amount: null,
+      confidence: "low",
+      numericConfidence: 0,
+      recommendedUiAction: "MANUAL_ENTRY",
+      unavailable: true,
+      error: "Photo reading is switched off on this system. Please type the number in.",
+    });
+  }
+
   try {
     const form = await req.formData();
     const file = form.get("image");
@@ -198,14 +214,22 @@ export async function POST(req: Request) {
     // Provider SDK errors quote the failing request — endpoint, headers and at
     // times the key — so the detail stays server-side.
     console.error("[API] /ocr POST error:", e);
+
+    // A provider outage, a timeout or a bad key is not a bad photograph, and
+    // telling the driver to retake one sends them round a loop that cannot
+    // end. Anything that is not the model genuinely reading the image and
+    // failing is reported as the service being unavailable, which lets them
+    // enter the number by hand and get on with the fill.
     return NextResponse.json({
       value: null,
       litres: null,
       rate: null,
+      amount: null,
       confidence: "low",
       numericConfidence: 0,
-      recommendedUiAction: "RETAKE_REQUIRED",
-      error: "Could not read the photo. Please retake it.",
+      recommendedUiAction: "MANUAL_ENTRY",
+      unavailable: true,
+      error: "Photo reading is not working right now. Please type the number in.",
     });
   }
 }

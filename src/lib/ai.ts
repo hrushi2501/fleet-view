@@ -36,6 +36,21 @@ export function visionModelForGauge(): LanguageModel {
   return visionModelPro();
 }
 
+/**
+ * Whether a vision provider is actually configured.
+ *
+ * Without a key the model functions fall through to the Vercel AI Gateway,
+ * which needs a card on file. On a deployment that has neither, every OCR call
+ * throws — and the failure surfaced to the driver as "your photo is unclear",
+ * so they retook the same photo indefinitely. The camera was never the problem.
+ *
+ * Callers use this to tell "we cannot read photos right now" apart from "this
+ * photo cannot be read", which are different messages and different remedies.
+ */
+export function ocrAvailable(): boolean {
+  return Boolean(process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.OPENAI_API_KEY || process.env.AI_GATEWAY_API_KEY);
+}
+
 export function aiProvider(): string {
   if (process.env.GOOGLE_GENERATIVE_AI_API_KEY) return "google-gemini (free key)";
   if (process.env.OPENAI_API_KEY) return "openai (direct key)";

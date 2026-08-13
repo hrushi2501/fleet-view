@@ -52,7 +52,7 @@ export type OcrResult = {
   amount?: string;
   confidence?: string;
   numericConfidence: number;
-  recommendedUiAction: "AUTO_ADVANCE" | "CONFIRM_NEEDED" | "RETAKE_REQUIRED";
+  recommendedUiAction: "AUTO_ADVANCE" | "CONFIRM_NEEDED" | "RETAKE_REQUIRED" | "MANUAL_ENTRY";
   reasons: string[];
 };
 
@@ -70,7 +70,7 @@ async function ocrOdometerEx(file: File): Promise<OcrResult> {
       reasons: j.verification?.reasons || [],
     };
   } catch {
-    return { numericConfidence: 0, recommendedUiAction: "RETAKE_REQUIRED", reasons: ["OCR request failed"] };
+    return { numericConfidence: 0, recommendedUiAction: "MANUAL_ENTRY", reasons: ["Could not reach the photo reader — type the number in."] };
   }
 }
 
@@ -90,7 +90,7 @@ async function ocrPumpEx(file: File): Promise<OcrResult> {
       reasons: j.verification?.reasons || [],
     };
   } catch {
-    return { numericConfidence: 0, recommendedUiAction: "RETAKE_REQUIRED", reasons: ["OCR request failed"] };
+    return { numericConfidence: 0, recommendedUiAction: "MANUAL_ENTRY", reasons: ["Could not reach the photo reader — type the number in."] };
   }
 }
 
@@ -149,8 +149,8 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
   const [rate, setRate] = useState(String(dieselRate));
   const [odoConf, setOdoConf] = useState<number | null>(null);
   const [pumpConf, setPumpConf] = useState<number | null>(null);
-  const [odoAction, setOdoAction] = useState<"AUTO_ADVANCE" | "CONFIRM_NEEDED" | "RETAKE_REQUIRED" | null>(null);
-  const [pumpAction, setPumpAction] = useState<"AUTO_ADVANCE" | "CONFIRM_NEEDED" | "RETAKE_REQUIRED" | null>(null);
+  const [odoAction, setOdoAction] = useState<"AUTO_ADVANCE" | "CONFIRM_NEEDED" | "RETAKE_REQUIRED" | "MANUAL_ENTRY" | null>(null);
+  const [pumpAction, setPumpAction] = useState<"AUTO_ADVANCE" | "CONFIRM_NEEDED" | "RETAKE_REQUIRED" | "MANUAL_ENTRY" | null>(null);
   const [captureReasons, setCaptureReasons] = useState<string[]>([]);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [numpad, setNumpad] = useState<null | "odo" | "litres" | "rate">(null);
@@ -412,8 +412,16 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
                     <p className="flex items-center justify-center gap-1 text-xs font-semibold text-amber-600">⚠️ जांच लें · Please verify number ({Math.round((conf ?? 0.7) * 100)}%)</p>
                   )}
                   {uiAction === "RETAKE_REQUIRED" && (
-                    <div className="rounded-xl bg-rose-50 p-2.5 text-center text-xs font-bold text-rose-700 ring-1 ring-rose-200">
-                      ❌ फोटो साफ नहीं है, दोबारा फोटो खींचें · Photo unclear, please retake
+                    <div className="rounded-xl bg-amber-50 p-2.5 text-center text-xs font-bold text-amber-800 ring-1 ring-amber-200">
+                      ⚠️ फोटो साफ नहीं है · Photo unclear — retake it, or type the number below
+                    </div>
+                  )}
+                  {/* Not the driver's fault and not fixable by them: say so
+                      plainly and point at the way through, rather than asking
+                      for another photo that will fail the same way. */}
+                  {uiAction === "MANUAL_ENTRY" && (
+                    <div className="rounded-xl bg-slate-100 p-2.5 text-center text-xs font-bold text-slate-700 ring-1 ring-slate-300">
+                      📷 फोटो पढ़ने की सुविधा अभी बंद है · Photo reading is off — please type the number
                     </div>
                   )}
 
@@ -435,7 +443,7 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
           )}
         </div>
         <div className="p-4">
-          <button disabled={!file || ocrBusy || isRetakeRequired} onClick={() => setStep(isOdo ? "pump" : "review")} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-5 text-2xl font-extrabold text-white shadow-lg active:scale-[0.98] disabled:opacity-40">
+          <button disabled={!file || ocrBusy} onClick={() => setStep(isOdo ? "pump" : "review")} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-5 text-2xl font-extrabold text-white shadow-lg active:scale-[0.98] disabled:opacity-40">
             आगे <ArrowLeft className="h-7 w-7 rotate-180" />
           </button>
         </div>
