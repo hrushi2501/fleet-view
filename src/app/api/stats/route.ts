@@ -29,7 +29,7 @@ export async function GET() {
   return NextResponse.json({
     assets,
     byStatus: Object.fromEntries(statusGroups.map((g) => [g.status, g._count])),
-    fuel: { issuedLitres: Math.round(issuedL), estimatedLossLitres: Math.round(lossL), lossPct: +((lossL / issuedL) * 100).toFixed(1), estimatedLossValue: Math.round(lossL * 92.5) },
+    fuel: { issuedLitres: Math.round(issuedL), estimatedLossLitres: Math.round(lossL), lossPct: issuedL > 0 ? +((lossL / issuedL) * 100).toFixed(1) : 0, estimatedLossValue: Math.round(lossL * 92.5) },
     openAlerts,
     docsExpiring: expiring,
     operatingCost6mo: costs._sum.amount ?? 0,

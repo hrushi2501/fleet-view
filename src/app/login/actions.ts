@@ -17,5 +17,5 @@ export async function login(_prev: unknown, formData: FormData) {
     await db.user.update({ where: { id: user.id }, data: { password: await hashPassword(password) } });
   }
   await setSession(user.id);
-  redirect(user.role === "Driver" ? "/driver" : "/");
+  redirect(user.role === "Driver" ? "/my" : "/");
 }
