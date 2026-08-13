@@ -1,72 +1,103 @@
-# FleetView ERP — Trial Build
+# FleetView ERP — Mahadev Constructions
 
-A working **Vehicle & Fleet Management ERP** for road-construction & infrastructure, built for
-**Mahadev Constructions**. Self-contained: full front end + back end + database with realistic
-demo data. Hand it to a client and it runs anywhere — no cloud account or external DB needed.
+Vehicle & fleet management for road construction and infrastructure. **This is a live
+system carrying a real client's commercial data** — 53 vehicles, their compliance
+documents, and live telemetry from a Tata Fleet Edge subscription. It is not a demo,
+and it is not seeded with sample data.
 
-## Tech stack
-- **Next.js 16** (App Router, Turbopack) + **React 19** + **TypeScript**
-- **Tailwind CSS v4** + custom design system + **Recharts** + **lucide-react** icons
-- **Prisma 6 ORM** + **SQLite** (file-based DB — zero setup)
-- Cookie session auth (demo) + role-based users
+An earlier version of this file described a trial build with demo logins and seeded
+demo data. Both are gone. Nothing you see in the app is invented.
 
-## Quick start
+## Stack
+
+- **Next.js 16** (App Router, Turbopack) · **React 19** · **TypeScript**
+- **Prisma 6** · **PostgreSQL** (Supabase, transaction-mode pooler)
+- **Tailwind v4** · Recharts · lucide-react
+- Deployed on **Vercel** (region `bom1`), cron every 2 minutes
+
+## Getting set up
 
 ```bash
-cd fleetview-erp
-npm install          # install dependencies
-npm run setup        # generate Prisma client, create DB, seed demo data
-npm run dev          # start at http://localhost:3000
+npm install
+npx prisma generate
+npm run dev            # http://localhost:3000
 ```
 
-> `npm run setup` is only needed once (or to reset demo data). It runs
-> `prisma generate && prisma db push && node prisma/seed.mjs`.
+You need a `.env.local`. It is gitignored and never committed — ask for the values.
 
-For a production-style run: `npm run build && npm start`.
+| Variable | Required | What breaks without it |
+|---|---|---|
+| `DATABASE_URL` | yes | Nothing runs. Pooled URL, keep `?pgbouncer=true&connection_limit=1` |
+| `DATABASE_URL_UNPOOLED` | yes | Direct connection for migrations |
+| `TATA_FLEET_EDGE_*` | for telemetry | Vehicle tracking, fuel analysis |
+| `FLEET_INGEST_KEY` | for device push | `/api/telematics` fails closed with 503 |
+| `CRON_SECRET` | for cron | Scheduled sync returns 401 |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | for photo reading | OCR degrades to manual entry (gracefully) |
+| `BUSINESS_TIMEZONE` | no (defaults `Asia/Kolkata`) | Dates land in the wrong day/month |
 
-## Demo logins
+**Do not run `prisma/import-mcc.mjs`.** It begins by deleting every asset, driver and
+project. It was written to clear demo data on an empty system. Running it now
+cascade-deletes the tracked vehicle and its telemetry history, which **cannot be
+re-fetched** — the provider only ever returns a vehicle's *current* state.
 
-| Role | Email | Password |
-|------|-------|----------|
-| Administrator | `admin@mahadev.com` | `admin123` |
-| Fleet Manager | `fleet@mahadev.com` | `fleet123` |
-| Finance | `finance@mahadev.com` | `finance123` |
-| Site Manager | `site@mahadev.com` | `site123` |
+## Checks
 
-## What's included (modules)
+```bash
+npm test        # 108 unit tests (node's runner, no framework)
+npm run check   # lint + typecheck + tests
+npm run build
+```
 
-| Module | Route | Highlights |
-|--------|-------|-----------|
-| **Executive Dashboard** | `/` | KPI cards, monthly cost chart, fleet status donut, fuel trend, alerts, attention list |
-| **Assets & Equipment** | `/fleet` | Filterable/searchable register (class, status, ownership) + **Asset 360** detail (`/fleet/[id]`) |
-| **Live Tracking** | `/tracking` | Interactive GPS map with status filters, live markers, asset side-list |
-| **Projects** | `/projects` | Project cards with budget utilization & deployed assets |
-| **Fuel Management** | `/fuel` | Issue/receipt KPIs, site-tank levels, **fuel-theft anomaly table** (issued vs sensor rise) |
-| **Maintenance** | `/maintenance` | Work orders, breakdowns, MTTR, downtime, warranty, WO table |
-| **Drivers & Operators** | `/drivers` | Safety/performance scores, leaderboard, license-expiry tracking |
-| **Compliance** | `/compliance` | RC/Insurance/Fitness/Permit/PUC tracking + expiry watchlist |
-| **Cost & Profitability** | `/costs` | Cost-by-head trends, distribution, most-expensive-asset TCO ranking |
-| **Reports & KPIs** | `/reports` | Live KPI catalog vs targets + report library |
-| **Alerts & Fraud** | `/alerts` | Multi-category alerts with **working acknowledge / resolve** actions |
+## How this codebase thinks
 
-## REST API (sample backend endpoints)
-- `GET /api/stats` — fleet summary JSON (assets, fuel loss, alerts, cost)
-- `GET /api/assets?class=EXCAVATOR&status=Active` — filtered asset list
-- `GET /api/auth/logout` — clears session
+Five conventions run through everything. Breaking them is how the numbers stop being
+trustworthy, which for this client is the whole product.
 
-(All API routes require an authenticated session cookie.)
+**1. A wrong number is worse than no number.** Where data cannot support a figure, the
+UI shows `—` and says why. A percentage that cannot be computed returns `null`, never
+`0` — a workshop with no jobs has not achieved 0% preventive discipline, and a person
+nobody marked is not absent. See `fleet-analytics.ts`.
 
-## Demo data (seeded)
-~47 assets across 11 classes (owned/leased/hired/contractor), 5 NHAI/metro projects, 30
-drivers/operators, 14 days of trips, 30 days of fuel transactions (with injected theft anomalies),
-45 work orders, 236 compliance docs, 43 alerts, and 6 months of cost data across 9 cost heads.
+**2. Missing is never zero.** `?? 0` on a measurement turns *unknown* into a confident
+reading. It has caused fabricated fuel-theft cases here before.
 
-## Notes for the trial
-- This is a **demo/trial**: auth passwords are plaintext in the seed and the DB is SQLite. For
-  production, swap to Postgres (change the Prisma datasource), hash passwords, and add the
-  hardening described in the companion design dossier (`../fleet-erp-design/`).
-- To reset all demo data: `npm run seed`.
+**3. Backend is complicated, frontend is simple.** All calculation, validation and
+aggregation is server-side. The frontend displays results; it does not recompute them.
+Terms like *telemetry*, *anomaly*, *TCO* stay in the code and never reach a screen a
+site supervisor uses — see `TERMS` in `navigation.ts`.
 
-## Companion design dossier
-The full enterprise product spec (12 modules, ERD, architecture, AI roadmap, fraud controls,
-delivery plan) lives in `../fleet-erp-design/`.
+**4. Authorisation is `ROLE → PERMISSIONS → DATA ACCESS → FRONTEND`, all server-side.**
+Every page calls `requirePage()`; every API calls `requireApi()`; every query applies
+`assetScope()` / `projectIdScope()`. Hiding a menu item is not access control. Three
+bands: Admin, Supervisor, Driver.
+
+**5. Dates use the business timezone, never the server's.** Vercel runs UTC, the client
+works in IST. Use `businessDay()` / `businessMonth()` from `business-time.ts` — never
+`toISOString().slice(0,10)`.
+
+## Layout
+
+```
+src/app/(app)/       nine modules: dashboard, fleet, fuel, people, sites,
+                     maintenance, compliance, reports, admin
+src/app/(app)/my/    the driver app — scoped to their own vehicle only
+src/app/api/         REST + ingest + cron
+src/lib/             calculations, access control, provider adapters
+  access.ts          who may see what, and which rows
+  fleet-analytics.ts fuel, mileage, distance, confidence scoring
+  navigation.ts      the nine modules + plain-language term map
+prisma/schema.prisma the data model
+```
+
+Merged pages keep their sections in `_sections/` and appear as `?tab=` views, so each
+stays addressable and only the selected one queries the database.
+
+## Before you change a calculation
+
+Read the header comment in the file first. Several carry the reasoning behind a
+non-obvious decision — why consumption comes from endpoints rather than summing deltas,
+why a sender's noise band is 1.5% of tank capacity, why `engineRunHour` is discarded.
+Those comments exist because the obvious implementation was wrong in production.
+
+Add a test for any calculation you touch. Every existing test states something the
+business must never see.
