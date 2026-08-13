@@ -32,6 +32,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...but the template carries no values and is the one file a new developer
+# needs in order to know what to ask for. The broad rule above hides it.
+!.env.example
 
 # vercel
 .vercel
