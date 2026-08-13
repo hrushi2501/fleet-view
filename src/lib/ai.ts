@@ -8,15 +8,34 @@ import type { LanguageModel } from "ai";
  *  2. OpenAI direct  — set OPENAI_API_KEY
  *  3. Vercel AI Gateway — requires a card on file
  */
+/**
+ * Model ids are a moving target and a silent failure.
+ *
+ * The previous ids — gemini-2.5-flash and -pro — were retired to new keys, and
+ * the API rejects them with "no longer available to new users". Nothing in the
+ * app noticed: the call threw, the OCR route reported it as an unreadable
+ * photograph, and a driver was told to retake a picture that was never at
+ * fault. Verified against the live API on 2026-08-13; when a read starts
+ * failing on every image, check here first.
+ */
+export const GEMINI_VISION_MODEL = process.env.GEMINI_MODEL || "gemini-3-flash-preview";
+/** Cheaper, faster; used where a rough read is enough. */
+export const GEMINI_VISION_MODEL_LITE = process.env.GEMINI_MODEL_LITE || "gemini-3.1-flash-lite";
+
 export function visionModel(): LanguageModel {
-  if (process.env.GOOGLE_GENERATIVE_AI_API_KEY) return google("gemini-2.5-flash");
+  if (process.env.GOOGLE_GENERATIVE_AI_API_KEY) return google(GEMINI_VISION_MODEL);
   if (process.env.OPENAI_API_KEY) return openai("gpt-4o");
   return "openai/gpt-4o"; // gateway fallback
 }
 
 /** Higher-accuracy model for tricky reads (fuel pump displays). */
 export function visionModelPro(): LanguageModel {
-  if (process.env.GOOGLE_GENERATIVE_AI_API_KEY) return google("gemini-2.5-pro");
+  // Deliberately the same model as the standard read. The Gemini pro tier is
+  // not included in the free quota this deployment uses — it answers
+  // "exceeded your current quota" — and a gauge read that always fails is
+  // worse than a good-enough one that works. Point GEMINI_MODEL at a pro id
+  // once the account is on a paid plan.
+  if (process.env.GOOGLE_GENERATIVE_AI_API_KEY) return google(GEMINI_VISION_MODEL);
   if (process.env.OPENAI_API_KEY) return openai("gpt-4o");
   return "openai/gpt-4o";
 }
