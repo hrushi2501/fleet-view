@@ -117,17 +117,43 @@ export async function saveDriver(id: string | null, fd: FormData) {
     attendance: n(fd, "attendance") || 95,
     status: s(fd, "status") || "Active",
   };
-  if (id) await db.driver.update({ where: { id }, data });
-  else await db.driver.create({ data });
+  if (id) {
+    await db.driver.update({ where: { id }, data });
+  } else {
+    const driver = await db.driver.create({ data });
+    const createLogin = s(fd, "createLogin") === "true";
+    const loginEmail = s(fd, "loginEmail").toLowerCase();
+    const loginPassword = s(fd, "loginPassword") || "driver123";
+
+    if (createLogin && loginEmail) {
+      const existingUser = await db.user.findUnique({ where: { email: loginEmail } });
+      if (!existingUser) {
+        const driverRole = await db.role.findUnique({ where: { name: "Driver" } });
+        await db.user.create({
+          data: {
+            name: data.name,
+            email: loginEmail,
+            password: await hashPassword(loginPassword),
+            role: "Driver",
+            roleId: driverRole?.id ?? null,
+            driverId: driver.id,
+          },
+        });
+      }
+    }
+  }
   revalidatePath("/drivers");
+  revalidatePath("/users");
 }
 
 export async function deleteDriver(id: string) {
   await db.asset.updateMany({ where: { driverId: id }, data: { driverId: null } });
   await db.trip.updateMany({ where: { driverId: id }, data: { driverId: null } });
   await db.alert.updateMany({ where: { driverId: id }, data: { driverId: null } });
+  await db.user.updateMany({ where: { driverId: id }, data: { driverId: null } });
   await db.driver.delete({ where: { id } });
   revalidatePath("/drivers");
+  revalidatePath("/users");
 }
 
 /* ----------------------------- FUEL ----------------------------- */
@@ -314,15 +340,44 @@ export async function saveUser(fd: FormData) {
   const email = s(fd, "email").toLowerCase();
   const existing = await db.user.findUnique({ where: { email } });
   if (existing) throw new Error("A user with this email already exists.");
+  const role = s(fd, "role") || "Driver";
+  const name = s(fd, "name");
+  let driverId = s(fd, "driverId") || null;
+
+  // If role is Driver and no existing driver is selected, auto-create a person record
+  if (role === "Driver" && !driverId && s(fd, "autoCreateDriver") !== "false") {
+    const empCode = s(fd, "empCode") || `DRV-${Math.floor(1000 + Math.random() * 9000)}`;
+    const phone = s(fd, "phone") || "9999999999";
+    const licenseNo = s(fd, "licenseNo") || "DL-PENDING";
+    const driver = await db.driver.create({
+      data: {
+        name,
+        empCode,
+        phone,
+        licenseNo,
+        type: "DRIVER",
+        status: "Active",
+        licenseExpiry: new Date(Date.now() + 365 * 86400000),
+      },
+    });
+    driverId = driver.id;
+  }
+
+  const roleRecord = await db.role.findUnique({ where: { name: role } });
+
   await db.user.create({
     data: {
-      name: s(fd, "name"),
+      name,
       email,
-      role: s(fd, "role") || "Driver",
+      role,
+      roleId: roleRecord?.id ?? null,
+      driverId,
       password: await hashPassword(s(fd, "password") || "driver123"),
     },
   });
   revalidatePath("/users");
+  revalidatePath("/admin/roles");
+  revalidatePath("/drivers");
 }
 
 export async function changeOwnPassword(fd: FormData) {

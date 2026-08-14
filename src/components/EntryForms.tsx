@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useTransition, ReactNode } from "react";
+import { useState, useTransition, ReactNode, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { X, Plus, Pencil, Trash2, Loader2, Camera } from "lucide-react";
-import { cn, ASSET_CLASS_LABEL } from "@/lib/utils";
+import { X, Plus, Pencil, Trash2, Loader2, Camera, Calculator } from "lucide-react";
+import { cn, ASSET_CLASS_LABEL, inr } from "@/lib/utils";
+import { useToast } from "@/components/Toast";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
   saveAsset, deleteAsset, saveDriver, deleteDriver, saveFuel,
   saveWorkOrder, updateWorkOrderStatus, saveCompliance, saveProject,
@@ -16,20 +18,36 @@ type Opt = { id: string; label: string };
 /* ----------------------------- primitives ----------------------------- */
 const inputCls = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
 
-function Inp({ label, name, type = "text", defaultValue, required, step, placeholder }: { label: string; name: string; type?: string; defaultValue?: string | number; required?: boolean; step?: string; placeholder?: string }) {
+function Inp({ label, name, type = "text", defaultValue, required, step, placeholder, onChange, value }: {
+  label: string; name: string; type?: string; defaultValue?: string | number; required?: boolean; step?: string; placeholder?: string;
+  onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void; value?: string | number;
+}) {
   return (
     <label className="block">
       <span className="mb-1 block text-xs font-medium text-slate-600">{label}{required && <span className="text-rose-500"> *</span>}</span>
-      <input name={name} type={type} step={step} defaultValue={defaultValue} required={required} placeholder={placeholder} className={inputCls} />
+      <input
+        name={name}
+        type={type}
+        step={step}
+        defaultValue={defaultValue}
+        value={value}
+        onChange={onChange}
+        required={required}
+        placeholder={placeholder}
+        className={inputCls}
+      />
     </label>
   );
 }
 
-function Sel({ label, name, options, defaultValue, required }: { label: string; name: string; options: { value: string; label: string }[]; defaultValue?: string; required?: boolean }) {
+function Sel({ label, name, options, defaultValue, required, onChange, value }: {
+  label: string; name: string; options: { value: string; label: string }[]; defaultValue?: string; required?: boolean;
+  onChange?: (e: React.ChangeEvent<HTMLSelectElement>) => void; value?: string;
+}) {
   return (
     <label className="block">
       <span className="mb-1 block text-xs font-medium text-slate-600">{label}{required && <span className="text-rose-500"> *</span>}</span>
-      <select name={name} defaultValue={defaultValue} required={required} className={inputCls}>
+      <select name={name} defaultValue={defaultValue} value={value} onChange={onChange} required={required} className={inputCls}>
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     </label>
@@ -72,14 +90,15 @@ function Check({ label, name, defaultChecked }: { label: string; name: string; d
 }
 
 /* ----------------------------- modal shell ----------------------------- */
-function Modal({ triggerLabel, triggerIcon, triggerClass, title, action, children, onDone }: {
+function Modal({ triggerLabel, triggerIcon, triggerClass, title, action, successMessage, children, onDone }: {
   triggerLabel: ReactNode; triggerIcon?: ReactNode; triggerClass?: string; title: string;
-  action: (fd: FormData) => Promise<void>; children: ReactNode; onDone?: () => void;
+  action: (fd: FormData) => Promise<void>; successMessage?: string; children: ReactNode; onDone?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const [err, setErr] = useState("");
   const router = useRouter();
+  const toast = useToast();
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -89,10 +108,13 @@ function Modal({ triggerLabel, triggerIcon, triggerClass, title, action, childre
       try {
         await action(fd);
         setOpen(false);
+        toast.success(successMessage || `${title} saved successfully`);
         router.refresh();
         onDone?.();
       } catch (e: unknown) {
-        setErr(e instanceof Error ? e.message : "Could not save. Check the values and try again.");
+        const msg = e instanceof Error ? e.message : "Could not save. Check the values and try again.";
+        setErr(msg);
+        toast.error("Save failed", msg);
       }
     });
   }
@@ -103,18 +125,18 @@ function Modal({ triggerLabel, triggerIcon, triggerClass, title, action, childre
         {triggerIcon}{triggerLabel}
       </button>
       {open && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setOpen(false)}>
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl animate-fade-up" onClick={(e) => e.stopPropagation()}>
-            <div className="sticky top-0 flex items-center justify-between border-b border-slate-100 bg-white px-6 py-4">
-              <h3 className="text-base font-semibold text-ink-900">{title}</h3>
-              <button onClick={() => setOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={() => setOpen(false)}>
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-2xl animate-fade-up ring-1 ring-black/5" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white/95 px-6 py-4 backdrop-blur-sm">
+              <h3 className="text-base font-bold text-ink-900">{title}</h3>
+              <button onClick={() => setOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"><X className="h-5 w-5" /></button>
             </div>
             <form onSubmit={submit} className="p-6">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{children}</div>
-              {err && <p className="mt-3 text-sm text-rose-600">{err}</p>}
-              <div className="mt-6 flex justify-end gap-2">
-                <button type="button" onClick={() => setOpen(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
-                <button disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-60">
+              {err && <p className="mt-3 rounded-lg bg-rose-50 p-2.5 text-sm font-medium text-rose-600 border border-rose-200">{err}</p>}
+              <div className="mt-6 flex justify-end gap-2.5">
+                <button type="button" onClick={() => setOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                <button disabled={pending} className="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-60 shadow-sm">
                   {pending && <Loader2 className="h-4 w-4 animate-spin" />} Save
                 </button>
               </div>
@@ -145,6 +167,7 @@ export function AssetEntry({ projects, asset }: { projects: Opt[]; asset?: Asset
       triggerIcon={edit ? <Pencil className="h-3.5 w-3.5" /> : <Plus className="h-4 w-4" />}
       triggerClass={edit ? "inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50" : undefined}
       action={(fd) => saveAsset(asset?.id ?? null, fd)}
+      successMessage={edit ? `✓ Asset ${asset!.code} updated` : "✓ New asset created successfully"}
     >
       <Inp label="Asset Code" name="code" defaultValue={asset?.code} required placeholder="EXC-012" />
       <Inp label="Name / Make-Model" name="name" defaultValue={asset?.name} required placeholder="Caterpillar 320D2" />
@@ -171,22 +194,44 @@ export function AssetEntry({ projects, asset }: { projects: Opt[]; asset?: Asset
 }
 
 export function DeleteButton({ kind, id, label }: { kind: "asset" | "driver" | "user"; id: string; label: string }) {
-  const [pending, start] = useTransition();
+  const [open, setOpen] = useState(false);
   const router = useRouter();
-  function go() {
-    if (!confirm(`Delete ${label}? This cannot be undone.`)) return;
-    start(async () => {
-      if (kind === "asset") await deleteAsset(id);
-      else if (kind === "driver") await deleteDriver(id);
-      else await deleteUser(id);
-      router.refresh();
-      if (kind === "asset") router.push("/fleet");
-    });
+  const toast = useToast();
+
+  async function handleDelete() {
+    if (kind === "asset") await deleteAsset(id);
+    else if (kind === "driver") await deleteDriver(id);
+    else await deleteUser(id);
+    
+    toast.success(`✓ ${label} deleted successfully`);
+    router.refresh();
+    if (kind === "asset") router.push("/fleet");
   }
+
   return (
-    <button onClick={go} disabled={pending} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-60">
-      {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Delete
-    </button>
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50 transition-colors"
+      >
+        <Trash2 className="h-3.5 w-3.5" /> Delete
+      </button>
+
+      <ConfirmDialog
+        isOpen={open}
+        onClose={() => setOpen(false)}
+        onConfirm={handleDelete}
+        title={`Delete ${label}?`}
+        description={
+          kind === "asset"
+            ? "This will remove the vehicle and its active records. Historical audit trail will be maintained."
+            : `Are you sure you want to permanently delete this ${kind}? This action cannot be undone.`
+        }
+        confirmLabel="Confirm Delete"
+        tone="danger"
+        requireTextMatch={kind === "asset" ? label : undefined}
+      />
+    </>
   );
 }
 
@@ -202,6 +247,7 @@ export function DriverEntry({ driver }: { driver?: DriverData }) {
       triggerIcon={edit ? <Pencil className="h-3.5 w-3.5" /> : <Plus className="h-4 w-4" />}
       triggerClass={edit ? "inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50" : undefined}
       action={(fd) => saveDriver(driver?.id ?? null, fd)}
+      successMessage={edit ? `✓ Driver ${driver!.name} updated` : "✓ Driver added successfully"}
     >
       <Inp label="Emp Code" name="empCode" defaultValue={driver?.empCode} required placeholder="EMP-1031" />
       <Inp label="Name" name="name" defaultValue={driver?.name} required />
@@ -214,6 +260,27 @@ export function DriverEntry({ driver }: { driver?: DriverData }) {
       <Inp label="Safety Score" name="safetyScore" type="number" defaultValue={driver?.safetyScore ?? 80} />
       <Inp label="Performance Score" name="performanceScore" type="number" defaultValue={driver?.performanceScore ?? 80} />
       <Inp label="Attendance (%)" name="attendance" type="number" defaultValue={driver?.attendance ?? 95} />
+      {!edit && (
+        <div className="col-span-full mt-2 rounded-xl border border-brand-100 bg-brand-50/50 p-3.5 space-y-3">
+          <label className="flex items-center gap-2 text-xs font-semibold text-brand-900 cursor-pointer">
+            <input
+              type="checkbox"
+              name="createLogin"
+              value="true"
+              defaultChecked={true}
+              className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+            />
+            <span>📲 Auto-create Driver App login account</span>
+          </label>
+          <div className="grid gap-2 sm:grid-cols-2 text-xs">
+            <Inp label="Login Email" name="loginEmail" type="email" placeholder="emp-code@mahadev.com" />
+            <Inp label="Initial Password" name="loginPassword" defaultValue="driver123" />
+          </div>
+          <p className="text-[11px] text-slate-500">
+            Automatically connects this person record to the login account so vehicle check-ins and trips work on day 1.
+          </p>
+        </div>
+      )}
     </Modal>
   );
 }
@@ -251,7 +318,7 @@ function PhotoField({ label, name, file, setFile }: { label: string; name: strin
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             className="block w-full text-xs text-slate-500 file:mr-2 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-brand-700"
           />
-          {file && <p className="mt-1 text-[10px] text-emerald-600">✓ photo selected</p>}
+          {file && <p className="mt-1 text-[10px] text-emerald-600 font-medium">✓ photo selected</p>}
         </div>
       </div>
     </label>
@@ -261,21 +328,29 @@ function PhotoField({ label, name, file, setFile }: { label: string; name: strin
 export function DieselRateSetter({ current }: { current: number }) {
   const [pending, start] = useTransition();
   const [val, setVal] = useState(String(current));
-  const [saved, setSaved] = useState(false);
   const router = useRouter();
+  const toast = useToast();
+
   function save() {
     const fd = new FormData(); fd.set("rate", val);
     start(async () => {
-      try { await setDieselRate(fd); setSaved(true); router.refresh(); setTimeout(() => setSaved(false), 2500); }
-      catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
+      try {
+        await setDieselRate(fd);
+        toast.success(`✓ Company diesel rate updated to ₹${val}/L`);
+        router.refresh();
+      } catch (e) {
+        toast.error("Failed to update rate", e instanceof Error ? e.message : "Error");
+      }
     });
   }
+
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+    <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-xs">
       <span className="text-xs font-medium text-slate-500">Diesel rate ₹/L</span>
       <input value={val} onChange={(e) => setVal(e.target.value)} inputMode="decimal" className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm font-semibold outline-none focus:border-brand-400" />
-      <button onClick={save} disabled={pending} className="rounded-lg bg-brand-500 px-3 py-1 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-60">Save</button>
-      {saved && <span className="text-xs font-medium text-emerald-600">✓</span>}
+      <button onClick={save} disabled={pending} className="rounded-lg bg-brand-500 px-3 py-1 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-60 transition-colors">
+        {pending ? "…" : "Save"}
+      </button>
     </div>
   );
 }
@@ -286,7 +361,15 @@ export function FuelEntry({ assets, projects, defaultRate = 92.5 }: { assets: Op
   const [err, setErr] = useState("");
   const [odo, setOdo] = useState<File | null>(null);
   const [pump, setPump] = useState<File | null>(null);
+  
+  // Live calculation state
+  const [qty, setQty] = useState("");
+  const [rate, setRate] = useState(String(defaultRate));
+
   const router = useRouter();
+  const toast = useToast();
+
+  const totalAmount = (parseFloat(qty) || 0) * (parseFloat(rate) || 0);
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -297,9 +380,13 @@ export function FuelEntry({ assets, projects, defaultRate = 92.5 }: { assets: Op
         if (odo) fd.set("odometerPhoto", await compressImage(odo));
         if (pump) fd.set("pumpPhoto", await compressImage(pump));
         await saveFuel(fd);
-        setOpen(false); setOdo(null); setPump(null); router.refresh();
+        setOpen(false); setOdo(null); setPump(null);
+        toast.success(`✓ Diesel issue of ${qty} L recorded successfully`, `Total: ${inr(totalAmount)}`);
+        router.refresh();
       } catch (e: unknown) {
-        setErr(e instanceof Error ? e.message : "Could not save. Try again.");
+        const msg = e instanceof Error ? e.message : "Could not save. Try again.";
+        setErr(msg);
+        toast.error("Fuel entry failed", msg);
       }
     });
   }
@@ -312,10 +399,10 @@ export function FuelEntry({ assets, projects, defaultRate = 92.5 }: { assets: Op
         <Plus className="h-4 w-4" /> Add Fuel Entry
       </button>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setOpen(false)}>
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl animate-fade-up" onClick={(e) => e.stopPropagation()}>
-            <div className="sticky top-0 flex items-center justify-between border-b border-slate-100 bg-white px-6 py-4">
-              <h3 className="text-base font-semibold text-ink-900">Record Fuel Entry</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={() => setOpen(false)}>
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-2xl animate-fade-up ring-1 ring-black/5" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white/95 px-6 py-4 backdrop-blur-sm">
+              <h3 className="text-base font-bold text-ink-900">Record Fuel Entry</h3>
               <button onClick={() => setOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
             </div>
             <form onSubmit={submit} className="p-6">
@@ -323,23 +410,51 @@ export function FuelEntry({ assets, projects, defaultRate = 92.5 }: { assets: Op
                 <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Type <span className="text-rose-500">*</span></span>
                   <select name="type" defaultValue="ISSUE" required className={sel}><option value="ISSUE">Fuel Issue (to vehicle)</option><option value="RECEIPT">Receipt (into tank)</option></select></label>
                 <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Vehicle <span className="text-rose-500">*</span></span>
-                  <select name="assetId" required className={sel}><option value="">— Select your vehicle —</option>{assets.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</select></label>
+                  <select name="assetId" required className={sel}><option value="">— Select vehicle —</option>{assets.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</select></label>
                 <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Project / Site</span>
-                  <select name="projectId" className={sel}><option value="">— Select —</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>
+                  <select name="projectId" className={sel}><option value="">— Select Project —</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>
                 <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Diesel Quantity (Litres) <span className="text-rose-500">*</span></span>
-                  <input name="quantity" type="number" step="0.1" required className={sel} placeholder="e.g. 120" /></label>
+                  <input
+                    name="quantity"
+                    type="number"
+                    step="0.1"
+                    value={qty}
+                    onChange={(e) => setQty(e.target.value)}
+                    required
+                    className={sel}
+                    placeholder="e.g. 120"
+                  /></label>
                 <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Odometer / Hour-meter Reading</span>
-                  <input name="meterValue" type="number" className={sel} placeholder="reading shown on dashboard" /></label>
+                  <input name="meterValue" type="number" className={sel} placeholder="e.g. 45230" /></label>
                 <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Rate (₹/L)</span>
-                  <input name="rate" type="number" step="0.01" defaultValue={defaultRate} className={sel} /></label>
+                  <input
+                    name="rate"
+                    type="number"
+                    step="0.01"
+                    value={rate}
+                    onChange={(e) => setRate(e.target.value)}
+                    className={sel}
+                  /></label>
                 <PhotoField label="📷 Odometer photo" name="odometerPhoto" file={odo} setFile={setOdo} />
                 <PhotoField label="📷 Fuel-pump meter photo" name="pumpPhoto" file={pump} setFile={setPump} />
               </div>
-              {err && <p className="mt-3 text-sm text-rose-600">{err}</p>}
-              <div className="mt-6 flex justify-end gap-2">
-                <button type="button" onClick={() => setOpen(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
-                <button disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-60">
-                  {pending && <Loader2 className="h-4 w-4 animate-spin" />} {pending ? "Uploading…" : "Save Entry"}
+
+              {/* Live calculation banner */}
+              {parseFloat(qty) > 0 && (
+                <div className="mt-4 flex items-center justify-between rounded-xl bg-brand-50 p-3 ring-1 ring-brand-200">
+                  <div className="flex items-center gap-2">
+                    <Calculator className="h-4 w-4 text-brand-600" />
+                    <span className="text-xs font-semibold text-brand-900">Total Calculated Cost:</span>
+                  </div>
+                  <span className="text-sm font-bold text-brand-700">{inr(totalAmount)}</span>
+                </div>
+              )}
+
+              {err && <p className="mt-3 rounded-lg bg-rose-50 p-2.5 text-sm font-medium text-rose-600 border border-rose-200">{err}</p>}
+              <div className="mt-6 flex justify-end gap-2.5">
+                <button type="button" onClick={() => setOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                <button disabled={pending} className="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-60 shadow-sm">
+                  {pending && <Loader2 className="h-4 w-4 animate-spin" />} {pending ? "Saving…" : "Save Entry"}
                 </button>
               </div>
             </form>
@@ -353,23 +468,40 @@ export function FuelEntry({ assets, projects, defaultRate = 92.5 }: { assets: Op
 /* ----------------------------- FUEL EDIT (admin) ----------------------------- */
 export function FuelEdit({ txn }: { txn: { id: string; label: string; quantity: number; meterValue: number; rate: number; date: string } }) {
   const [open, setOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [pending, start] = useTransition();
   const [err, setErr] = useState("");
+  const [qty, setQty] = useState(String(txn.quantity));
+  const [rate, setRate] = useState(String(txn.rate));
   const router = useRouter();
+  const toast = useToast();
   const cls = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
+
+  const totalAmount = (parseFloat(qty) || 0) * (parseFloat(rate) || 0);
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     setErr("");
     start(async () => {
-      try { await updateFuel(txn.id, fd); setOpen(false); router.refresh(); }
-      catch (e) { setErr(e instanceof Error ? e.message : "Could not save."); }
+      try {
+        await updateFuel(txn.id, fd);
+        setOpen(false);
+        toast.success("✓ Fuel entry updated");
+        router.refresh();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Could not save.";
+        setErr(msg);
+        toast.error("Update failed", msg);
+      }
     });
   }
-  function remove() {
-    if (!confirm("Delete this fuel entry? This cannot be undone.")) return;
-    start(async () => { await deleteFuel(txn.id); setOpen(false); router.refresh(); });
+
+  async function remove() {
+    await deleteFuel(txn.id);
+    setOpen(false);
+    toast.success("✓ Fuel entry deleted");
+    router.refresh();
   }
 
   return (
@@ -378,27 +510,42 @@ export function FuelEdit({ txn }: { txn: { id: string; label: string; quantity: 
         <Pencil className="h-3.5 w-3.5" /> Edit
       </button>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setOpen(false)}>
-          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl animate-fade-up" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={() => setOpen(false)}>
+          <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl animate-fade-up ring-1 ring-black/5" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-              <h3 className="text-base font-semibold text-ink-900">Edit Fuel Entry — {txn.label}</h3>
+              <h3 className="text-base font-bold text-ink-900">Edit Fuel Entry — {txn.label}</h3>
               <button onClick={() => setOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
             </div>
             <form onSubmit={submit} className="p-6">
               <div className="grid grid-cols-2 gap-4">
-                <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Diesel (Litres)</span><input name="quantity" type="number" step="0.1" defaultValue={txn.quantity} required className={cls} /></label>
-                <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Meter Reading</span><input name="meterValue" type="number" defaultValue={txn.meterValue} className={cls} /></label>
-                <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Rate (₹/L)</span><input name="rate" type="number" step="0.01" defaultValue={txn.rate} className={cls} /></label>
-                <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Date</span><input name="date" type="date" defaultValue={txn.date.slice(0, 10)} className={cls} /></label>
+                <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Diesel (Litres)</span>
+                  <input name="quantity" type="number" step="0.1" value={qty} onChange={(e) => setQty(e.target.value)} required className={cls} /></label>
+                <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Meter Reading</span>
+                  <input name="meterValue" type="number" defaultValue={txn.meterValue} className={cls} /></label>
+                <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Rate (₹/L)</span>
+                  <input name="rate" type="number" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} className={cls} /></label>
+                <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Date</span>
+                  <input name="date" type="date" defaultValue={txn.date.slice(0, 10)} className={cls} /></label>
               </div>
-              {err && <p className="mt-3 text-sm text-rose-600">{err}</p>}
+
+              {/* Live Calculation */}
+              <div className="mt-4 flex items-center justify-between rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                <span className="text-xs font-medium text-slate-500">Calculated Total:</span>
+                <span className="text-sm font-bold text-ink-900">{inr(totalAmount)}</span>
+              </div>
+
+              {err && <p className="mt-3 rounded-lg bg-rose-50 p-2.5 text-sm font-medium text-rose-600 border border-rose-200">{err}</p>}
               <div className="mt-6 flex items-center justify-between">
-                <button type="button" onClick={remove} disabled={pending} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(true)}
+                  className="inline-flex items-center gap-1 rounded-xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50"
+                >
                   <Trash2 className="h-4 w-4" /> Delete
                 </button>
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => setOpen(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
-                  <button disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-60">
+                  <button type="button" onClick={() => setOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                  <button disabled={pending} className="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-60 shadow-sm">
                     {pending && <Loader2 className="h-4 w-4 animate-spin" />} Save
                   </button>
                 </div>
@@ -407,6 +554,16 @@ export function FuelEdit({ txn }: { txn: { id: string; label: string; quantity: 
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={remove}
+        title="Delete Fuel Entry?"
+        description="Are you sure you want to delete this diesel transaction record? This cannot be undone."
+        confirmLabel="Delete Transaction"
+        tone="danger"
+      />
     </>
   );
 }
@@ -415,7 +572,13 @@ export function FuelEdit({ txn }: { txn: { id: string; label: string; quantity: 
 export function WorkOrderEntry({ assets }: { assets: Opt[] }) {
   const assetOpts = [{ value: "", label: "— Select asset —" }, ...assets.map((a) => ({ value: a.id, label: a.label }))];
   return (
-    <Modal title="Create Work Order" triggerLabel="New Work Order" triggerIcon={<Plus className="h-4 w-4" />} action={saveWorkOrder}>
+    <Modal
+      title="Create Work Order"
+      triggerLabel="New Work Order"
+      triggerIcon={<Plus className="h-4 w-4" />}
+      action={saveWorkOrder}
+      successMessage="✓ Work order created successfully"
+    >
       <Sel label="Asset" name="assetId" options={assetOpts} required />
       <Sel label="Type" name="type" options={["PM", "BREAKDOWN", "REPAIR"].map((v) => ({ value: v, label: v }))} defaultValue="PM" />
       <Sel label="Priority" name="priority" options={["Low", "Medium", "High", "Critical"].map((v) => ({ value: v, label: v }))} defaultValue="Medium" />
@@ -435,10 +598,22 @@ export function WorkOrderEntry({ assets }: { assets: Opt[] }) {
 export function WorkOrderStatus({ id, status }: { id: string; status: string }) {
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
+
   return (
-    <select defaultValue={status} disabled={pending}
-      onChange={(e) => start(async () => { await updateWorkOrderStatus(id, e.target.value); router.refresh(); })}
-      className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-brand-400">
+    <select
+      defaultValue={status}
+      disabled={pending}
+      onChange={(e) => {
+        const newStatus = e.target.value;
+        start(async () => {
+          await updateWorkOrderStatus(id, newStatus);
+          toast.success(`✓ Status changed to ${newStatus}`);
+          router.refresh();
+        });
+      }}
+      className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium outline-none focus:border-brand-400 shadow-2xs"
+    >
       {["Open", "In-Progress", "Completed", "Closed"].map((s) => <option key={s} value={s}>{s}</option>)}
     </select>
   );
@@ -448,7 +623,13 @@ export function WorkOrderStatus({ id, status }: { id: string; status: string }) 
 export function ComplianceEntry({ assets }: { assets: Opt[] }) {
   const assetOpts = [{ value: "", label: "— Select asset —" }, ...assets.map((a) => ({ value: a.id, label: a.label }))];
   return (
-    <Modal title="Add Compliance Document" triggerLabel="Add Document" triggerIcon={<Plus className="h-4 w-4" />} action={saveCompliance}>
+    <Modal
+      title="Add Compliance Document"
+      triggerLabel="Add Document"
+      triggerIcon={<Plus className="h-4 w-4" />}
+      action={saveCompliance}
+      successMessage="✓ Compliance document saved"
+    >
       <Sel label="Asset" name="assetId" options={assetOpts} required />
       <Sel label="Document Type" name="docType" options={["RC", "Insurance", "Fitness", "Permit", "PUC", "RoadTax"].map((v) => ({ value: v, label: v }))} defaultValue="Insurance" required />
       <Inp label="Document Number" name="number" required placeholder="INS-123456" />
@@ -461,11 +642,40 @@ export function ComplianceEntry({ assets }: { assets: Opt[] }) {
 /* ----------------------------- USER / ACCESS ----------------------------- */
 export function UserEntry() {
   return (
-    <Modal title="Add User Login" triggerLabel="Add User" triggerIcon={<Plus className="h-4 w-4" />} action={saveUser}>
-      <Inp label="Full Name" name="name" required placeholder="Driver name" />
-      <Inp label="Email (login)" name="email" type="email" required placeholder="driver@mahadev.com" />
-      <Sel label="Role" name="role" options={[{ value: "Driver", label: "Truck Driver (fuel entry only)" }, { value: "Admin", label: "Administrator (full access)" }]} defaultValue="Driver" required />
-      <Inp label="Password" name="password" required placeholder="set a password" />
+    <Modal
+      title="Add User Login"
+      triggerLabel="Add User"
+      triggerIcon={<Plus className="h-4 w-4" />}
+      action={saveUser}
+      successMessage="✓ User login created successfully"
+    >
+      <Inp label="Full Name" name="name" required placeholder="Driver or staff name" />
+      <Inp label="Email (login)" name="email" type="email" required placeholder="name@mahadev.com" />
+      <Sel
+        label="Role"
+        name="role"
+        options={[
+          { value: "Driver", label: "Truck Driver (mobile portal only)" },
+          { value: "Admin", label: "Administrator (full access)" },
+          { value: "FleetManager", label: "Fleet Manager" },
+          { value: "SiteManager", label: "Site Manager" },
+          { value: "Workshop", label: "Workshop Manager" },
+          { value: "Finance", label: "Finance Controller" },
+        ]}
+        defaultValue="Driver"
+        required
+      />
+      <Inp label="Password" name="password" required placeholder="set a strong password" />
+      <div className="col-span-full rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2 text-xs">
+        <p className="font-semibold text-slate-700">Driver Person Profile Linking</p>
+        <p className="text-[11px] text-slate-500">
+          When adding a Driver role, a matching person record will automatically be linked so vehicle assignments and trips work immediately.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Inp label="Employee Code (optional)" name="empCode" placeholder="DRV-XXXX (auto if blank)" />
+          <Inp label="Mobile Phone (optional)" name="phone" placeholder="9XXXXXXXXX" />
+        </div>
+      </div>
     </Modal>
   );
 }
@@ -496,6 +706,7 @@ export function ProjectEntry({ project }: { project?: ProjectData } = {}) {
         ? "inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
         : undefined}
       action={action}
+      successMessage={edit ? `✓ Project ${project!.code} updated` : "✓ Project created successfully"}
     >
       <Inp label="Project Code" name="code" required placeholder="NH48-PUN" defaultValue={project?.code} />
       <Inp label="Name" name="name" required defaultValue={project?.name} />
@@ -511,41 +722,35 @@ export function ProjectEntry({ project }: { project?: ProjectData } = {}) {
 }
 
 export function ProjectDeleteButton({ id, code }: { id: string; code: string }) {
-  const [pending, start] = useTransition();
-  const [confirm, setConfirm] = useState(false);
+  const [open, setOpen] = useState(false);
   const router = useRouter();
+  const toast = useToast();
 
-  if (!confirm) {
-    return (
-      <button
-        onClick={() => setConfirm(true)}
-        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-rose-600 ring-1 ring-rose-200 hover:bg-rose-50"
-      >
-        <Trash2 className="h-3.5 w-3.5" /> Delete
-      </button>
-    );
+  async function handleDelete() {
+    await deleteProject(id);
+    toast.success(`✓ Project ${code} deleted successfully`);
+    router.refresh();
   }
 
   return (
-    <div className="inline-flex items-center gap-1.5">
-      <span className="text-xs text-rose-600">Delete {code}?</span>
+    <>
       <button
-        disabled={pending}
-        onClick={() =>
-          start(async () => {
-            await deleteProject(id);
-            setConfirm(false);
-            router.refresh();
-          })
-        }
-        className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-rose-600 ring-1 ring-rose-200 hover:bg-rose-50 transition-colors"
       >
-        {pending && <Loader2 className="h-3 w-3 animate-spin" />} Confirm
+        <Trash2 className="h-3.5 w-3.5" /> Delete
       </button>
-      <button onClick={() => setConfirm(false)} className="rounded-lg px-2 py-1.5 text-xs text-slate-500 hover:bg-slate-100">
-        Cancel
-      </button>
-    </div>
+
+      <ConfirmDialog
+        isOpen={open}
+        onClose={() => setOpen(false)}
+        onConfirm={handleDelete}
+        title={`Delete Project ${code}?`}
+        description="This will delete the project. Make sure all assets, sites and transactions are reassigned."
+        confirmLabel="Confirm Delete"
+        tone="danger"
+        requireTextMatch={code}
+      />
+    </>
   );
 }
-

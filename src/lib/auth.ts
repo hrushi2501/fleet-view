@@ -158,11 +158,4 @@ export function checkSharedSecret(
   return { ok: true };
 }
 
-export const ROLE_LABEL: Record<string, string> = {
-  Admin: "Administrator",
-  Driver: "Truck Driver",
-  FleetManager: "Fleet Manager",
-  Finance: "Finance Controller",
-  SiteManager: "Site Manager",
-  Workshop: "Workshop Manager",
-};
+export { ROLE_LABEL } from "./utils";

@@ -2,9 +2,15 @@
 
 import { useState, useTransition, ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { X, Plus, Loader2, Trash2 } from "lucide-react";
+import { X, Plus, Loader2, Trash2, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { saveSite, deleteSite, saveEquipmentPlan, deleteEquipmentPlan, saveAllocation, updateAllocationStatus, deleteAllocation, saveMobilization, updateMobilization, deleteMobilization } from "@/app/(app)/operations/actions";
+import { useToast } from "@/components/Toast";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import {
+  saveSite, deleteSite, saveEquipmentPlan, deleteEquipmentPlan,
+  saveAllocation, updateAllocationStatus, deleteAllocation,
+  saveMobilization, updateMobilization, deleteMobilization
+} from "@/app/(app)/operations/actions";
 import { SITE_TYPES, SITE_TYPE_LABEL, TRANSPORT_MODES, TRANSPORT_LABEL } from "@/lib/operations";
 
 type Opt = { id: string; label: string };
@@ -36,14 +42,14 @@ function Sel({ label, name, options, defaultValue, required, hint }: { label: st
 function Modal({ open, onClose, title, subtitle, children }: { open: boolean; onClose: () => void; title: string; subtitle?: string; children: ReactNode }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
-      <div className="my-8 w-full max-w-2xl rounded-2xl bg-white shadow-xl ring-1 ring-slate-200">
+    <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 backdrop-blur-sm">
+      <div className="my-8 w-full max-w-2xl rounded-3xl bg-white shadow-2xl ring-1 ring-black/5 animate-fade-up">
         <div className="flex items-start justify-between border-b border-slate-100 p-5">
           <div>
             <h3 className="text-lg font-bold text-ink-900">{title}</h3>
             {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
           </div>
-          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100" aria-label="Close"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600" aria-label="Close"><X className="h-5 w-5" /></button>
         </div>
         <div className="p-5">{children}</div>
       </div>
@@ -55,9 +61,9 @@ function SubmitBar({ pending, onCancel, label = "Save", err }: { pending: boolea
   return (
     <div className="mt-5 space-y-3">
       {err && <p className="text-sm font-medium text-rose-600 bg-rose-50 p-2.5 rounded-lg border border-rose-200">{err}</p>}
-      <div className="flex justify-end gap-2">
-        <button type="button" onClick={onCancel} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">Cancel</button>
-        <button type="submit" disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
+      <div className="flex justify-end gap-2.5">
+        <button type="button" onClick={onCancel} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+        <button type="submit" disabled={pending} className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60 shadow-sm">
           {pending && <Loader2 className="h-4 w-4 animate-spin" />}{label}
         </button>
       </div>
@@ -67,7 +73,7 @@ function SubmitBar({ pending, onCancel, label = "Save", err }: { pending: boolea
 
 function Trigger({ onClick, children, tone = "brand" }: { onClick: () => void; children: ReactNode; tone?: "brand" | "ghost" }) {
   return (
-    <button onClick={onClick} className={cn("inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold", tone === "brand" ? "bg-brand-600 text-white hover:bg-brand-700" : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50")}>
+    <button onClick={onClick} className={cn("inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors shadow-xs", tone === "brand" ? "bg-brand-600 text-white hover:bg-brand-700" : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50")}>
       {children}
     </button>
   );
@@ -111,6 +117,7 @@ export function SiteForm({ projects, site }: { projects: Opt[]; site?: { id: str
   const [pending, start] = useTransition();
   const [err, setErr] = useState("");
   const router = useRouter();
+  const toast = useToast();
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -120,9 +127,12 @@ export function SiteForm({ projects, site }: { projects: Opt[]; site?: { id: str
       try {
         await saveSite(site?.id ?? null, fd);
         setOpen(false);
+        toast.success(site ? `✓ Site ${site.code} updated` : "✓ New site added successfully");
         router.refresh();
       } catch (e: unknown) {
-        setErr(e instanceof Error ? e.message : "Failed to save site.");
+        const msg = e instanceof Error ? e.message : "Failed to save site.";
+        setErr(msg);
+        toast.error("Site save failed", msg);
       }
     });
   }
@@ -158,6 +168,7 @@ export function PlanForm({ projects, classes }: { projects: Opt[]; classes: { va
   const [pending, start] = useTransition();
   const [err, setErr] = useState("");
   const router = useRouter();
+  const toast = useToast();
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -167,9 +178,12 @@ export function PlanForm({ projects, classes }: { projects: Opt[]; classes: { va
       try {
         await saveEquipmentPlan(fd);
         setOpen(false);
+        toast.success("✓ Equipment plan saved");
         router.refresh();
       } catch (e: unknown) {
-        setErr(e instanceof Error ? e.message : "Failed to save equipment plan.");
+        const msg = e instanceof Error ? e.message : "Failed to save equipment plan.";
+        setErr(msg);
+        toast.error("Plan save failed", msg);
       }
     });
   }
@@ -203,6 +217,7 @@ export function AllocationForm({ assets, projects, sites }: { assets: Opt[]; pro
   const [pending, start] = useTransition();
   const [err, setErr] = useState("");
   const router = useRouter();
+  const toast = useToast();
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -212,9 +227,12 @@ export function AllocationForm({ assets, projects, sites }: { assets: Opt[]; pro
       try {
         await saveAllocation(fd);
         setOpen(false);
+        toast.success("✓ Machine allocated to project");
         router.refresh();
       } catch (e: unknown) {
-        setErr(e instanceof Error ? e.message : "Failed to allocate machine.");
+        const msg = e instanceof Error ? e.message : "Failed to allocate machine.";
+        setErr(msg);
+        toast.error("Allocation failed", msg);
       }
     });
   }
@@ -250,6 +268,7 @@ export function AllocationStatusForm({ alloc }: { alloc: { id: string; status: s
   const [pending, start] = useTransition();
   const [err, setErr] = useState("");
   const router = useRouter();
+  const toast = useToast();
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -259,9 +278,12 @@ export function AllocationStatusForm({ alloc }: { alloc: { id: string; status: s
       try {
         await updateAllocationStatus(alloc.id, fd);
         setOpen(false);
+        toast.success("✓ Allocation status updated");
         router.refresh();
       } catch (e: unknown) {
-        setErr(e instanceof Error ? e.message : "Failed to update allocation.");
+        const msg = e instanceof Error ? e.message : "Failed to update allocation.";
+        setErr(msg);
+        toast.error("Update failed", msg);
       }
     });
   }
@@ -292,6 +314,7 @@ export function MobilizationForm({ assets, projects }: { assets: Opt[]; projects
   const [pending, start] = useTransition();
   const [err, setErr] = useState("");
   const router = useRouter();
+  const toast = useToast();
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -301,9 +324,12 @@ export function MobilizationForm({ assets, projects }: { assets: Opt[]; projects
       try {
         await saveMobilization(fd);
         setOpen(false);
+        toast.success("✓ Mobilisation order requested");
         router.refresh();
       } catch (e: unknown) {
-        setErr(e instanceof Error ? e.message : "Failed to request mobilization.");
+        const msg = e instanceof Error ? e.message : "Failed to request mobilization.";
+        setErr(msg);
+        toast.error("Request failed", msg);
       }
     });
   }
@@ -337,6 +363,7 @@ export function MobStatusForm({ order }: { order: { id: string; status: string; 
   const [pending, start] = useTransition();
   const [err, setErr] = useState("");
   const router = useRouter();
+  const toast = useToast();
   const iso = (d: Date | null) => (d ? new Date(d).toISOString().slice(0, 10) : "");
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -347,9 +374,12 @@ export function MobStatusForm({ order }: { order: { id: string; status: string; 
       try {
         await updateMobilization(order.id, fd);
         setOpen(false);
+        toast.success("✓ Mobilisation status updated");
         router.refresh();
       } catch (e: unknown) {
-        setErr(e instanceof Error ? e.message : "Failed to update mobilization.");
+        const msg = e instanceof Error ? e.message : "Failed to update mobilization.";
+        setErr(msg);
+        toast.error("Update failed", msg);
       }
     });
   }
@@ -378,41 +408,39 @@ export function MobStatusForm({ order }: { order: { id: string; status: string; 
 }
 
 export function DeleteRow({ id, kind }: { id: string; kind: "site" | "plan" | "allocation" | "mobilization" }) {
-  const [pending, start] = useTransition();
-  const [confirm, setConfirm] = useState(false);
+  const [open, setOpen] = useState(false);
   const router = useRouter();
+  const toast = useToast();
 
-  if (confirm) {
-    return (
-      <div className="flex items-center gap-1">
-        <button
-          onClick={() => start(async () => {
-            if (kind === "site") await deleteSite(id);
-            else if (kind === "plan") await deleteEquipmentPlan(id);
-            else if (kind === "allocation") await deleteAllocation(id);
-            else await deleteMobilization(id);
-            setConfirm(false);
-            router.refresh();
-          })}
-          disabled={pending}
-          className="rounded bg-rose-600 px-2 py-0.5 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
-        >
-          {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Delete"}
-        </button>
-        <button onClick={() => setConfirm(false)} className="rounded px-1.5 py-0.5 text-xs text-slate-500 hover:bg-slate-100">
-          ✕
-        </button>
-      </div>
-    );
+  async function handleDelete() {
+    if (kind === "site") await deleteSite(id);
+    else if (kind === "plan") await deleteEquipmentPlan(id);
+    else if (kind === "allocation") await deleteAllocation(id);
+    else await deleteMobilization(id);
+
+    toast.success(`✓ ${kind.charAt(0).toUpperCase() + kind.slice(1)} record deleted`);
+    router.refresh();
   }
 
   return (
-    <button
-      onClick={() => setConfirm(true)}
-      className="rounded p-1 text-slate-300 hover:bg-rose-50 hover:text-rose-600"
-      aria-label="Delete"
-    >
-      <Trash2 className="h-4 w-4" />
-    </button>
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="rounded p-1 text-slate-300 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+        aria-label="Delete"
+      >
+        <Trash2 className="h-4 w-4" />
+      </button>
+
+      <ConfirmDialog
+        isOpen={open}
+        onClose={() => setOpen(false)}
+        onConfirm={handleDelete}
+        title={`Delete ${kind.charAt(0).toUpperCase() + kind.slice(1)}?`}
+        description="Are you sure you want to delete this operational record? This cannot be undone."
+        confirmLabel="Confirm Delete"
+        tone="danger"
+      />
+    </>
   );
 }

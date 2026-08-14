@@ -1,5 +1,6 @@
 import { Sidebar } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
+import { ToastProvider } from "@/components/Toast";
 import { getAccess, assetScope } from "@/lib/access";
 import { navFor } from "@/lib/navigation";
 import { db } from "@/lib/db";
@@ -36,12 +37,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       })();
 
   return (
-    <div className="min-h-screen">
-      <Sidebar items={items} isDriver={isDriver} />
-      <div className="lg:pl-64">
-        <Topbar user={access.session} notifCount={counts.notifCount} isDriver={isDriver} />
-        <main className="mx-auto max-w-[1500px] px-4 py-6 lg:px-8">{children}</main>
+    <ToastProvider>
+      <div className="min-h-screen">
+        <Sidebar items={items} isDriver={isDriver} />
+        <div className="lg:pl-64">
+          <Topbar user={access.session} notifCount={counts.notifCount} isDriver={isDriver} />
+          <main className="mx-auto max-w-[1500px] px-4 py-6 lg:px-8">{children}</main>
+        </div>
       </div>
-    </div>
+    </ToastProvider>
   );
 }

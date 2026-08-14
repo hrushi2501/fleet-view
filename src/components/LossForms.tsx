@@ -277,17 +277,40 @@ export function RecoveryForm({ caseId }: { caseId: string }) {
   );
 }
 
-export function DeleteCaseButton({ id }: { id: string }) {
-  const [pending, start] = useTransition();
+import { useToast } from "@/components/Toast";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+
+export function DeleteCaseButton({ id, caseNo }: { id: string; caseNo?: string }) {
+  const [open, setOpen] = useState(false);
   const router = useRouter();
+  const toast = useToast();
+
+  async function handleDelete() {
+    await deleteCase(id);
+    toast.success(`✓ Fraud & loss case ${caseNo || ""} deleted`);
+    router.push("/fuel/problems");
+    router.refresh();
+  }
+
   return (
-    <button
-      onClick={() => start(async () => { await deleteCase(id); router.push("/loss-prevention"); router.refresh(); })}
-      disabled={pending}
-      className="rounded p-1.5 text-slate-300 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-      aria-label="Delete case"
-    >
-      {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-    </button>
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="rounded p-1.5 text-slate-300 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+        aria-label="Delete case"
+      >
+        <Trash2 className="h-4 w-4" />
+      </button>
+
+      <ConfirmDialog
+        isOpen={open}
+        onClose={() => setOpen(false)}
+        onConfirm={handleDelete}
+        title={`Delete Case ${caseNo || ""}?`}
+        description="Are you sure you want to delete this loss prevention case? Investigation evidence and notes will be permanently removed."
+        confirmLabel="Delete Case"
+        tone="danger"
+      />
+    </>
   );
 }

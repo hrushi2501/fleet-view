@@ -214,22 +214,48 @@ export function RefreshStatusButton() {
   );
 }
 
+import { useToast } from "@/components/Toast";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+
 export function DeleteRow({ id, kind }: { id: string; kind: "competency" | "violation" | "document" }) {
-  const [pending, start] = useTransition();
+  const [open, setOpen] = useState(false);
   const router = useRouter();
+  const toast = useToast();
+
+  const labels = {
+    competency: "Driver Competency Certification",
+    violation: "Safety Violation Record",
+    document: "Compliance Document",
+  };
+
+  async function handleDelete() {
+    if (kind === "competency") await deleteCompetency(id);
+    else if (kind === "violation") await deleteViolation(id);
+    else await deleteDocument(id);
+
+    toast.success(`✓ ${labels[kind]} deleted successfully`);
+    router.refresh();
+  }
+
   return (
-    <button
-      onClick={() => start(async () => {
-        if (kind === "competency") await deleteCompetency(id);
-        else if (kind === "violation") await deleteViolation(id);
-        else await deleteDocument(id);
-        router.refresh();
-      })}
-      disabled={pending}
-      className="rounded p-1 text-slate-300 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-      aria-label="Delete"
-    >
-      {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-    </button>
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="rounded p-1 text-slate-300 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+        aria-label="Delete"
+      >
+        <Trash2 className="h-4 w-4" />
+      </button>
+
+      <ConfirmDialog
+        isOpen={open}
+        onClose={() => setOpen(false)}
+        onConfirm={handleDelete}
+        title={`Delete ${labels[kind]}?`}
+        description="Are you sure you want to delete this record? This cannot be undone."
+        confirmLabel="Confirm Delete"
+        tone="danger"
+      />
+    </>
   );
 }

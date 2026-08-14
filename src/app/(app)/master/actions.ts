@@ -149,6 +149,39 @@ export async function deleteAttendance(id: string) {
   refresh();
 }
 
+export async function batchSaveAttendance(
+  items: Array<{
+    driverId: string;
+    status: string;
+    shift?: string;
+    date?: string;
+    projectId?: string | null;
+    note?: string | null;
+  }>
+) {
+  const session = await getSession();
+  const markedBy = session?.name || "Supervisor";
+
+  for (const item of items) {
+    if (!item.driverId) continue;
+    const date = parseBusinessDay(item.date);
+    date.setHours(0, 0, 0, 0);
+    const shift = item.shift || "DAY";
+    const data = {
+      status: item.status || "PRESENT",
+      projectId: item.projectId || null,
+      markedBy,
+      note: item.note || null,
+    };
+    await db.attendance.upsert({
+      where: { driverId_date_shift: { driverId: item.driverId, date, shift } },
+      create: { driverId: item.driverId, date, shift, ...data },
+      update: data,
+    });
+  }
+  refresh();
+}
+
 export async function savePersonDoc(fd: FormData) {
   const driverId = s(fd, "driverId");
   if (!driverId) throw new Error("Person is required");

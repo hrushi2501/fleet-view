@@ -129,3 +129,12 @@ export function healthColor(score: number): string {
   if (score >= 55) return "text-amber-600";
   return "text-rose-600";
 }
+
+export const ROLE_LABEL: Record<string, string> = {
+  Admin: "Administrator",
+  Driver: "Truck Driver",
+  FleetManager: "Fleet Manager",
+  Finance: "Finance Controller",
+  SiteManager: "Site Manager",
+  Workshop: "Workshop Manager",
+};
