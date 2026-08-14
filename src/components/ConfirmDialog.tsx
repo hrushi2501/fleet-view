@@ -35,8 +35,6 @@ export function ConfirmDialog({
 
   useEffect(() => {
     if (isOpen) {
-      setTypedValue("");
-      setError("");
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "";
@@ -50,13 +48,19 @@ export function ConfirmDialog({
 
   const isMatchValid = !requireTextMatch || typedValue.trim() === requireTextMatch.trim();
 
+  const handleClose = () => {
+    setTypedValue("");
+    setError("");
+    onClose();
+  };
+
   const handleConfirm = () => {
     if (!isMatchValid) return;
     setError("");
     startTransition(async () => {
       try {
         await onConfirm();
-        onClose();
+        handleClose();
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Action failed. Please try again.");
       }

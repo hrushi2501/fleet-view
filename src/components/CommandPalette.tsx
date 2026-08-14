@@ -55,6 +55,13 @@ export function CommandPalette({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
+  const handleClose = useCallback(() => {
+    setQuery("");
+    setResults([]);
+    setSelectedIndex(0);
+    onClose();
+  }, [onClose]);
+
   // Auto focus input when opened
   useEffect(() => {
     if (isOpen) {
@@ -62,9 +69,6 @@ export function CommandPalette({
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "";
-      setQuery("");
-      setResults([]);
-      setSelectedIndex(0);
     }
     return () => {
       document.body.style.overflow = "";
@@ -74,12 +78,9 @@ export function CommandPalette({
   // Debounced search
   useEffect(() => {
     if (!query.trim() || query.trim().length < 2) {
-      setResults([]);
-      setLoading(false);
       return;
     }
 
-    setLoading(true);
     const timer = setTimeout(async () => {
       try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(query.trim())}`);
@@ -98,18 +99,29 @@ export function CommandPalette({
     return () => clearTimeout(timer);
   }, [query]);
 
+  const handleQueryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setQuery(val);
+    if (!val.trim() || val.trim().length < 2) {
+      setResults([]);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+  };
+
   const handleSelect = useCallback(
     (item: SearchResultItem) => {
-      onClose();
+      handleClose();
       router.push(item.href);
     },
-    [onClose, router]
+    [handleClose, router]
   );
 
   // Keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Escape") {
-      onClose();
+      handleClose();
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
       if (results.length > 0) {
@@ -161,7 +173,7 @@ export function CommandPalette({
   return (
     <div
       className="fixed inset-0 z-[9990] flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 backdrop-blur-sm animate-fade-up sm:p-6 md:p-20"
-      onClick={onClose}
+      onClick={handleClose}
     >
       <div
         className="relative my-auto w-full max-w-2xl overflow-hidden rounded-3xl border border-white/40 bg-white shadow-2xl ring-1 ring-black/5"
@@ -174,7 +186,7 @@ export function CommandPalette({
           <input
             ref={inputRef}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={handleQueryChange}
             placeholder="Search vehicles, registration, drivers, projects, work orders…"
             className="flex-1 bg-transparent text-base font-medium text-ink-900 outline-none placeholder:text-slate-400"
           />
@@ -182,7 +194,11 @@ export function CommandPalette({
             <Loader2 className="h-5 w-5 shrink-0 animate-spin text-brand-500" />
           ) : query ? (
             <button
-              onClick={() => setQuery("")}
+              onClick={() => {
+                setQuery("");
+                setResults([]);
+                setLoading(false);
+              }}
               className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
               aria-label="Clear search"
             >
