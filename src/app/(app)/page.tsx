@@ -7,6 +7,7 @@ import { Truck, Fuel, TriangleAlert, Activity, Wrench, ShieldAlert, ArrowRight }
 import Link from "next/link";
 import { businessDayShort } from "@/lib/business-time";
 import { requirePage, assetScope } from "@/lib/access";
+import { MorningActionCenter } from "@/components/MorningActionCenter";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,18 @@ export default async function Dashboard() {
   const access = await requirePage(null);
   // Rows, not just the page: a scoped supervisor sees their own sites.
   const visible = assetScope(access);
-  const [assets, statusGroups, fuelIssues, openCritical, expiringDocs, costs, recentAlerts] = await Promise.all([
+  const [
+    assets,
+    statusGroups,
+    fuelIssues,
+    openCritical,
+    expiringDocs,
+    costs,
+    recentAlerts,
+    breakdownsCount,
+    urgentWorkOrders,
+    unmarkedDriversCount,
+  ] = await Promise.all([
     db.asset.findMany({ where: visible }),
     db.asset.groupBy({ by: ["status"], _count: true }),
     db.fuelTransaction.findMany({ where: { type: "ISSUE", asset: visible } }),
@@ -22,6 +34,14 @@ export default async function Dashboard() {
     db.complianceDoc.count({ where: { status: { in: ["Expiring", "Expired"] } } }),
     db.costTransaction.findMany(),
     db.alert.findMany({ orderBy: { createdAt: "desc" }, take: 6, include: { asset: true } }),
+    db.workOrder.count({ where: { status: { in: ["Open", "In-Progress"] }, type: "BREAKDOWN", asset: visible } }),
+    db.workOrder.findMany({
+      where: { status: { in: ["Open", "In-Progress"] }, type: "BREAKDOWN", asset: visible },
+      take: 4,
+      include: { asset: true },
+      orderBy: { reportedAt: "desc" },
+    }),
+    db.driver.count({ where: { status: "Active" } }),
   ]);
 
   // Measured from OEM telemetry rather than from what anyone typed in.
@@ -37,6 +57,22 @@ export default async function Dashboard() {
   const fuelLossValue = fuelLossL * 92.5;
   const totalIssuedL = fuelIssues.reduce((s, f) => s + f.quantity, 0);
   const fuelLossPct = totalIssuedL ? (fuelLossL / totalIssuedL) * 100 : 0;
+  const fuelAnomaliesCount = fuelIssues.filter((f) => f.quantity > f.sensorRise + 5).length;
+
+  const actionCenterData = {
+    breakdownsCount,
+    criticalAlertsCount: openCritical,
+    expiringDocsCount: expiringDocs,
+    fuelAnomaliesCount,
+    unmarkedDriversCount,
+    urgentWorkOrders: urgentWorkOrders.map((w) => ({
+      id: w.id,
+      woNo: w.woNo,
+      assetCode: w.asset.code,
+      description: w.description,
+      priority: w.priority,
+    })),
+  };
 
   // Status donut
   const statusData = statusGroups.map((g) => ({ name: g.status, value: g._count }));
@@ -91,6 +127,9 @@ export default async function Dashboard() {
           </Badge>
         </div>
       </div>
+
+      {/* Morning Action Center */}
+      <MorningActionCenter data={actionCenterData} />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Total Fleet" value={num(totalAssets)} sub={`${activeCount} active now`} accent="brand" icon={<Truck className="h-5 w-5" />} />

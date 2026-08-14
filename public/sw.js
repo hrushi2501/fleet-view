@@ -12,19 +12,19 @@ self.addEventListener("activate", (e) => {
   self.clients.claim();
 });
 
-// Network-first for navigation/API; cache-first for static assets.
+// Network-only for all Next.js javascript chunks and API routes
 self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
-  if (url.pathname.startsWith("/_next/static") || url.pathname.endsWith(".png") || url.pathname.endsWith(".svg")) {
+  if (url.pathname.startsWith("/_next/") || url.pathname.startsWith("/api/")) {
+    return; // Pass through directly to network
+  }
+  // Only cache static images and icons
+  if (url.pathname.endsWith(".png") || url.pathname.endsWith(".svg") || url.pathname.endsWith(".ico")) {
     e.respondWith(caches.match(req).then((c) => c || fetch(req).then((r) => { const copy = r.clone(); caches.open(CACHE).then((cc) => cc.put(req, copy)); return r; })));
     return;
   }
-  e.respondWith(
-    fetch(req).then((r) => { const copy = r.clone(); caches.open(CACHE).then((cc) => cc.put(req, copy)); return r; })
-      .catch(() => caches.match(req).then((c) => c || caches.match("/")))
-  );
 });
 
 // Push notifications

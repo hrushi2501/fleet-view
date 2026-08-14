@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { Card, SectionTitle, Badge, StatCard, Progress } from "@/components/ui";
+import { Card, SectionTitle, Badge, StatCard, Progress, EmptyState } from "@/components/ui";
 import {
   SiteForm, PlanForm, AllocationForm, AllocationStatusForm,
   MobilizationForm, MobStatusForm, DeleteRow,
@@ -406,12 +406,12 @@ export default async function SitesPage() {
       })}
 
       {projects.length === 0 && (
-        <Card>
-          <div className="py-10 text-center text-slate-400">
-            <Boxes className="mx-auto h-8 w-8 text-slate-300" />
-            <p className="mt-2 text-sm">No projects yet. Create your first project to get started.</p>
-          </div>
-        </Card>
+        <EmptyState
+          icon={Boxes}
+          title="No projects configured yet"
+          description="Create your first highway, mining, or expressway project to organize sites, fuel tanks, and machine allocations."
+          action={<ProjectEntry />}
+        />
       )}
 
       {/* ──────────── GLOBAL TABLES ──────────── */}

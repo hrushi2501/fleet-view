@@ -106,3 +106,36 @@ export function Progress({ value, className }: { value: number; className?: stri
     </div>
   );
 }
+
+export function EmptyState({
+  icon: Icon,
+  title,
+  description,
+  action,
+  className,
+}: {
+  icon?: React.ComponentType<{ className?: string }>;
+  title: string;
+  description: string;
+  action?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-white/60 p-8 text-center sm:p-12",
+        className
+      )}
+    >
+      {Icon && (
+        <div className="mb-3.5 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600 shadow-sm">
+          <Icon className="h-6 w-6" />
+        </div>
+      )}
+      <h3 className="text-base font-bold text-ink-900">{title}</h3>
+      <p className="mt-1 max-w-sm text-xs text-slate-500 leading-relaxed">{description}</p>
+      {action && <div className="mt-4">{action}</div>}
+    </div>
+  );
+}
+

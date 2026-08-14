@@ -18,13 +18,65 @@ type Opt = { id: string; label: string };
 /* ----------------------------- primitives ----------------------------- */
 const inputCls = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
 
-function Inp({ label, name, type = "text", defaultValue, required, step, placeholder, onChange, value }: {
-  label: string; name: string; type?: string; defaultValue?: string | number; required?: boolean; step?: string; placeholder?: string;
-  onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void; value?: string | number;
+function Inp({
+  label,
+  name,
+  type = "text",
+  defaultValue,
+  required,
+  step,
+  placeholder,
+  onChange,
+  value,
+}: {
+  label: string;
+  name: string;
+  type?: string;
+  defaultValue?: string | number;
+  required?: boolean;
+  step?: string;
+  placeholder?: string;
+  onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  value?: string | number;
 }) {
+  const [error, setError] = useState<string | null>(null);
+
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const val = e.target.value.trim();
+    if (!val && required) {
+      setError("This field is required.");
+      return;
+    }
+    if (!val) {
+      setError(null);
+      return;
+    }
+
+    if (name === "phone") {
+      if (!/^(?:\+91|91|0)?[6-9]\d{9}$/.test(val)) {
+        setError("Must be a valid 10-digit Indian mobile number.");
+        return;
+      }
+    } else if (type === "email") {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+        setError("Must be a valid email address.");
+        return;
+      }
+    } else if (name === "licenseNo") {
+      if (!/^[A-Za-z]{2}\d{2}\s?\d{11}$/.test(val)) {
+        setError("Format: State (2) + RTO (2) + Year (4) + Serial (7), e.g. RJ14 20241234567.");
+        return;
+      }
+    }
+    setError(null);
+  };
+
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium text-slate-600">{label}{required && <span className="text-rose-500"> *</span>}</span>
+      <span className="mb-1 block text-xs font-medium text-slate-600">
+        {label}
+        {required && <span className="text-rose-500"> *</span>}
+      </span>
       <input
         name={name}
         type={type}
@@ -32,10 +84,15 @@ function Inp({ label, name, type = "text", defaultValue, required, step, placeho
         defaultValue={defaultValue}
         value={value}
         onChange={onChange}
+        onBlur={handleBlur}
         required={required}
         placeholder={placeholder}
-        className={inputCls}
+        className={cn(
+          inputCls,
+          error ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100" : ""
+        )}
       />
+      {error && <p className="mt-1 text-[11px] font-medium text-rose-600 animate-fade-in">{error}</p>}
     </label>
   );
 }
@@ -172,23 +229,35 @@ export function AssetEntry({ projects, asset }: { projects: Opt[]; asset?: Asset
       <Inp label="Asset Code" name="code" defaultValue={asset?.code} required placeholder="EXC-012" />
       <Inp label="Name / Make-Model" name="name" defaultValue={asset?.name} required placeholder="Caterpillar 320D2" />
       <Sel label="Class" name="assetClass" options={classOpts} defaultValue={asset?.assetClass ?? "DUMPER"} required />
-      <Sel label="Category" name="category" options={catOpts} defaultValue={asset?.category ?? "VEHICLE"} />
-      <Sel label="Ownership" name="ownershipType" options={ownOpts} defaultValue={asset?.ownershipType ?? "OWNED"} required />
       <Sel label="Status" name="status" options={statusOpts} defaultValue={asset?.status ?? "Active"} />
-      <Inp label="Make" name="make" defaultValue={asset?.make} placeholder="Caterpillar" />
-      <Inp label="Model" name="model" defaultValue={asset?.model} placeholder="320D2" />
-      <Inp label="Year" name="yearMfg" type="number" defaultValue={asset?.yearMfg} />
-      <Inp label="Registration No." name="registrationNo" defaultValue={asset?.registrationNo ?? ""} placeholder="MH12 AB 1234" />
-      <Sel label="Primary Meter" name="primaryMeter" options={meterOpts} defaultValue={asset?.primaryMeter ?? "ODOMETER"} />
-      <Inp label="Meter Reading" name="meterValue" type="number" defaultValue={asset?.meterValue} />
-      <Inp label="Fuel Capacity (L)" name="fuelCapacity" type="number" defaultValue={asset?.fuelCapacity} />
-      <Inp label="Acquisition Cost (₹)" name="acquisitionCost" type="number" defaultValue={asset?.acquisitionCost} />
-      <Inp label="Health Score (0-100)" name="healthScore" type="number" defaultValue={asset?.healthScore ?? 90} />
-      <Inp label="Utilization (%)" name="utilization" type="number" defaultValue={asset?.utilization ?? 0} />
-      <Inp label="Last Service Date" name="lastServiceDate" type="date" defaultValue={asset?.lastServiceDate?.slice(0, 10)} />
-      <Inp label="Next Service Due" name="serviceDueDate" type="date" defaultValue={asset?.serviceDueDate?.slice(0, 10)} />
       <Sel label="Project" name="projectId" options={projOpts} defaultValue={asset?.projectId ?? ""} />
-      <LocationField lat={asset?.lat} lng={asset?.lng} />
+      <Inp label="Registration No." name="registrationNo" defaultValue={asset?.registrationNo ?? ""} placeholder="MH12 AB 1234" />
+
+      {/* Collapsible Progressive Disclosure for Specifications & Financials */}
+      <details className="col-span-full mt-1 rounded-2xl border border-slate-200 bg-slate-50/60 p-3.5 group">
+        <summary className="flex cursor-pointer list-none items-center justify-between text-xs font-bold text-brand-700 select-none">
+          <span>▼ Additional Technical Details, Meter &amp; GPS (Optional)</span>
+          <span className="text-[11px] font-normal text-slate-400">Click to expand</span>
+        </summary>
+        <div className="mt-3 grid gap-3 border-t border-slate-200/80 pt-3 sm:grid-cols-2">
+          <Sel label="Ownership" name="ownershipType" options={ownOpts} defaultValue={asset?.ownershipType ?? "OWNED"} required />
+          <Sel label="Category" name="category" options={catOpts} defaultValue={asset?.category ?? "VEHICLE"} />
+          <Inp label="Make" name="make" defaultValue={asset?.make} placeholder="Caterpillar" />
+          <Inp label="Model" name="model" defaultValue={asset?.model} placeholder="320D2" />
+          <Inp label="Manufacturing Year" name="yearMfg" type="number" defaultValue={asset?.yearMfg} />
+          <Sel label="Primary Meter" name="primaryMeter" options={meterOpts} defaultValue={asset?.primaryMeter ?? "ODOMETER"} />
+          <Inp label="Initial Meter Reading" name="meterValue" type="number" defaultValue={asset?.meterValue} />
+          <Inp label="Fuel Tank Capacity (L)" name="fuelCapacity" type="number" defaultValue={asset?.fuelCapacity} />
+          <Inp label="Acquisition Cost (₹)" name="acquisitionCost" type="number" defaultValue={asset?.acquisitionCost} />
+          <Inp label="Health Score (0-100)" name="healthScore" type="number" defaultValue={asset?.healthScore ?? 90} />
+          <Inp label="Utilization (%)" name="utilization" type="number" defaultValue={asset?.utilization ?? 0} />
+          <Inp label="Last Service Date" name="lastServiceDate" type="date" defaultValue={asset?.lastServiceDate?.slice(0, 10)} />
+          <Inp label="Next Service Due" name="serviceDueDate" type="date" defaultValue={asset?.serviceDueDate?.slice(0, 10)} />
+          <div className="col-span-full">
+            <LocationField lat={asset?.lat} lng={asset?.lng} />
+          </div>
+        </div>
+      </details>
     </Modal>
   );
 }

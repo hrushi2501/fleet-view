@@ -73,6 +73,48 @@ export function FleetTable({ rows }: { rows: Row[] }) {
         <span className="ml-auto text-sm text-slate-500">{filtered.length} of {rows.length}</span>
       </div>
 
+      {/* Active Filter Chips & Clear All */}
+      {(q || cls !== "ALL" || status !== "ALL" || own !== "ALL") && (
+        <div className="mb-3.5 flex flex-wrap items-center gap-2 text-xs">
+          <span className="font-semibold text-slate-400">Filters:</span>
+          {q && (
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1 font-medium text-brand-800">
+              Query: &quot;{q}&quot;
+              <button onClick={() => setQ("")} className="text-brand-400 hover:text-brand-900 font-bold" aria-label="Clear query">✕</button>
+            </span>
+          )}
+          {cls !== "ALL" && (
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1 font-medium text-brand-800">
+              Class: {ASSET_CLASS_LABEL[cls] ?? cls}
+              <button onClick={() => setCls("ALL")} className="text-brand-400 hover:text-brand-900 font-bold" aria-label="Clear class filter">✕</button>
+            </span>
+          )}
+          {status !== "ALL" && (
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1 font-medium text-brand-800">
+              Status: {status}
+              <button onClick={() => setStatus("ALL")} className="text-brand-400 hover:text-brand-900 font-bold" aria-label="Clear status filter">✕</button>
+            </span>
+          )}
+          {own !== "ALL" && (
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1 font-medium text-brand-800">
+              Ownership: {own}
+              <button onClick={() => setOwn("ALL")} className="text-brand-400 hover:text-brand-900 font-bold" aria-label="Clear ownership filter">✕</button>
+            </span>
+          )}
+          <button
+            onClick={() => {
+              setQ("");
+              setCls("ALL");
+              setStatus("ALL");
+              setOwn("ALL");
+            }}
+            className="ml-1 rounded-lg px-2 py-1 font-semibold text-rose-600 hover:bg-rose-50 hover:underline"
+          >
+            Clear all
+          </button>
+        </div>
+      )}
+
       {/* Desktop Table View */}
       <div className="card hidden overflow-hidden p-0 md:block">
         <div className="overflow-x-auto">

@@ -16,19 +16,29 @@ import { PrismaClient } from "@prisma/client";
 function resolveDbUrl(): string | undefined {
   const url = process.env.DATABASE_URL;
   if (!url) return undefined;
-  const isPooled =
-    url.includes("pgbouncer") || url.includes(":6543");
-  if (!isPooled || url.includes("pgbouncer=true")) return url;
-  const sep = url.includes("?") ? "&" : "?";
-  return `${url}${sep}pgbouncer=true`;
+  let finalUrl = url;
+  const isPooled = finalUrl.includes("pgbouncer") || finalUrl.includes(":6543");
+  if (isPooled && !finalUrl.includes("pgbouncer=true")) {
+    const sep = finalUrl.includes("?") ? "&" : "?";
+    finalUrl = `${finalUrl}${sep}pgbouncer=true`;
+  }
+  if (!finalUrl.includes("connection_limit=")) {
+    const sep = finalUrl.includes("?") ? "&" : "?";
+    finalUrl = `${finalUrl}${sep}connection_limit=10&pool_timeout=30`;
+  }
+  process.env.DATABASE_URL = finalUrl;
+  return finalUrl;
 }
+
+const resolvedUrl = resolveDbUrl();
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 export const db =
   globalForPrisma.prisma ??
   new PrismaClient({
-    datasourceUrl: resolveDbUrl(),
+    datasourceUrl: resolvedUrl,
+    datasources: resolvedUrl ? { db: { url: resolvedUrl } } : undefined,
     log: process.env.NODE_ENV === "development" ? ["error"] : [],
   });
 
