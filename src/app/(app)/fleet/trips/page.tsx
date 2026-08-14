@@ -2,6 +2,8 @@ import { db } from "@/lib/db";
 import { fleetUsage } from "@/lib/fleet-usage";
 import { Card, SectionTitle, Badge, StatCard } from "@/components/ui";
 import { ReleaseSessionButton, CloseStaleButton, IssueQrButton, SeedProvidersButton, TelematicsForm, ScanFuelButton } from "@/components/TrackingForms";
+import { TelematicsSyncBanner } from "@/components/TelematicsSyncBanner";
+import { getTataSyncStatus } from "@/lib/tata-fleet-edge";
 import { SESSION_STALE_HOURS } from "@/lib/telematics";
 import { num, fmtDate, timeAgo, ASSET_CLASS_LABEL } from "@/lib/utils";
 import { Radio, QrCode, Satellite, Smartphone, TriangleAlert, ArrowLeft } from "lucide-react";
@@ -20,11 +22,12 @@ const SRC: Record<string, { label: string; cls: string }> = {
 export default async function TripsPage() {
   const access = await requirePage("fleet.view");
   const since = new Date(); since.setDate(since.getDate() - 30);
-  const [sessions, assets, providers, readingCount] = await Promise.all([
+  const [sessions, assets, providers, readingCount, syncStatus] = await Promise.all([
     db.tripSession.findMany({ include: { asset: true, driver: true, _count: { select: { readings: true, fuelReadings: true } } }, orderBy: { startedAt: "desc" }, take: 100 }),
     db.asset.findMany({ where: assetScope(access), include: { telematicsProvider: true }, orderBy: { code: "asc" } }),
     db.telematicsProvider.findMany({ orderBy: { name: "asc" } }),
     db.telemetryReading.count({ where: { recordedAt: { gte: since } } }),
+    getTataSyncStatus(),
   ]);
 
   const telemetry = await fleetUsage(30);
@@ -60,6 +63,8 @@ export default async function TripsPage() {
           <IssueQrButton />
         </div>
       </div>
+
+      <TelematicsSyncBanner status={syncStatus} />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <StatCard label="Active Trips" value={num(active.length)} sub={`${num(sessions.length)} in 30 days`} accent="emerald" icon={<Radio className="h-5 w-5" />} />

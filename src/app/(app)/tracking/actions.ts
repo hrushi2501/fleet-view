@@ -254,3 +254,25 @@ export async function scanFuelEvents(assetId: string) {
   refresh();
   return { ok: true as const, events: events.length, suspicious: events.filter((e) => e.suspicious).length, raised };
 }
+
+/** Manually trigger a pull from Tata Fleet Edge API and refresh views. */
+export async function triggerTataSync() {
+  const session = await getSession();
+  if (!session) throw new Error("Unauthorized");
+
+  const { syncTataFleetEdge } = await import("@/lib/tata-fleet-edge");
+  const res = await syncTataFleetEdge();
+
+  await audit({
+    action: "UPDATE",
+    module: "FLEET",
+    summary: res.ok
+      ? `Manual Tata Fleet Edge sync: fetched ${res.fetched}, stored ${res.stored} reading(s)`
+      : `Manual Tata Fleet Edge sync failed: ${res.error ?? res.skipped}`,
+  });
+
+  refresh();
+  revalidatePath("/fleet/tracking");
+  revalidatePath("/fleet/trips");
+  return res;
+}

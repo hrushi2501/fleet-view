@@ -116,9 +116,14 @@ let cachedToken: { value: string; expiresAt: number } | null = null;
 const EXPIRY_MARGIN_MS = 60_000;
 
 export class TataFleetEdgeError extends Error {
-  constructor(message: string, readonly status?: number, readonly body?: string) {
+  readonly status?: number;
+  readonly body?: string;
+
+  constructor(message: string, status?: number, body?: string) {
     super(message);
     this.name = "TataFleetEdgeError";
+    this.status = status;
+    this.body = body;
   }
 }
 
@@ -534,6 +539,8 @@ function resolveAsset(ping: TelemetryPing, index: Map<string, ResolvedAsset>): R
   return null;
 }
 
+let isSyncInProgress = false;
+
 /**
  * Pulls from Fleet Edge and persists each ping as history, mirroring the push
  * route: `TelemetryReading` is the record, the asset's own lat/lng/fuel columns
@@ -542,6 +549,10 @@ function resolveAsset(ping: TelemetryPing, index: Map<string, ResolvedAsset>): R
 export async function syncTataFleetEdge(): Promise<TataSyncResult> {
   const base: TataSyncResult = { ok: false, fetched: 0, stored: 0, unmatched: [] };
 
+  if (isSyncInProgress) {
+    return { ...base, ok: true, skipped: "Sync already in progress" };
+  }
+
   if (process.env.TATA_FLEET_EDGE_ENABLED !== "true") {
     return { ...base, ok: true, skipped: "TATA_FLEET_EDGE_ENABLED is not 'true'" };
   }
@@ -549,6 +560,8 @@ export async function syncTataFleetEdge(): Promise<TataSyncResult> {
   if (missing.length) {
     return { ...base, ok: true, skipped: `missing env: ${missing.join(", ")}` };
   }
+
+  isSyncInProgress = true;
 
   // Self-healing: the provider row is what Tracking → Sessions binds assets to,
   // and what records sync health. Create it on first run rather than depending
@@ -784,5 +797,66 @@ export async function syncTataFleetEdge(): Promise<TataSyncResult> {
       });
     }
     return { ...base, error: message };
+  } finally {
+    isSyncInProgress = false;
   }
+}
+
+export type TataStatusInfo = {
+  enabled: boolean;
+  configured: boolean;
+  missingKeys: string[];
+  provider: {
+    id: string;
+    code: string;
+    name: string;
+    lastSyncAt: Date | null;
+    lastSyncStatus: string | null;
+    lastSyncError: string | null;
+  } | null;
+  lastReadingAt: Date | null;
+  activeVehiclesCount: number;
+  totalReadingsCount: number;
+};
+
+export async function getTataSyncStatus(): Promise<TataStatusInfo> {
+  const enabled = process.env.TATA_FLEET_EDGE_ENABLED === "true";
+  const missing = missingConfigKeys();
+  const configured = missing.length === 0;
+
+  const [provider, lastReading, activeVehicles, totalReadings] = await Promise.all([
+    db.telematicsProvider.findUnique({
+      where: { code: TATA_PROVIDER_CODE },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        lastSyncAt: true,
+        lastSyncStatus: true,
+        lastSyncError: true,
+      },
+    }),
+    db.telemetryReading.findFirst({
+      where: { source: "GPS_API" },
+      orderBy: { recordedAt: "desc" },
+      select: { recordedAt: true },
+    }),
+    db.asset.count({
+      where: {
+        lastSeen: { gte: new Date(Date.now() - 24 * 60 * 60_000) },
+        lat: { not: 0 },
+      },
+    }),
+    db.telemetryReading.count({ where: { source: "GPS_API" } }),
+  ]);
+
+  return {
+    enabled,
+    configured,
+    missingKeys: missing,
+    provider,
+    lastReadingAt: lastReading?.recordedAt ?? null,
+    activeVehiclesCount: activeVehicles,
+    totalReadingsCount: totalReadings,
+  };
 }

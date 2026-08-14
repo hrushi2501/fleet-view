@@ -17,7 +17,9 @@
     "db:rls": "psql \"$DATABASE_URL_UNPOOLED\" -f prisma/sql/enable-rls.sql",
     "db:telemetry-index": "psql \"$DATABASE_URL_UNPOOLED\" -f prisma/sql/telemetry-unique-index.sql",
     "test": "node --import ./scripts/test-setup.mjs --test 'src/**/*.test.ts'",
-    "check": "npm run lint && tsc --noEmit && npm test"
+    "check": "npm run lint && tsc --noEmit && npm test",
+    "worker:telematics": "node --env-file=.env.local --import ./scripts/test-setup.mjs scripts/telematics-worker.mjs",
+    "worker:telematics:once": "node --env-file=.env.local --import ./scripts/test-setup.mjs scripts/telematics-worker.mjs --once"
   },
   "prisma": {
     "seed": "node prisma/seed.mjs"

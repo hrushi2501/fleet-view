@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { checkSharedSecret } from "@/lib/auth";
+import { requireApi } from "@/lib/access";
 import { syncTataFleetEdge, isTataEnabled, missingConfigKeys } from "@/lib/tata-fleet-edge";
 
 export const dynamic = "force-dynamic";
@@ -10,18 +11,25 @@ export const maxDuration = 120;
  * Pull telemetry from Tata Fleet Edge.
  *
  * Called by Vercel Cron (sends `Authorization: Bearer ${CRON_SECRET}`) or
- * manually with `?key=` for a one-off check after changing credentials.
- *
- * Returns 200 with `skipped` when the integration is switched off or
- * unconfigured — a disabled integration is not a failed cron, and paging the
- * team every 15 minutes over a deliberate off switch trains them to ignore it.
- *
- * The secret check fails closed: with CRON_SECRET unset the route answers 503
- * rather than accepting a default that is public in this repository.
+ * by internal worker / manual admin check.
  */
 export async function GET(req: Request) {
-  const auth = checkSharedSecret(req, "CRON_SECRET");
-  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const authSecret = checkSharedSecret(req, "CRON_SECRET");
+  let isAuthorized = authSecret.ok;
+
+  if (!isAuthorized) {
+    const sessionAuth = await requireApi("fleet.view");
+    if (sessionAuth.ok) {
+      isAuthorized = true;
+    }
+  }
+
+  if (!isAuthorized) {
+    return NextResponse.json(
+      { error: "Unauthorized — valid CRON_SECRET or session required" },
+      { status: 401 }
+    );
+  }
 
   if (!isTataEnabled()) {
     return NextResponse.json({

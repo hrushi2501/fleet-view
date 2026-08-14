@@ -3,6 +3,8 @@ import { LiveMap } from "@/components/LiveMap";
 import { assetScope, requirePage } from "@/lib/access";
 import { PageTabs, resolveTab, type Tab } from "@/components/PageTabs";
 import { QrStickers } from "./_sections/QrStickers";
+import { TelematicsSyncBanner } from "@/components/TelematicsSyncBanner";
+import { getTataSyncStatus } from "@/lib/tata-fleet-edge";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +33,7 @@ export default async function VehicleTrackingPage({
 }) {
   const access = await requirePage("fleet.view");
   const tab = resolveTab((await searchParams).tab, TABS);
+  const syncStatus = await getTataSyncStatus();
 
   return (
     <div className="space-y-5">
@@ -40,6 +43,8 @@ export default async function VehicleTrackingPage({
           Live position and status of every vehicle and machine across all sites
         </p>
       </div>
+
+      <TelematicsSyncBanner status={syncStatus} />
 
       <div className="print:hidden">
         <PageTabs tabs={TABS} active={tab} basePath="/fleet/tracking" />
