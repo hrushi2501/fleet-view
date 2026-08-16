@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { checkSharedSecret } from "@/lib/auth";
+import { requireApi } from "@/lib/access";
 import { getTelemetryAdapter } from "@/lib/telematics-adapters";
 import { normaliseReading, assetCacheUpdate, detectSchemaDrift, describeDrift } from "@/lib/telemetry-normalization";
 import { db } from "@/lib/db";
@@ -8,30 +9,111 @@ import { db } from "@/lib/db";
 export const dynamic = "force-dynamic";
 
 /**
+ * GET /api/fuel/telemetry
+ *
+ * Query live and historical fuel telemetry readings across the fleet.
+ * Filter by `assetId` or limit using `?limit=50`.
+ */
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const authSecret = checkSharedSecret(req, "FLEET_INGEST_KEY");
+  let isAuthorized = authSecret.ok;
+
+  if (!isAuthorized) {
+    const sessionAuth = await requireApi("fuel.view");
+    if (sessionAuth.ok) isAuthorized = true;
+  }
+
+  if (!isAuthorized) {
+    return NextResponse.json(
+      { error: "Unauthorized — valid FLEET_INGEST_KEY or session required" },
+      { status: 401 }
+    );
+  }
+
+  const assetId = url.searchParams.get("assetId");
+  const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 50));
+
+  const whereClause: Prisma.TelemetryReadingWhereInput = {};
+  if (assetId) {
+    whereClause.assetId = assetId;
+  }
+
+  const [readings, totalCount, activeAssets] = await Promise.all([
+    db.telemetryReading.findMany({
+      where: whereClause,
+      orderBy: { recordedAt: "desc" },
+      take: limit,
+      include: {
+        asset: {
+          select: {
+            id: true,
+            code: true,
+            registrationNo: true,
+            name: true,
+            assetClass: true,
+            fuelCapacity: true,
+            status: true,
+          },
+        },
+        provider: {
+          select: {
+            code: true,
+            name: true,
+            lastSyncAt: true,
+            lastSyncStatus: true,
+          },
+        },
+      },
+    }),
+    db.telemetryReading.count({ where: whereClause }),
+    db.asset.findMany({
+      where: {
+        fuelCapacity: { gt: 0 },
+      },
+      select: {
+        id: true,
+        code: true,
+        registrationNo: true,
+        name: true,
+        fuelCapacity: true,
+        meterValue: true,
+        status: true,
+        lastSeen: true,
+      },
+    }),
+  ]);
+
+  return NextResponse.json({
+    ok: true,
+    totalCount,
+    limit,
+    assets: activeAssets,
+    readings: readings.map((r) => ({
+      id: r.id,
+      assetId: r.assetId,
+      assetCode: r.asset?.code,
+      registrationNo: r.asset?.registrationNo,
+      fuelLevelLitres: r.fuelLevelL,
+      fuelLevelPct: r.fuelLevelPct,
+      fuelCapacity: r.asset?.fuelCapacity,
+      odometerKm: r.odometerKm,
+      speedKph: r.speedKph,
+      lat: r.lat,
+      lng: r.lng,
+      ignitionOn: r.ignitionOn,
+      source: r.source,
+      provider: r.provider?.name ?? r.source,
+      recordedAt: r.recordedAt,
+    })),
+  });
+}
+
+/**
  * Universal telemetry ingestion endpoint.
  *
  * Accepts webhooks or batch pushes from any telemetry provider (LocoNav,
  * MapMyIndia, Tata Fleet Edge, Generic) via `?provider=CODE`.
- *
- * Every sample is validated by `telemetry-normalization` before it is stored,
- * so this route and the Fleet Edge cron sync cannot disagree about what a valid
- * reading is. What this route used to do instead, and no longer does:
- *
- *   - stored `fuelLevelPct` but silently discarded `fuelLevelL`, leaving every
- *     fuel calculation for a webhook-fed vehicle with no data behind it;
- *   - inserted unconditionally, so a provider retry (or a 429 retry) wrote the
- *     same sample twice and double-counted its distance and fuel;
- *   - copied the odometer onto the asset with no monotonic guard, so one bad
- *     sample could wind a meter backwards permanently;
- *   - dropped an entire reading when speed looked wrong, throwing away the
- *     perfectly good fuel and odometer values alongside it;
- *   - kept no raw payload, so nothing could be re-derived or audited.
- *
- * Authenticated with the shared ingest key (`Authorization: Bearer …`,
- * `x-fleet-key`, or `?key=`) against FLEET_INGEST_KEY. This route accepted
- * anonymous writes before: anyone who knew the URL could invent positions, fuel
- * levels and odometer readings for any vehicle in the fleet, which is the input
- * to every fuel-loss and utilisation figure the client acts on.
  */
 export async function POST(req: Request) {
   const auth = checkSharedSecret(req, "FLEET_INGEST_KEY");
@@ -77,15 +159,10 @@ export async function POST(req: Request) {
         continue;
       }
 
-      // A provider that changes its payload shape must not do so silently — a
-      // field that quietly disappears empties a calculation rather than
-      // breaking it, which is the harder failure to notice.
       const d = detectSchemaDrift(p.rawPayload);
       const summary = describeDrift(d);
       if (summary) drift.add(summary);
 
-      // The last good meter reading, so a backwards odometer can be recognised
-      // rather than absorbed.
       const previous = await db.telemetryReading.findFirst({
         where: { assetId: asset.id, odometerKm: { not: null } },
         orderBy: { recordedAt: "desc" },
@@ -110,8 +187,6 @@ export async function POST(req: Request) {
 
       const r = result.reading;
 
-      // Identity is (asset, instant, source). A webhook redelivery describes the
-      // same moment however many times it arrives.
       const already = await db.telemetryReading.findFirst({
         where: { assetId: asset.id, recordedAt: r.recordedAt, source: adapter.providerCode },
         select: { id: true },
@@ -137,8 +212,6 @@ export async function POST(req: Request) {
           odometerKm: r.odometerKm,
           engineHours: r.engineHours,
           fuelLevelPct: r.fuelLevelPct,
-          // The field this route used to drop. Without it there is no fuel
-          // analysis at all for anything fed through here.
           fuelLevelL: r.fuelLevelL,
           ignitionOn: r.ignitionOn,
           source: adapter.providerCode,
@@ -169,8 +242,6 @@ export async function POST(req: Request) {
       ...(drift.size ? { schemaDrift: [...drift] } : {}),
     });
   } catch (e) {
-    // The message can carry the Prisma query, table names or the connection
-    // target; that belongs in the server log, not in a response to a device.
     console.error("[API] /fuel/telemetry POST error:", e);
     return NextResponse.json({ success: false, error: "Telemetry processing failed" }, { status: 500 });
   }

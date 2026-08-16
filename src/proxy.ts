@@ -23,9 +23,8 @@ export function proxy(req: NextRequest) {
 }
 
 export const config = {
-  // Machine endpoints are excluded because a redirect to /login is a useless
-  // answer to a device or a cron runner. Each of them authenticates with a
-  // shared secret in its own handler: api/telematics and api/fuel/telemetry on
-  // FLEET_INGEST_KEY, api/push/cron on CRON_SECRET.
-  matcher: ["/((?!api/auth|api/health|api/telematics|api/fuel/telemetry|api/push|api/assetlinks|.well-known|manifest.webmanifest|sw.js|icon.svg|icon-192.png|icon-512.png|_next/static|_next/image|favicon.ico).*)"],
+  // Machine and API endpoints are excluded because a redirect to /login is a useless
+  // answer to a device, an API client, or a cron runner. Each of them authenticates with a
+  // session or shared secret in its own handler.
+  matcher: ["/((?!api/|api|.well-known|manifest.webmanifest|sw.js|icon.svg|icon-192.png|icon-512.png|_next/static|_next/image|favicon.ico).*)"],
 };
