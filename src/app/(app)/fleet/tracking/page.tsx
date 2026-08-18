@@ -1,10 +1,10 @@
-import { db } from "@/lib/db";
-import { LiveMap } from "@/components/LiveMap";
 import { assetScope, requirePage } from "@/lib/access";
 import { PageTabs, resolveTab, type Tab } from "@/components/PageTabs";
 import { QrStickers } from "./_sections/QrStickers";
 import { TelematicsSyncBanner } from "@/components/TelematicsSyncBanner";
 import { getTataSyncStatus } from "@/lib/tata-fleet-edge";
+import { FleetEdgeConsole } from "@/components/FleetEdgeConsole";
+import { getLiveFleet } from "@/lib/fleet-edge-live";
 
 export const dynamic = "force-dynamic";
 
@@ -58,42 +58,17 @@ export default async function VehicleTrackingPage({
   );
 }
 
+/**
+ * The live console.
+ *
+ * Rendered on the server so the first frame carries real positions — a
+ * dispatcher opening this on a site tablet sees the fleet before any JavaScript
+ * has run. The client component then polls `/api/telematics/live` to keep it
+ * fresh, under the same scope.
+ */
 async function LiveMapSection({ access }: { access: Awaited<ReturnType<typeof requirePage>> }) {
   // Scoped, so a supervisor limited to a site sees that site's machines rather
   // than the company's — the map used to fetch everything for everybody.
-  const assets = await db.asset.findMany({
-    where: assetScope(access),
-    include: { project: true },
-    orderBy: { code: "asc" },
-  });
-
-  const markers = assets.map((a) => ({
-    id: a.id,
-    code: a.code,
-    name: a.name,
-    assetClass: a.assetClass,
-    status: a.status,
-    speed: a.speed,
-    lat: a.lat,
-    lng: a.lng,
-    lastSeen: a.lastSeen.toISOString(),
-    project: a.project?.code ?? "—",
-    meterValue: a.meterValue,
-    primaryMeter: a.primaryMeter,
-  }));
-
-  const stopped = assets.filter((a) => a.status !== "Active").length;
-
-  return (
-    <div className="space-y-3">
-      <LiveMap markers={markers} />
-      {markers.length > 0 && (
-        <p className="text-xs text-slate-500">
-          {stopped > 0
-            ? `${stopped} vehicle abhi stopped hai — tap a marker for its last reported position and meter.`
-            : "Tap a marker for the vehicle's last reported position and meter."}
-        </p>
-      )}
-    </div>
-  );
+  const fleet = await getLiveFleet(assetScope(access));
+  return <FleetEdgeConsole initial={fleet} />;
 }

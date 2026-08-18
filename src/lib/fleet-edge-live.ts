@@ -1,0 +1,591 @@
+/**
+ * Fleet Edge live console — the read model behind the tracking screen.
+ *
+ * Tata's own Fleet Edge console shows, for every vehicle, a live block (speed,
+ * odometer, fuel, DEF, battery, engine hours), a day's statistics (distance,
+ * idling, stoppage, efficiency) and a service block. This module assembles the
+ * same picture from what we already store, so the client sees no less here than
+ * they see there — and sees it alongside the fuel, cost and compliance data
+ * Fleet Edge does not hold.
+ *
+ * Two rules govern every number below, both inherited from the rest of this
+ * codebase and both non-negotiable:
+ *
+ *  1. A wrong number is worse than no number. Anything that cannot be measured
+ *     from the samples we actually hold is returned as `null` and rendered as
+ *     an em dash. `null` means *not known*; it never means zero.
+ *  2. Nothing is integrated from the fuel sender. Tank level is noisy by several
+ *     litres (see the header of `fleet-analytics.ts`); day totals come from
+ *     `analyseUsage`, which knows that, rather than from arithmetic on levels.
+ *
+ * The typed telemetry columns cover nine of the ~34 fields Fleet Edge sends.
+ * The rest — DEF level, battery voltages, gear, satellite count, GPS quality —
+ * live in `TelemetryReading.raw` and are read from there. That is deliberate:
+ * the schema was fixed before anyone knew which of those mattered, and this is
+ * the screen that finds out.
+ */
+import { db } from "@/lib/db";
+import { startOfBusinessDay } from "@/lib/business-time";
+import {
+  analyseUsage, type AnalyticsReading, type Confidence, type Norm,
+} from "@/lib/fleet-analytics";
+import type { Prisma } from "@prisma/client";
+
+/**
+ * The five states the console's filter strip counts.
+ *
+ * These mirror Fleet Edge's own vocabulary rather than the ERP's `Asset.status`
+ * (Active / Idle / Under-Maintenance / …). They answer a different question:
+ * `Asset.status` is what the workshop says about a machine, this is what the
+ * vehicle is doing right now. A truck can be "Active" in the register and
+ * OFFLINE on this screen, and both are true.
+ */
+export type LiveStatus = "MOVING" | "IDLING" | "STOPPED" | "OFFLINE" | "BREAKDOWN";
+
+/**
+ * How long without a sample before a vehicle is called OFFLINE.
+ *
+ * The sync runs every two minutes and Fleet Edge rate-limits at roughly one
+ * call a minute, so a single missed run is routine. Fifteen minutes is about
+ * seven consecutive failures — long enough that it is not traffic shaping, short
+ * enough that a driver who has lost signal shows up before the shift ends.
+ */
+const OFFLINE_AFTER_MS = 15 * 60_000;
+
+/** Below this the vehicle is not travelling; GPS speed jitters around zero. */
+const MOVING_SPEED_KPH = 3;
+
+/** Service falls to DUE inside either of these, matching Preventive Service. */
+const SERVICE_DUE_KM = 500;
+const SERVICE_DUE_DAYS = 15;
+
+export type LiveReadings = {
+  speedKph: number | null;
+  odometerKm: number | null;
+  /** Litres and percent are both reported; percent is derived, never the source. */
+  fuelLitres: number | null;
+  fuelPct: number | null;
+  fuelCapacityL: number | null;
+  /** AdBlue. Fleet Edge sends a scaled sentinel on this subscription — see below. */
+  defPct: number | null;
+  batteryV: number | null;
+  engineRunHours: number | null;
+  ignitionOn: boolean | null;
+  gear: string | null;
+  satellites: number | null;
+  /** False means the position shown is the last known fix, not where it is now. */
+  gpsFix: boolean;
+};
+
+export type TodayStats = {
+  distanceKm: number | null;
+  idlingMinutes: number | null;
+  stoppageMinutes: number | null;
+  engineRunHours: number | null;
+  kmPerL: number | null;
+  confidence: Confidence | null;
+  /** Why the efficiency figure is missing or soft, in plain words. */
+  confidenceReasons: string[];
+};
+
+export type ServiceStatus = {
+  taskName: string | null;
+  distanceToServiceKm: number | null;
+  daysToService: number | null;
+  status: "OK" | "DUE" | "OVERDUE" | null;
+};
+
+export type LiveVehicle = {
+  id: string;
+  code: string;
+  name: string;
+  registrationNo: string | null;
+  chassisNo: string | null;
+  /** "SIGNA 3525.TK.FBV" — make and model as one line, the way the cab badge reads. */
+  modelLabel: string;
+  assetClass: string;
+  status: LiveStatus;
+  /** What the register says, kept because it explains a BREAKDOWN. */
+  registerStatus: string;
+  lat: number | null;
+  lng: number | null;
+  headingDeg: number | null;
+  lastUpdate: string | null;
+  /**
+   * False for a machine in the register that Fleet Edge does not cover. The
+   * banner counts these; adding one is a commercial change with Tata, not a
+   * software change.
+   */
+  subscribed: boolean;
+  onTrip: boolean;
+  driverName: string | null;
+  projectCode: string | null;
+  live: LiveReadings;
+  today: TodayStats;
+  service: ServiceStatus;
+};
+
+export type LiveFleet = {
+  vehicles: LiveVehicle[];
+  counts: Record<LiveStatus, number> & { ALL: number };
+  unsubscribedCount: number;
+  /** Provider sync health, so the screen can say why it is stale. */
+  provider: {
+    lastSyncAt: string | null;
+    lastSyncStatus: string | null;
+    lastSyncError: string | null;
+  } | null;
+  generatedAt: string;
+};
+
+// ---------------------------------------------------------------------------
+// Raw payload readers
+// ---------------------------------------------------------------------------
+
+type Raw = Record<string, unknown>;
+
+function rawOf(value: Prisma.JsonValue | null | undefined): Raw {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Raw) : {};
+}
+
+function rawNum(raw: Raw, ...keys: string[]): number | null {
+  for (const k of keys) {
+    const v = raw[k];
+    if (v == null || v === "") continue;
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function rawStr(raw: Raw, ...keys: string[]): string | null {
+  for (const k of keys) {
+    const v = raw[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
+    if (typeof v === "number") return String(v);
+  }
+  return null;
+}
+
+/**
+ * AdBlue, as a percentage, or null.
+ *
+ * Fleet Edge sends `defLevel: 65000` on this subscription — a constant, on a
+ * vehicle whose DEF tank is nothing like 65,000 of any unit. It is a scaled or
+ * sentinel value, so it is *not* rendered as a level. Only a value that is
+ * already a plausible percentage is believed; anything else reads as unknown,
+ * which is what the Tata console itself shows for this truck.
+ */
+function defPercent(raw: Raw): number | null {
+  const v = rawNum(raw, "defLevel", "DefLevel");
+  if (v == null) return null;
+  if (v < 0 || v > 100) return null;
+  return Math.round(v * 10) / 10;
+}
+
+// ---------------------------------------------------------------------------
+// Status
+// ---------------------------------------------------------------------------
+
+function deriveStatus(
+  registerStatus: string,
+  lastSeen: Date | null,
+  speedKph: number | null,
+  ignitionOn: boolean | null,
+  now: Date,
+): LiveStatus {
+  // A machine the workshop has taken off the road is a breakdown whatever its
+  // last ping said — that is the fact the yard needs, and a stale "Stopped"
+  // would hide it.
+  if (registerStatus === "Breakdown") return "BREAKDOWN";
+
+  if (!lastSeen || now.getTime() - lastSeen.getTime() > OFFLINE_AFTER_MS) return "OFFLINE";
+
+  if (speedKph != null && speedKph >= MOVING_SPEED_KPH) return "MOVING";
+  // Engine running, wheels not turning. This is the state that burns diesel for
+  // nothing, so it is worth separating from a parked vehicle rather than
+  // folding both into "Stopped" the way the register does.
+  if (ignitionOn === true) return "IDLING";
+  return "STOPPED";
+}
+
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
+
+type ScheduleRow = {
+  assetId: string | null;
+  assetClass: string | null;
+  taskName: string;
+  intervalKm: number;
+  intervalDays: number;
+  lastDoneMeter: number;
+  lastDoneDate: Date | null;
+};
+
+/**
+ * The nearest service, by distance or by calendar — whichever comes first.
+ *
+ * Preventive Service already works this way for the workshop; this repeats the
+ * "whichever comes first" rule so the two screens cannot disagree about whether
+ * a truck is due.
+ */
+function nearestService(
+  schedules: ScheduleRow[],
+  meterValue: number,
+  now: Date,
+): ServiceStatus {
+  const empty: ServiceStatus = {
+    taskName: null, distanceToServiceKm: null, daysToService: null, status: null,
+  };
+  if (!schedules.length) return empty;
+
+  let best: ServiceStatus | null = null;
+
+  for (const s of schedules) {
+    const km =
+      s.intervalKm > 0 && meterValue > 0
+        ? Math.round((s.lastDoneMeter + s.intervalKm) - meterValue)
+        : null;
+
+    const days =
+      s.intervalDays > 0 && s.lastDoneDate
+        ? Math.ceil(
+            (s.lastDoneDate.getTime() + s.intervalDays * 86_400_000 - now.getTime()) / 86_400_000,
+          )
+        : null;
+
+    if (km == null && days == null) continue;
+
+    const overdue = (km != null && km <= 0) || (days != null && days <= 0);
+    const due = (km != null && km <= SERVICE_DUE_KM) || (days != null && days <= SERVICE_DUE_DAYS);
+    const status: ServiceStatus["status"] = overdue ? "OVERDUE" : due ? "DUE" : "OK";
+
+    const candidate: ServiceStatus = {
+      taskName: s.taskName,
+      distanceToServiceKm: km,
+      daysToService: days,
+      status,
+    };
+
+    // Rank by urgency, then by whichever measure is closest to zero, so the
+    // block names the job that will actually come up next.
+    const rank = (c: ServiceStatus) => (c.status === "OVERDUE" ? 0 : c.status === "DUE" ? 1 : 2);
+    const slack = (c: ServiceStatus) =>
+      Math.min(
+        c.distanceToServiceKm ?? Number.POSITIVE_INFINITY,
+        (c.daysToService ?? Number.POSITIVE_INFINITY) * 100,
+      );
+
+    if (!best || rank(candidate) < rank(best) || (rank(candidate) === rank(best) && slack(candidate) < slack(best))) {
+      best = candidate;
+    }
+  }
+
+  return best ?? empty;
+}
+
+// ---------------------------------------------------------------------------
+// Today
+// ---------------------------------------------------------------------------
+
+/**
+ * Stationary time, split into engine-on and engine-off.
+ *
+ * Both are charged against the interval *between* two samples, which is the
+ * only thing the data supports: on two-minute polling a vehicle that idles for
+ * ninety seconds between pings is invisible, and inventing that time would be
+ * exactly the kind of confident wrong number this system refuses to print.
+ */
+function stationaryMinutes(samples: AnalyticsReading[]): { idling: number; stopped: number } {
+  let idling = 0;
+  let stopped = 0;
+
+  for (let i = 1; i < samples.length; i++) {
+    const a = samples[i - 1];
+    const b = samples[i];
+    const minutes = (b.recordedAt.getTime() - a.recordedAt.getTime()) / 60_000;
+    // A gap this wide is an outage, not a vehicle standing still. Counting it
+    // would report a truck as having idled through the hours it was unobserved.
+    if (!Number.isFinite(minutes) || minutes <= 0 || minutes > 20) continue;
+
+    const moving = (a.speedKph ?? 0) >= MOVING_SPEED_KPH || (b.speedKph ?? 0) >= MOVING_SPEED_KPH;
+    if (moving) continue;
+
+    if (a.ignitionOn === true) idling += minutes;
+    else if (a.ignitionOn === false) stopped += minutes;
+  }
+
+  return { idling: Math.round(idling), stopped: Math.round(stopped) };
+}
+
+/**
+ * A today-sample carries the engine-hour counter alongside the fields the fuel
+ * analytics needs. `AnalyticsReading` deliberately does not model engine hours —
+ * it reasons about fuel and distance — so the extra field rides along here
+ * rather than widening a type the anomaly engine depends on.
+ */
+type TodaySample = AnalyticsReading & { engineHours: number | null };
+
+/** Engine hours actually observed today, from the vehicle's own counter. */
+function engineHoursToday(samples: TodaySample[]): number | null {
+  const withHours = samples.filter((s) => s.engineHours != null);
+  if (withHours.length < 2) return null;
+  const first = withHours[0].engineHours as number;
+  const last = withHours[withHours.length - 1].engineHours as number;
+  const delta = last - first;
+  // A counter that went backwards is a meter swap or a provider glitch; a day
+  // longer than a day is nonsense. Either way we did not measure it.
+  if (delta < 0 || delta > 24) return null;
+  return Math.round(delta * 10) / 10;
+}
+
+// ---------------------------------------------------------------------------
+// Assembly
+// ---------------------------------------------------------------------------
+
+export type LiveFleetScope = Prisma.AssetWhereInput | undefined;
+
+/**
+ * Builds the whole console view in a fixed number of queries.
+ *
+ * The fleet is dozens of vehicles, not millions, so today's readings are pulled
+ * in one go and grouped in memory rather than issuing a query per vehicle. That
+ * matters here because this screen polls.
+ */
+export async function getLiveFleet(scope: LiveFleetScope = undefined): Promise<LiveFleet> {
+  const now = new Date();
+  const dayStart = startOfBusinessDay(now);
+
+  const assets = await db.asset.findMany({
+    where: scope,
+    select: {
+      id: true, code: true, name: true, registrationNo: true, chassisNo: true,
+      make: true, model: true, assetClass: true, status: true,
+      lat: true, lng: true, speed: true, lastSeen: true,
+      meterValue: true, hourMeterValue: true, primaryMeter: true,
+      fuelCapacity: true, fuelLevelPct: true,
+      driver: { select: { name: true } },
+      project: { select: { code: true } },
+    },
+    orderBy: { code: "asc" },
+  });
+
+  if (!assets.length) {
+    return {
+      vehicles: [],
+      counts: { ALL: 0, MOVING: 0, IDLING: 0, STOPPED: 0, OFFLINE: 0, BREAKDOWN: 0 },
+      unsubscribedCount: 0,
+      provider: null,
+      generatedAt: now.toISOString(),
+    };
+  }
+
+  const assetIds = assets.map((a) => a.id);
+
+  const [todayReadings, latestReadings, schedules, activeSessions, norms, provider] =
+    await Promise.all([
+      db.telemetryReading.findMany({
+        where: { assetId: { in: assetIds }, recordedAt: { gte: dayStart } },
+        orderBy: { recordedAt: "asc" },
+        select: {
+          assetId: true, recordedAt: true, lat: true, lng: true, speedKph: true,
+          odometerKm: true, engineHours: true, fuelLevelL: true, fuelLevelPct: true,
+          ignitionOn: true,
+        },
+      }),
+      // The most recent sample per vehicle, whenever it was — a vehicle that has
+      // not reported since yesterday still has a last known position, and saying
+      // so is more useful than an empty card.
+      db.telemetryReading.findMany({
+        where: { assetId: { in: assetIds } },
+        orderBy: { recordedAt: "desc" },
+        distinct: ["assetId"],
+        select: {
+          assetId: true, recordedAt: true, lat: true, lng: true, speedKph: true,
+          headingDeg: true, odometerKm: true, engineHours: true, fuelLevelL: true,
+          fuelLevelPct: true, ignitionOn: true, source: true, raw: true,
+        },
+      }),
+      db.maintenanceSchedule.findMany({
+        where: { active: true },
+        select: {
+          assetId: true, assetClass: true, taskName: true,
+          intervalKm: true, intervalDays: true, lastDoneMeter: true, lastDoneDate: true,
+        },
+      }),
+      db.tripSession.findMany({
+        where: { assetId: { in: assetIds }, status: "ACTIVE" },
+        select: { assetId: true, driver: { select: { name: true } } },
+      }),
+      db.consumptionNorm.findMany({
+        where: { unit: "KMPL" },
+        select: { assetId: true, assetClass: true, normLow: true, normHigh: true, tolerancePct: true },
+      }),
+      db.telematicsProvider.findUnique({
+        where: { code: "TATA_FLEET_EDGE" },
+        select: { lastSyncAt: true, lastSyncStatus: true, lastSyncError: true },
+      }),
+    ]);
+
+  const byAsset = new Map<string, TodaySample[]>();
+  for (const r of todayReadings) {
+    const list = byAsset.get(r.assetId);
+    const sample: TodaySample = {
+      recordedAt: r.recordedAt,
+      lat: r.lat,
+      lng: r.lng,
+      speedKph: r.speedKph,
+      odometerKm: r.odometerKm,
+      fuelLevelL: r.fuelLevelL,
+      fuelLevelPct: r.fuelLevelPct,
+      ignitionOn: r.ignitionOn,
+      engineHours: r.engineHours,
+    };
+    if (list) list.push(sample);
+    else byAsset.set(r.assetId, [sample]);
+  }
+
+  const latestByAsset = new Map(latestReadings.map((r) => [r.assetId, r]));
+  const sessionByAsset = new Map(activeSessions.map((s) => [s.assetId, s]));
+
+  const counts: LiveFleet["counts"] = {
+    ALL: 0, MOVING: 0, IDLING: 0, STOPPED: 0, OFFLINE: 0, BREAKDOWN: 0,
+  };
+  let unsubscribedCount = 0;
+
+  const vehicles: LiveVehicle[] = assets.map((a) => {
+    const latest = latestByAsset.get(a.id);
+    const raw = rawOf(latest?.raw ?? null);
+    const samples = byAsset.get(a.id) ?? [];
+
+    // "Subscribed" means Fleet Edge is actually reporting this vehicle. A row in
+    // the register with no OEM sample behind it is a machine the subscription
+    // does not cover, and the banner says so rather than showing a dead card.
+    const subscribed = latest?.source === "GPS_API";
+    if (!subscribed) unsubscribedCount++;
+
+    const lastSeen = latest?.recordedAt ?? null;
+    const speedKph = latest?.speedKph ?? null;
+    const ignitionOn = latest?.ignitionOn ?? null;
+    const status = deriveStatus(a.status, lastSeen, speedKph, ignitionOn, now);
+    counts[status]++;
+    counts.ALL++;
+
+    // Capacity: what the vehicle reports beats what a clerk typed, because the
+    // fuel bar and every theft threshold are sized against it.
+    const capacity =
+      rawNum(raw, "primaryFuelTankCapacity", "PrimaryFuelTankCapacity") ??
+      (a.fuelCapacity > 0 ? a.fuelCapacity : null);
+
+    const fuelLitres = latest?.fuelLevelL ?? null;
+    const fuelPct =
+      latest?.fuelLevelPct ??
+      (fuelLitres != null && capacity != null && capacity > 0
+        ? Math.round((fuelLitres / capacity) * 1000) / 10
+        : null);
+
+    // Odometer: prefer the sample, fall back to the register's meter. The
+    // register is updated from the same samples, so this is a staleness
+    // fallback, not a second source of truth.
+    const odometerKm = latest?.odometerKm ?? (a.meterValue > 0 ? a.meterValue : null);
+
+    const norm = pickNorm(norms, a.id, a.assetClass);
+    const { usage } = analyseUsage(samples, norm, capacity, null);
+    const stationary = stationaryMinutes(samples);
+
+    const today: TodayStats = {
+      // `chosenKm` is odometer-first with a GPS floor; zero is a real answer
+      // only when we have samples to say so.
+      distanceKm: samples.length >= 2 ? usage.distanceKm : null,
+      idlingMinutes: samples.length >= 2 ? stationary.idling : null,
+      stoppageMinutes: samples.length >= 2 ? stationary.stopped : null,
+      engineRunHours: engineHoursToday(samples),
+      // Withheld outright when the day was too thinly sampled to measure a burn.
+      kmPerL: usage.insufficientData ? null : usage.avgKmPerL,
+      confidence: samples.length >= 2 ? usage.confidence : null,
+      confidenceReasons: usage.confidenceReasons ?? [],
+    };
+
+    const applicable = schedules.filter(
+      (s) => s.assetId === a.id || (s.assetId == null && s.assetClass === a.assetClass),
+    );
+    const meterForService = a.primaryMeter === "SMU" ? a.hourMeterValue : a.meterValue;
+    const service = nearestService(applicable, meterForService, now);
+
+    const session = sessionByAsset.get(a.id);
+
+    return {
+      id: a.id,
+      code: a.code,
+      name: a.name,
+      registrationNo: a.registrationNo,
+      chassisNo: a.chassisNo,
+      modelLabel: [a.make, a.model].filter(Boolean).join(" ").trim() || a.name,
+      assetClass: a.assetClass,
+      status,
+      registerStatus: a.status,
+      // A cached 0/0 is the seed default, not the Gulf of Guinea. Treat it as
+      // "never positioned" so the map does not drop a marker in the ocean.
+      lat: latest?.lat ?? (a.lat !== 0 ? a.lat : null),
+      lng: latest?.lng ?? (a.lng !== 0 ? a.lng : null),
+      headingDeg: latest?.headingDeg ?? null,
+      lastUpdate: lastSeen ? lastSeen.toISOString() : null,
+      subscribed,
+      onTrip: Boolean(session),
+      driverName: session?.driver?.name ?? null,
+      projectCode: a.project?.code ?? null,
+      live: {
+        speedKph,
+        odometerKm,
+        fuelLitres,
+        fuelPct,
+        fuelCapacityL: capacity,
+        defPct: defPercent(raw),
+        batteryV: rawNum(raw, "vehicleBatteryVoltage", "backupBatteryVoltage"),
+        // The typed column is null whenever Fleet Edge echoed the odometer into
+        // it — see the adapter. Reading raw here would reinstate exactly the
+        // nonsense the adapter threw away, so only the validated column is used.
+        engineRunHours: latest?.engineHours ?? null,
+        ignitionOn,
+        gear: rawStr(raw, "currentGear"),
+        satellites: rawNum(raw, "noOfSatForFix"),
+        gpsFix: raw.gpsFix !== false,
+      },
+      today,
+      service,
+    };
+  });
+
+  return {
+    vehicles,
+    counts,
+    unsubscribedCount,
+    provider: provider
+      ? {
+          lastSyncAt: provider.lastSyncAt ? provider.lastSyncAt.toISOString() : null,
+          lastSyncStatus: provider.lastSyncStatus,
+          lastSyncError: provider.lastSyncError,
+        }
+      : null,
+    generatedAt: now.toISOString(),
+  };
+}
+
+type NormRow = {
+  assetId: string | null;
+  assetClass: string | null;
+  normLow: number;
+  normHigh: number;
+  tolerancePct: number;
+};
+
+/** A norm set for this exact machine beats one written for its whole class. */
+function pickNorm(norms: NormRow[], assetId: string, assetClass: string): Norm | null {
+  const exact = norms.find((n) => n.assetId === assetId);
+  const byClass = norms.find((n) => n.assetId == null && n.assetClass === assetClass);
+  const hit = exact ?? byClass;
+  return hit
+    ? { normLow: hit.normLow, normHigh: hit.normHigh, tolerancePct: hit.tolerancePct }
+    : null;
+}
