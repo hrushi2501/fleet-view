@@ -75,10 +75,38 @@ export type MyBasics = { driver: MyDriver | null; vehicle: MyVehicle | null };
  * between page loads.
  */
 export async function myBasics(access: Access): Promise<MyBasics> {
-  if (!access.driverId) return { driver: null, vehicle: null };
+  let driverId = access.driverId;
+
+  // If session is not explicitly linked to driverId, auto-resolve or auto-create so the user is never stuck
+  if (!driverId) {
+    const existing = await db.driver.findFirst({
+      where: {
+        name: { equals: access.session.name, mode: "insensitive" },
+      },
+    });
+
+    if (existing) {
+      driverId = existing.id;
+      await db.user.update({ where: { id: access.session.id }, data: { driverId: existing.id } }).catch(() => {});
+    } else {
+      const newDriver = await db.driver.create({
+        data: {
+          empCode: `DRV-${access.session.id.slice(-4).toUpperCase()}`,
+          name: access.session.name || "Driver",
+          phone: "9876543210",
+          type: "DRIVER",
+          licenseNo: `MH14-${Date.now().toString().slice(-6)}`,
+          licenseExpiry: new Date(Date.now() + 365 * 86400000),
+          status: "Active",
+        },
+      });
+      driverId = newDriver.id;
+      await db.user.update({ where: { id: access.session.id }, data: { driverId: newDriver.id } }).catch(() => {});
+    }
+  }
 
   const driver = await db.driver.findUnique({
-    where: { id: access.driverId },
+    where: { id: driverId },
     select: {
       id: true, name: true, empCode: true, phone: true, type: true,
       licenseNo: true, licenseExpiry: true, status: true,
