@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { put } from "@vercel/blob";
 import { hashPassword, verifyPassword, getSession, revokeSessions } from "@/lib/auth";
 import { getDieselRate } from "@/lib/settings";
-import { requireAction, requireUser, ActionError } from "@/lib/guard";
+import { requireAction, requireUser, ActionError, safe } from "@/lib/guard";
 import { audit } from "@/lib/audit";
 
 async function uploadPhoto(file: FormDataEntryValue | null, prefix: string): Promise<string | null> {
@@ -26,7 +26,7 @@ function docStatus(expiry: Date) {
 }
 
 /* ----------------------------- ASSETS ----------------------------- */
-export async function saveAsset(id: string | null, fd: FormData) {
+async function saveAsset__impl(id: string | null, fd: FormData) {
   await requireAction("fleet.edit");
   const data = {
     code: s(fd, "code"),
@@ -57,7 +57,7 @@ export async function saveAsset(id: string | null, fd: FormData) {
   revalidatePath("/");
 }
 
-export async function deleteAsset(id: string) {
+async function deleteAsset__impl(id: string) {
   await requireAction("fleet.delete");
   await db.$transaction([
     db.fuelTransaction.deleteMany({ where: { assetId: id } }),
@@ -72,7 +72,7 @@ export async function deleteAsset(id: string) {
 }
 
 /* ----------------------------- DRIVERS ----------------------------- */
-export async function saveDriver(id: string | null, fd: FormData) {
+async function saveDriver__impl(id: string | null, fd: FormData) {
   await requireAction("people.edit");
   const phone = s(fd, "phone");
 
@@ -81,7 +81,7 @@ export async function saveDriver(id: string | null, fd: FormData) {
   // Source: standard Indian telecom numbering plan (TRAI); digits 6–9 as first digit
   // covers all current Jio/Airtel/Vi/BSNL ranges.
   if (phone && !/^(?:\+91|91|0)?[6-9]\d{9}$/.test(phone)) {
-    throw new Error("Phone must be a valid 10-digit Indian mobile number (e.g. 9XXXXXXXXX).");
+    throw new ActionError("Phone must be a valid 10-digit Indian mobile number (e.g. 9XXXXXXXXX).");
   }
 
   // License number format: [STATE:2alpha][RTO:2digits] [YEAR:4digits][SERIAL:7digits]
@@ -91,7 +91,7 @@ export async function saveDriver(id: string | null, fd: FormData) {
   // Note: existing seed data may pre-date this validation; the check only runs on new saves.
   const licenseNo = s(fd, "licenseNo");
   if (licenseNo && !/^[A-Za-z]{2}\d{2}\s?\d{11}$/.test(licenseNo)) {
-    throw new Error(
+    throw new ActionError(
       'License number must follow the format: state code + RTO code + year + serial (e.g. RJ14 20241234567).'
     );
   }
@@ -103,7 +103,7 @@ export async function saveDriver(id: string | null, fd: FormData) {
       where: { phone, ...(id ? { NOT: { id } } : {}) },
     });
     if (existing) {
-      throw new Error(
+      throw new ActionError(
         `Phone number is already registered to ${existing.name} (${existing.empCode}).`
       );
     }
@@ -151,7 +151,7 @@ export async function saveDriver(id: string | null, fd: FormData) {
   revalidatePath("/users");
 }
 
-export async function deleteDriver(id: string) {
+async function deleteDriver__impl(id: string) {
   await requireAction("people.edit");
   await db.asset.updateMany({ where: { driverId: id }, data: { driverId: null } });
   await db.trip.updateMany({ where: { driverId: id }, data: { driverId: null } });
@@ -163,7 +163,7 @@ export async function deleteDriver(id: string) {
 }
 
 /* ----------------------------- FUEL ----------------------------- */
-export async function saveFuel(fd: FormData) {
+async function saveFuel__impl(fd: FormData) {
   await requireAction("fuel.issue");
   const type = s(fd, "type") || "ISSUE";
   const quantity = n(fd, "quantity");
@@ -236,10 +236,10 @@ export async function saveFuel(fd: FormData) {
 
 
 /* ----------------------------- SERVICE / REPAIR PHOTOS (driver) ----------------------------- */
-export async function saveServicePhotos(fd: FormData) {
+async function saveServicePhotos__impl(fd: FormData) {
   await requireAction("maintenance.edit");
   const assetId = s(fd, "assetId");
-  if (!assetId) throw new Error("Select a vehicle.");
+  if (!assetId) throw new ActionError("Select a vehicle.");
   const collect = async (field: string, prefix: string) => {
     const files = fd.getAll(field).filter((f) => typeof f !== "string" && (f as File).size > 0) as File[];
     const urls: string[] = [];
@@ -264,18 +264,18 @@ export async function saveServicePhotos(fd: FormData) {
   revalidatePath("/driver");
 }
 
-export async function setDieselRate(fd: FormData) {
+async function setDieselRate__impl(fd: FormData) {
   await requireAction("admin.settings");
   const session = await getSession();
-  if (session?.role !== "Admin") throw new Error("Only admins can set the rate.");
+  if (session?.role !== "Admin") throw new ActionError("Only admins can set the rate.");
   const rate = n(fd, "rate");
-  if (!rate || rate < 30 || rate > 200) throw new Error("Enter a valid diesel rate (₹/L).");
+  if (!rate || rate < 30 || rate > 200) throw new ActionError("Enter a valid diesel rate (₹/L).");
   await db.setting.upsert({ where: { key: "dieselRate" }, update: { value: String(rate) }, create: { key: "dieselRate", value: String(rate) } });
   revalidatePath("/fuel");
   revalidatePath("/driver");
 }
 
-export async function updateFuel(id: string, fd: FormData) {
+async function updateFuel__impl(id: string, fd: FormData) {
   await requireAction("fuel.issue");
   const quantity = n(fd, "quantity");
   const rate = n(fd, "rate") || 92.5;
@@ -289,7 +289,7 @@ export async function updateFuel(id: string, fd: FormData) {
   revalidatePath("/");
 }
 
-export async function deleteFuel(id: string) {
+async function deleteFuel__impl(id: string) {
   await requireAction("fuel.approve");
   await db.fuelTransaction.delete({ where: { id } });
   revalidatePath("/fuel");
@@ -297,7 +297,7 @@ export async function deleteFuel(id: string) {
 }
 
 /* ----------------------------- WORK ORDER ----------------------------- */
-export async function saveWorkOrder(fd: FormData) {
+async function saveWorkOrder__impl(fd: FormData) {
   await requireAction("maintenance.edit");
   const labor = n(fd, "laborCost");
   const parts = n(fd, "partsCost");
@@ -322,7 +322,7 @@ export async function saveWorkOrder(fd: FormData) {
   revalidatePath("/");
 }
 
-export async function updateWorkOrderStatus(id: string, status: string) {
+async function updateWorkOrderStatus__impl(id: string, status: string) {
   await requireAction("maintenance.edit");
   await db.workOrder.update({
     where: { id },
@@ -332,7 +332,7 @@ export async function updateWorkOrderStatus(id: string, status: string) {
 }
 
 /* ----------------------------- COMPLIANCE ----------------------------- */
-export async function saveCompliance(fd: FormData) {
+async function saveCompliance__impl(fd: FormData) {
   await requireAction("compliance.edit");
   const expiry = new Date(s(fd, "expiryDate") || Date.now());
   await db.complianceDoc.create({
@@ -350,11 +350,11 @@ export async function saveCompliance(fd: FormData) {
 }
 
 /* ----------------------------- USERS / ACCESS ----------------------------- */
-export async function saveUser(fd: FormData) {
+async function saveUser__impl(fd: FormData) {
   await requireAction("admin.users");
   const email = s(fd, "email").toLowerCase();
   const existing = await db.user.findUnique({ where: { email } });
-  if (existing) throw new Error("A user with this email already exists.");
+  if (existing) throw new ActionError("A user with this email already exists.");
   const role = s(fd, "role") || "Driver";
   const name = s(fd, "name");
   let driverId = s(fd, "driverId") || null;
@@ -399,7 +399,7 @@ export async function saveUser(fd: FormData) {
  * Guarded on identity rather than a permission — everyone may change their own
  * password, and nobody may change it without proving they know the current one.
  */
-export async function changeOwnPassword(fd: FormData) {
+async function changeOwnPassword__impl(fd: FormData) {
   const access = await requireUser();
   const current = s(fd, "current"), next = s(fd, "next"), confirm = s(fd, "confirm");
   if (next.length < 6) throw new ActionError("New password must be at least 6 characters.");
@@ -419,7 +419,7 @@ export async function changeOwnPassword(fd: FormData) {
   });
 }
 
-export async function adminResetUserPassword(userId: string, newPass: string) {
+async function adminResetUserPassword__impl(userId: string, newPass: string) {
   await requireAction("admin.users");
   if (!newPass || newPass.length < 6) throw new ActionError("Password must be at least 6 characters.");
   const target = await db.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
@@ -435,7 +435,7 @@ export async function adminResetUserPassword(userId: string, newPass: string) {
   revalidatePath("/users");
 }
 
-export async function deleteUser(id: string) {
+async function deleteUser__impl(id: string) {
   const access = await requireAction("admin.users");
   const user = await db.user.findUnique({ where: { id } });
   if (!user) throw new ActionError("That user no longer exists.");
@@ -463,15 +463,15 @@ export async function deleteUser(id: string) {
 }
 
 /* ----------------------------- PROJECT ----------------------------- */
-export async function saveProject(fd: FormData) {
+async function saveProject__impl(fd: FormData) {
   await requireAction("fleet.edit");
   const code = s(fd, "code");
   const name = s(fd, "name");
-  if (!code || !name) throw new Error("Project code and name are required");
+  if (!code || !name) throw new ActionError("Project code and name are required");
 
   // Uniqueness check
   const existing = await db.project.findUnique({ where: { code } });
-  if (existing) throw new Error(`A project with code "${code}" already exists`);
+  if (existing) throw new ActionError(`A project with code "${code}" already exists`);
 
   const project = await db.project.create({
     data: {
@@ -505,18 +505,18 @@ export async function saveProject(fd: FormData) {
   revalidatePath("/");
 }
 
-export async function updateProject(id: string, fd: FormData) {
+async function updateProject__impl(id: string, fd: FormData) {
   await requireAction("fleet.edit");
   const code = s(fd, "code");
   const name = s(fd, "name");
-  if (!code || !name) throw new Error("Project code and name are required");
+  if (!code || !name) throw new ActionError("Project code and name are required");
 
   const existing = await db.project.findUnique({ where: { id } });
-  if (!existing) throw new Error("Project not found");
+  if (!existing) throw new ActionError("Project not found");
 
   // Uniqueness check (skip self)
   const dup = await db.project.findUnique({ where: { code } });
-  if (dup && dup.id !== id) throw new Error(`A project with code "${code}" already exists`);
+  if (dup && dup.id !== id) throw new ActionError(`A project with code "${code}" already exists`);
 
   await db.project.update({
     where: { id },
@@ -552,10 +552,10 @@ export async function updateProject(id: string, fd: FormData) {
   revalidatePath("/");
 }
 
-export async function deleteProject(id: string) {
+async function deleteProject__impl(id: string) {
   await requireAction("fleet.edit");
   const project = await db.project.findUnique({ where: { id } });
-  if (!project) throw new Error("Project not found");
+  if (!project) throw new ActionError("Project not found");
 
   // ACID: single transaction for all cascade cleanup across all 15 project relations
   await db.$transaction(async (tx) => {
@@ -601,3 +601,35 @@ export async function deleteProject(id: string) {
   revalidatePath("/");
 }
 
+/* ---------------------------------------------------------------------------
+ * Exported actions.
+ *
+ * Each implementation above is wrapped in `safe()`, which converts an
+ * `ActionError` into a returned `{ error }`. Next redacts *thrown* messages in
+ * production builds, so validation text like "Phone must be a valid 10-digit
+ * Indian mobile number" never reached the person typing it — the form's error
+ * banner rendered faithfully and said nothing useful. Returned data crosses the
+ * boundary intact.
+ *
+ * Unexpected errors are still thrown, so they reach the error boundary and the
+ * platform log rather than being dressed up as a validation message.
+ * ------------------------------------------------------------------------- */
+export const saveAsset = safe(saveAsset__impl);
+export const deleteAsset = safe(deleteAsset__impl);
+export const saveDriver = safe(saveDriver__impl);
+export const deleteDriver = safe(deleteDriver__impl);
+export const saveFuel = safe(saveFuel__impl);
+export const saveServicePhotos = safe(saveServicePhotos__impl);
+export const setDieselRate = safe(setDieselRate__impl);
+export const updateFuel = safe(updateFuel__impl);
+export const deleteFuel = safe(deleteFuel__impl);
+export const saveWorkOrder = safe(saveWorkOrder__impl);
+export const updateWorkOrderStatus = safe(updateWorkOrderStatus__impl);
+export const saveCompliance = safe(saveCompliance__impl);
+export const saveUser = safe(saveUser__impl);
+export const changeOwnPassword = safe(changeOwnPassword__impl);
+export const adminResetUserPassword = safe(adminResetUserPassword__impl);
+export const deleteUser = safe(deleteUser__impl);
+export const saveProject = safe(saveProject__impl);
+export const updateProject = safe(updateProject__impl);
+export const deleteProject = safe(deleteProject__impl);

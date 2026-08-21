@@ -149,7 +149,15 @@ function Check({ label, name, defaultChecked }: { label: string; name: string; d
 /* ----------------------------- modal shell ----------------------------- */
 function Modal({ triggerLabel, triggerIcon, triggerClass, title, action, successMessage, children, onDone }: {
   triggerLabel: ReactNode; triggerIcon?: ReactNode; triggerClass?: string; title: string;
-  action: (fd: FormData) => Promise<void>; successMessage?: string; children: ReactNode; onDone?: () => void;
+  /**
+   * Returning `{ error }` is the path that actually reaches the user: Next
+   * redacts thrown messages in production builds, so an action that throws
+   * shows the person nothing they can act on. Actions wrapped in `safe()`
+   * return their expected failures instead. Throwing still works and is still
+   * caught below — it just cannot carry a readable message in production.
+   */
+  action: (fd: FormData) => Promise<void | { error?: string }>;
+  successMessage?: string; children: ReactNode; onDone?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
@@ -163,7 +171,15 @@ function Modal({ triggerLabel, triggerIcon, triggerClass, title, action, success
     setErr("");
     start(async () => {
       try {
-        await action(fd);
+        const result = await action(fd);
+
+        // An expected failure, returned as data so the message survives.
+        if (result && typeof result === "object" && result.error) {
+          setErr(result.error);
+          toast.error("Not saved", result.error);
+          return; // keep the dialog open so nothing typed is lost
+        }
+
         setOpen(false);
         toast.success(successMessage || `${title} saved successfully`);
         router.refresh();

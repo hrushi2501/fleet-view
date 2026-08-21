@@ -127,6 +127,51 @@ export function message(err: unknown): string {
   return `Something went wrong and the change was not saved. Quote reference ${ref} if you report this.`;
 }
 
+/** What a wrapped action hands back. `undefined` means it succeeded. */
+export type ActionResult = { error: string } | undefined;
+
+/**
+ * Wraps a server action so expected failures reach the user.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * WHY THROWN MESSAGES DO NOT WORK
+ *
+ * Next redacts errors thrown out of a server action in production builds —
+ * the client receives "An error occurred in the Server Components render. The
+ * specific message is omitted in production builds to avoid leaking sensitive
+ * details." and a digest. That is the right default, but it means every
+ * carefully written message in this codebase — "Phone must be a valid 10-digit
+ * Indian mobile number", "You do not have permission to do this (fleet.delete)",
+ * "Cannot go from RECEIVED to PAID" — is invisible to the person who needs it.
+ * The form's error banner renders faithfully and says nothing useful.
+ *
+ * Next's own guidance is to model expected errors as return values rather than
+ * throwing them. This wrapper does that without rewriting every action body:
+ * an `ActionError` becomes `{ error }`, which crosses the boundary intact
+ * because it is data, not an exception.
+ *
+ * Anything that is *not* an `ActionError` is a genuine bug and is re-thrown
+ * untouched, so it still reaches the error boundary and the platform log —
+ * and its text still gets redacted, which for an unexpected error is correct.
+ *
+ * `redirect()` and `notFound()` work by throwing framework sentinels, so they
+ * must pass through unmolested too; they are not `ActionError`s, so they do.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+export function safe<A extends unknown[]>(
+  fn: (...args: A) => Promise<unknown>,
+): (...args: A) => Promise<ActionResult> {
+  return async (...args: A): Promise<ActionResult> => {
+    try {
+      await fn(...args);
+      return undefined;
+    } catch (err) {
+      if (err instanceof ActionError) return { error: err.message };
+      throw err;
+    }
+  };
+}
+
 /** Best-effort denial record. Never blocks the refusal it is describing. */
 async function recordDenial(access: Access, code: string): Promise<void> {
   const sensitive = code.startsWith("admin.") || code.endsWith(".approve") || code.endsWith(".delete") || code.endsWith(".close") || code.endsWith(".reconcile");

@@ -81,10 +81,18 @@ function actionModules(): { path: string; rel: string; source: string }[] {
  */
 function actionBodies(source: string): { name: string; body: string }[] {
   const out: { name: string; body: string }[] = [];
-  const re = /export async function ([a-zA-Z0-9_]+)\s*\(/g;
+  // Two shapes are in use, and the pattern must match both without dragging in
+  // private helpers. `export async function name(` is a plain action.
+  // `async function name__impl(` is an implementation wrapped by `safe()` and
+  // exported beneath it — the guard still has to sit inside the implementation.
+  //
+  // A bare `async function name(` is NOT matched on purpose: those are module
+  // helpers like `uploadPhoto`, which are not reachable endpoints and have
+  // nothing to authorise.
+  const re = /(?:export async function ([a-zA-Z0-9_]+)|async function ([a-zA-Z0-9_]+__impl))\s*\(/g;
   const starts: { name: string; at: number }[] = [];
   let m: RegExpExecArray | null;
-  while ((m = re.exec(source))) starts.push({ name: m[1]!, at: m.index });
+  while ((m = re.exec(source))) starts.push({ name: (m[1] ?? m[2])!, at: m.index });
 
   for (let i = 0; i < starts.length; i++) {
     const from = starts[i]!.at;
