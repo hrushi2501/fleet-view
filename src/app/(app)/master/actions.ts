@@ -7,7 +7,7 @@ import { getSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { checkReading, type MeterType, type ReadingLite } from "@/lib/master";
 import { parseBusinessDay } from "@/lib/business-time";
-import { requireAction } from "@/lib/guard";
+import { requireAction, ActionError, safe } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -26,10 +26,10 @@ function refresh() {
  * rather than refused — refusing outright just teaches people to fudge numbers.
  * The asset's cached meter only moves forward.
  */
-export async function saveReading(fd: FormData) {
+async function saveReading__impl(fd: FormData) {
   await requireAction("fleet.edit");
   const assetId = s(fd, "assetId");
-  if (!assetId) throw new Error("Asset is required");
+  if (!assetId) throw new ActionError("Asset is required");
   const meterType = (s(fd, "meterType") || "ODOMETER") as MeterType;
   const value = n(fd, "value");
   const date = parseBusinessDay(s(fd, "date"));
@@ -71,14 +71,14 @@ export async function saveReading(fd: FormData) {
   return { ok: check.ok, message: check.message };
 }
 
-export async function deleteReading(id: string) {
+async function deleteReading__impl(id: string) {
   await requireAction("fleet.edit");
   await db.meterReading.delete({ where: { id } });
   refresh();
 }
 
 /** Extra master-data fields the demo's asset form never captured. */
-export async function saveAssetMaster(assetId: string, fd: FormData) {
+async function saveAssetMaster__impl(assetId: string, fd: FormData) {
   await requireAction("fleet.edit");
   const before = await db.asset.findUnique({ where: { id: assetId } });
   await db.asset.update({
@@ -98,10 +98,10 @@ export async function saveAssetMaster(assetId: string, fd: FormData) {
   refresh();
 }
 
-export async function saveLifecycleEvent(fd: FormData) {
+async function saveLifecycleEvent__impl(fd: FormData) {
   await requireAction("fleet.edit");
   const assetId = s(fd, "assetId");
-  if (!assetId) throw new Error("Asset is required");
+  if (!assetId) throw new ActionError("Asset is required");
   const session = await getSession();
   const kind = s(fd, "kind") || "STATUS_CHANGE";
 
@@ -126,10 +126,10 @@ export async function saveLifecycleEvent(fd: FormData) {
 
 /* ------------------------------ M2 personnel ------------------------------ */
 
-export async function saveAttendance(fd: FormData) {
+async function saveAttendance__impl(fd: FormData) {
   await requireAction("people.edit");
   const driverId = s(fd, "driverId");
-  if (!driverId) throw new Error("Person is required");
+  if (!driverId) throw new ActionError("Person is required");
   const date = parseBusinessDay(s(fd, "date"));
   date.setHours(0, 0, 0, 0);
   const shift = s(fd, "shift") || "DAY";
@@ -150,13 +150,13 @@ export async function saveAttendance(fd: FormData) {
   refresh();
 }
 
-export async function deleteAttendance(id: string) {
+async function deleteAttendance__impl(id: string) {
   await requireAction("people.edit");
   await db.attendance.delete({ where: { id } });
   refresh();
 }
 
-export async function batchSaveAttendance(
+async function batchSaveAttendance__impl(
   items: Array<{
     driverId: string;
     status: string;
@@ -190,10 +190,10 @@ export async function batchSaveAttendance(
   refresh();
 }
 
-export async function savePersonDoc(fd: FormData) {
+async function savePersonDoc__impl(fd: FormData) {
   await requireAction("people.edit");
   const driverId = s(fd, "driverId");
-  if (!driverId) throw new Error("Person is required");
+  if (!driverId) throw new ActionError("Person is required");
 
   let documentUrl: string | null = null;
   const file = fd.get("document");
@@ -220,13 +220,13 @@ export async function savePersonDoc(fd: FormData) {
   refresh();
 }
 
-export async function deletePersonDoc(id: string) {
+async function deletePersonDoc__impl(id: string) {
   await requireAction("people.edit");
   await db.personDocument.delete({ where: { id } });
   refresh();
 }
 
-export async function savePersonMaster(driverId: string, fd: FormData) {
+async function savePersonMaster__impl(driverId: string, fd: FormData) {
   await requireAction("people.edit");
   await db.driver.update({
     where: { id: driverId },
@@ -240,3 +240,22 @@ export async function savePersonMaster(driverId: string, fd: FormData) {
   });
   refresh();
 }
+
+/* ---------------------------------------------------------------------------
+ * Exported actions.
+ *
+ * Wrapped in `safe()` so an `ActionError` comes back as `{ error }` instead of
+ * being thrown — Next redacts thrown messages in production builds, which made
+ * every validation message in this file invisible to the person who triggered
+ * it. Return values are passed through untouched.
+ * ------------------------------------------------------------------------- */
+export const saveReading = safe(saveReading__impl);
+export const deleteReading = safe(deleteReading__impl);
+export const saveAssetMaster = safe(saveAssetMaster__impl);
+export const saveLifecycleEvent = safe(saveLifecycleEvent__impl);
+export const saveAttendance = safe(saveAttendance__impl);
+export const deleteAttendance = safe(deleteAttendance__impl);
+export const batchSaveAttendance = safe(batchSaveAttendance__impl);
+export const savePersonDoc = safe(savePersonDoc__impl);
+export const deletePersonDoc = safe(deletePersonDoc__impl);
+export const savePersonMaster = safe(savePersonMaster__impl);

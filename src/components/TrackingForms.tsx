@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { X, Loader2, QrCode, Radar, Check, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { issueQrTokens, seedProviders, saveAssetTelematics, verifyGaugeReading, releaseSession, closeStaleSessions, scanFuelEvents } from "@/app/(app)/tracking/actions";
+import { isActionError } from "@/lib/action-result";
 
 const inputCls = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
 
@@ -29,7 +30,8 @@ export function IssueQrButton() {
   const router = useRouter();
   return (
     <div className="flex items-center gap-2">
-      <button onClick={() => start(async () => { const r = await issueQrTokens(); setMsg(r.issued ? `${r.issued} issued` : "all vehicles already have codes"); router.refresh(); })}
+      <button onClick={() => start(async () => { const r = await issueQrTokens();
+ if (isActionError(r)) { setMsg(r.error); return; } setMsg(r.issued ? `${r.issued} issued` : "all vehicles already have codes"); router.refresh(); })}
         disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
         {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />} Issue QR Codes
       </button>
@@ -143,7 +145,8 @@ export function CloseStaleButton() {
   const router = useRouter();
   return (
     <div className="flex items-center gap-2">
-      <button onClick={() => start(async () => { const r = await closeStaleSessions(); setMsg(`${r.closed} closed`); router.refresh(); })} disabled={pending}
+      <button onClick={() => start(async () => { const r = await closeStaleSessions();
+ if (isActionError(r)) { setMsg(r.error); return; } setMsg(`${r.closed} closed`); router.refresh(); })} disabled={pending}
         className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 disabled:opacity-60">
         {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Close Forgotten Sessions
       </button>
@@ -158,7 +161,8 @@ export function ScanFuelButton({ assetId }: { assetId: string }) {
   const router = useRouter();
   return (
     <span className="inline-flex items-center gap-2">
-      <button onClick={() => start(async () => { const r = await scanFuelEvents(assetId); setMsg(`${r.events} events, ${r.suspicious} suspicious, ${r.raised} raised`); router.refresh(); })}
+      <button onClick={() => start(async () => { const r = await scanFuelEvents(assetId);
+ if (isActionError(r)) { setMsg(r.error); return; } setMsg(`${r.events} events, ${r.suspicious} suspicious, ${r.raised} raised`); router.refresh(); })}
         disabled={pending} className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 disabled:opacity-60">
         {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Radar className="h-3.5 w-3.5" />} Scan fuel
       </button>

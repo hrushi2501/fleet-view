@@ -84,6 +84,7 @@ export function ReadingForm({ assets }: { assets: Opt[] }) {
         <form
           action={(fd) => start(async () => {
             const r = await saveReading(fd);
+            if (isActionError(r)) {  return; }
             router.refresh();
             if (r.ok) { setOpen(false); setWarn(null); } else setWarn(r.message ?? "Reading flagged.");
           })}
@@ -251,6 +252,7 @@ export function PersonMasterForm({ person }: { person: { id: string; name: strin
 
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { isActionError } from "@/lib/action-result";
 
 export function DeleteRow({ id, kind }: { id: string; kind: "reading" | "attendance" | "persondoc" }) {
   const [open, setOpen] = useState(false);

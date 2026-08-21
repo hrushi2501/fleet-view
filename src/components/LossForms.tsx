@@ -86,6 +86,7 @@ export function ScanButton() {
       <button
         onClick={() => start(async () => {
           const r = await runScan();
+          if (isActionError(r)) { setMsg(r.error); return; }
           setMsg(`${r.signals} signals · ${r.created} new case${r.created === 1 ? "" : "s"} · ${r.updated} updated`);
           router.refresh();
         })}
@@ -279,6 +280,7 @@ export function RecoveryForm({ caseId }: { caseId: string }) {
 
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { isActionError } from "@/lib/action-result";
 
 export function DeleteCaseButton({ id, caseNo }: { id: string; caseNo?: string }) {
   const [open, setOpen] = useState(false);

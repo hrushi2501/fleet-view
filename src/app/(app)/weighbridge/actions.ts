@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { put } from "@vercel/blob";
 import { getSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
-import { requireAction } from "@/lib/guard";
+import { requireAction, ActionError, safe } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -16,10 +16,10 @@ function refresh() {
   revalidatePath("/loss-prevention");
 }
 
-export async function saveTicket(fd: FormData) {
+async function saveTicket__impl(fd: FormData) {
   await requireAction("weighbridge.edit");
   const ticketNo = s(fd, "ticketNo");
-  if (!ticketNo) throw new Error("Ticket number is required");
+  if (!ticketNo) throw new ActionError("Ticket number is required");
 
   const gross = n(fd, "grossKg");
   const tare = n(fd, "tareKg");
@@ -71,10 +71,21 @@ export async function saveTicket(fd: FormData) {
   refresh();
 }
 
-export async function deleteTicket(id: string) {
+async function deleteTicket__impl(id: string) {
   await requireAction("weighbridge.edit");
   const t = await db.weighbridgeTicket.findUnique({ where: { id } });
   await db.weighbridgeTicket.delete({ where: { id } });
   if (t) await audit({ action: "DELETE", module: "WEIGHBRIDGE", entity: "WeighbridgeTicket", entityId: id, summary: `Deleted ticket ${t.ticketNo}` });
   refresh();
 }
+
+/* ---------------------------------------------------------------------------
+ * Exported actions.
+ *
+ * Wrapped in `safe()` so an `ActionError` comes back as `{ error }` instead of
+ * being thrown — Next redacts thrown messages in production builds, which made
+ * every validation message in this file invisible to the person who triggered
+ * it. Return values are passed through untouched.
+ * ------------------------------------------------------------------------- */
+export const saveTicket = safe(saveTicket__impl);
+export const deleteTicket = safe(deleteTicket__impl);

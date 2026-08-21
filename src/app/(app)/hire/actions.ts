@@ -3,7 +3,7 @@
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
-import { requireAction } from "@/lib/guard";
+import { requireAction, ActionError, safe } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -17,7 +17,7 @@ function refresh() {
 
 /* -------------------------------- contracts -------------------------------- */
 
-export async function saveContract(id: string | null, fd: FormData) {
+async function saveContract__impl(id: string | null, fd: FormData) {
   await requireAction("hire.edit");
   const data = {
     assetId: s(fd, "assetId"),
@@ -36,13 +36,13 @@ export async function saveContract(id: string | null, fd: FormData) {
     status: s(fd, "status") || "Active",
     notes: s(fd, "notes") || null,
   };
-  if (!data.assetId) throw new Error("Asset is required");
+  if (!data.assetId) throw new ActionError("Asset is required");
   if (id) await db.hireContract.update({ where: { id }, data });
   else await db.hireContract.create({ data });
   refresh();
 }
 
-export async function deleteContract(id: string) {
+async function deleteContract__impl(id: string) {
   await requireAction("hire.edit");
   await db.hireContract.delete({ where: { id } });
   refresh();
@@ -51,10 +51,10 @@ export async function deleteContract(id: string) {
 /* ----------------------------------- logs ----------------------------------- */
 
 /** One day of actual work. Upserted so re-entering a date corrects rather than duplicates. */
-export async function saveLog(fd: FormData) {
+async function saveLog__impl(fd: FormData) {
   await requireAction("hire.edit");
   const contractId = s(fd, "contractId");
-  if (!contractId) throw new Error("Contract is required");
+  if (!contractId) throw new ActionError("Contract is required");
   const date = dt(fd, "date");
   date.setHours(0, 0, 0, 0);
 
@@ -79,7 +79,7 @@ export async function saveLog(fd: FormData) {
   refresh();
 }
 
-export async function deleteLog(id: string) {
+async function deleteLog__impl(id: string) {
   await requireAction("hire.edit");
   await db.hireLog.delete({ where: { id } });
   refresh();
@@ -87,7 +87,7 @@ export async function deleteLog(id: string) {
 
 /* -------------------------------- new features -------------------------------- */
 
-export async function saveHireInspection(contractId: string, fd: FormData) {
+async function saveHireInspection__impl(contractId: string, fd: FormData) {
   await requireAction("hire.edit");
   const session = await getSession();
   const data = {
@@ -107,7 +107,7 @@ export async function saveHireInspection(contractId: string, fd: FormData) {
   refresh();
 }
 
-export async function saveContractAmendment(contractId: string, fd: FormData) {
+async function saveContractAmendment__impl(contractId: string, fd: FormData) {
   await requireAction("hire.edit");
   const session = await getSession();
   const data = {
@@ -126,7 +126,7 @@ export async function saveContractAmendment(contractId: string, fd: FormData) {
   refresh();
 }
 
-export async function saveHirePayment(fd: FormData) {
+async function saveHirePayment__impl(fd: FormData) {
   await requireAction("hire.approve");
   const contractId = s(fd, "contractId") || null;
   const data = {
@@ -144,7 +144,7 @@ export async function saveHirePayment(fd: FormData) {
   refresh();
 }
 
-export async function approveHireLog(id: string, status: string) {
+async function approveHireLog__impl(id: string, status: string) {
   await requireAction("hire.approve");
   const session = await getSession();
   // Mocked for local testing without DB migration
@@ -155,20 +155,40 @@ export async function approveHireLog(id: string, status: string) {
 
 
 
-export async function deleteInspection(id: string) {
+async function deleteInspection__impl(id: string) {
   await requireAction("hire.edit");
   await new Promise(r => setTimeout(r, 200));
   refresh();
 }
 
-export async function deleteAmendment(id: string) {
+async function deleteAmendment__impl(id: string) {
   await requireAction("hire.edit");
   await new Promise(r => setTimeout(r, 200));
   refresh();
 }
 
-export async function deletePayment(id: string) {
+async function deletePayment__impl(id: string) {
   await requireAction("hire.approve");
   await new Promise(r => setTimeout(r, 200));
   refresh();
 }
+
+/* ---------------------------------------------------------------------------
+ * Exported actions.
+ *
+ * Wrapped in `safe()` so an `ActionError` comes back as `{ error }` instead of
+ * being thrown — Next redacts thrown messages in production builds, which made
+ * every validation message in this file invisible to the person who triggered
+ * it. Return values are passed through untouched.
+ * ------------------------------------------------------------------------- */
+export const saveContract = safe(saveContract__impl);
+export const deleteContract = safe(deleteContract__impl);
+export const saveLog = safe(saveLog__impl);
+export const deleteLog = safe(deleteLog__impl);
+export const saveHireInspection = safe(saveHireInspection__impl);
+export const saveContractAmendment = safe(saveContractAmendment__impl);
+export const saveHirePayment = safe(saveHirePayment__impl);
+export const approveHireLog = safe(approveHireLog__impl);
+export const deleteInspection = safe(deleteInspection__impl);
+export const deleteAmendment = safe(deleteAmendment__impl);
+export const deletePayment = safe(deletePayment__impl);

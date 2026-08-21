@@ -24,6 +24,11 @@
 import { getAccess, type Access } from "@/lib/access";
 import { canApprove } from "@/lib/rbac";
 import { db } from "@/lib/db";
+import { isActionError, type ActionResult, type ActionFailure } from "@/lib/action-result";
+
+// Re-exported so server-side callers have one import for the guard API.
+export { isActionError };
+export type { ActionResult, ActionFailure };
 
 /**
  * An error whose message is safe to show a user.
@@ -127,8 +132,6 @@ export function message(err: unknown): string {
   return `Something went wrong and the change was not saved. Quote reference ${ref} if you report this.`;
 }
 
-/** What a wrapped action hands back. `undefined` means it succeeded. */
-export type ActionResult = { error: string } | undefined;
 
 /**
  * Wraps a server action so expected failures reach the user.
@@ -158,13 +161,15 @@ export type ActionResult = { error: string } | undefined;
  * must pass through unmolested too; they are not `ActionError`s, so they do.
  * ─────────────────────────────────────────────────────────────────────────────
  */
-export function safe<A extends unknown[]>(
-  fn: (...args: A) => Promise<unknown>,
-): (...args: A) => Promise<ActionResult> {
-  return async (...args: A): Promise<ActionResult> => {
+export function safe<A extends unknown[], R>(
+  fn: (...args: A) => Promise<R>,
+): (...args: A) => Promise<R | { error: string }> {
+  return async (...args: A): Promise<R | { error: string }> => {
     try {
-      await fn(...args);
-      return undefined;
+      // The result is passed straight back: several actions return a summary
+      // their caller renders ("3 signals, 1 case opened"), and swallowing that
+      // would break the screen more quietly than the error it was guarding.
+      return await fn(...args);
     } catch (err) {
       if (err instanceof ActionError) return { error: err.message };
       throw err;

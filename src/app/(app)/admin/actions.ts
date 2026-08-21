@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { DEFAULT_ROLES } from "@/lib/rbac";
-import { requireAction } from "@/lib/guard";
+import { requireAction, ActionError, safe } from "@/lib/guard";
 import { audit } from "@/lib/audit";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
@@ -18,7 +18,7 @@ function refresh() {
 
 
 /** Installs the shipped role set and links existing users by their legacy role string. */
-export async function seedRoles() {
+async function seedRoles__impl() {
   await requireAction("admin.roles");
   for (const r of DEFAULT_ROLES) {
     await db.role.upsert({
@@ -47,7 +47,7 @@ export async function seedRoles() {
   return { ok: true as const, roles: DEFAULT_ROLES.length, linked };
 }
 
-export async function saveRole(id: string | null, fd: FormData) {
+async function saveRole__impl(id: string | null, fd: FormData) {
   await requireAction("admin.roles");
   const permissions = fd.getAll("permissions").map(String).filter(Boolean);
   const data = {
@@ -66,25 +66,25 @@ export async function saveRole(id: string | null, fd: FormData) {
     });
   } else {
     const name = s(fd, "name");
-    if (!name) throw new Error("Role name is required");
+    if (!name) throw new ActionError("Role name is required");
     const created = await db.role.create({ data: { name, ...data } });
     await audit({ action: "CREATE", module: "ADMIN", entity: "Role", entityId: created.id, summary: `Created role ${data.label}` });
   }
   refresh();
 }
 
-export async function deleteRole(id: string) {
+async function deleteRole__impl(id: string) {
   await requireAction("admin.roles");
   const r = await db.role.findUnique({ where: { id } });
   if (!r) return;
-  if (r.isSystem) throw new Error("System roles cannot be deleted");
+  if (r.isSystem) throw new ActionError("System roles cannot be deleted");
   await db.user.updateMany({ where: { roleId: id }, data: { roleId: null } });
   await db.role.delete({ where: { id } });
   await audit({ action: "DELETE", module: "ADMIN", entity: "Role", entityId: id, summary: `Deleted role ${r.label}` });
   refresh();
 }
 
-export async function assignRole(userId: string, roleId: string) {
+async function assignRole__impl(userId: string, roleId: string) {
   await requireAction("admin.roles");
   const [u, r] = await Promise.all([
     db.user.findUnique({ where: { id: userId } }),
@@ -102,7 +102,7 @@ export async function assignRole(userId: string, roleId: string) {
  * Link a login account to a person record. Without this the driver app cannot
  * tell which machine, papers or safety score belong to whoever signed in.
  */
-export async function linkUserToDriver(userId: string, driverId: string) {
+async function linkUserToDriver__impl(userId: string, driverId: string) {
   await requireAction("admin.users");
   if (driverId) {
     // The relation is one-to-one, so free the person from any other login first.
@@ -120,3 +120,17 @@ export async function linkUserToDriver(userId: string, driverId: string) {
   revalidatePath("/admin/roles");
   revalidatePath("/users");
 }
+
+/* ---------------------------------------------------------------------------
+ * Exported actions.
+ *
+ * Wrapped in `safe()` so an `ActionError` comes back as `{ error }` instead of
+ * being thrown — Next redacts thrown messages in production builds, which made
+ * every validation message in this file invisible to the person who triggered
+ * it. Return values are passed through untouched.
+ * ------------------------------------------------------------------------- */
+export const seedRoles = safe(seedRoles__impl);
+export const saveRole = safe(saveRole__impl);
+export const deleteRole = safe(deleteRole__impl);
+export const assignRole = safe(assignRole__impl);
+export const linkUserToDriver = safe(linkUserToDriver__impl);

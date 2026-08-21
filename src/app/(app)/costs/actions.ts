@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { parseBusinessDay, businessMonth } from "@/lib/business-time";
-import { requireAction } from "@/lib/guard";
+import { requireAction, ActionError, safe } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -16,7 +16,7 @@ function refresh() {
 }
 
 /** Manual cost line — tyres, insurance, EMI, tolls. Fuel/maintenance/hire come from their modules. */
-export async function saveCost(fd: FormData) {
+async function saveCost__impl(fd: FormData) {
   await requireAction("cost.edit");
   const date = parseBusinessDay(s(fd, "date"));
   await db.costTransaction.create({
@@ -32,10 +32,10 @@ export async function saveCost(fd: FormData) {
   refresh();
 }
 
-export async function deleteCost(id: string) {
+async function deleteCost__impl(id: string) {
   await requireAction("cost.edit");
   const session = await getSession();
-  if (!session) throw new Error("Not authenticated");
+  if (!session) throw new ActionError("Not authenticated");
 
   const target = await db.costTransaction.findUnique({ where: { id }, include: { asset: true, project: true } });
   if (target) {
@@ -57,10 +57,10 @@ export async function deleteCost(id: string) {
 }
 
 /** Money in on a project — RA bills, advances, retention released. */
-export async function saveRevenue(fd: FormData) {
+async function saveRevenue__impl(fd: FormData) {
   await requireAction("cost.edit");
   const projectId = s(fd, "projectId");
-  if (!projectId) throw new Error("Project is required");
+  if (!projectId) throw new ActionError("Project is required");
   const date = parseBusinessDay(s(fd, "date"));
   await db.projectRevenue.create({
     data: {
@@ -75,10 +75,10 @@ export async function saveRevenue(fd: FormData) {
   refresh();
 }
 
-export async function deleteRevenue(id: string) {
+async function deleteRevenue__impl(id: string) {
   await requireAction("cost.edit");
   const session = await getSession();
-  if (!session) throw new Error("Not authenticated");
+  if (!session) throw new ActionError("Not authenticated");
 
   const target = await db.projectRevenue.findUnique({ where: { id }, include: { project: true } });
   if (target) {
@@ -100,7 +100,7 @@ export async function deleteRevenue(id: string) {
 }
 
 /** Depreciation basis for an asset — drives book value and replace-vs-repair. */
-export async function saveDepreciation(assetId: string, fd: FormData) {
+async function saveDepreciation__impl(assetId: string, fd: FormData) {
   await requireAction("cost.edit");
   await db.asset.update({
     where: { id: assetId },
@@ -115,3 +115,17 @@ export async function saveDepreciation(assetId: string, fd: FormData) {
   revalidatePath("/costs");
   revalidatePath(`/fleet/${assetId}`);
 }
+
+/* ---------------------------------------------------------------------------
+ * Exported actions.
+ *
+ * Wrapped in `safe()` so an `ActionError` comes back as `{ error }` instead of
+ * being thrown — Next redacts thrown messages in production builds, which made
+ * every validation message in this file invisible to the person who triggered
+ * it. Return values are passed through untouched.
+ * ------------------------------------------------------------------------- */
+export const saveCost = safe(saveCost__impl);
+export const deleteCost = safe(deleteCost__impl);
+export const saveRevenue = safe(saveRevenue__impl);
+export const deleteRevenue = safe(deleteRevenue__impl);
+export const saveDepreciation = safe(saveDepreciation__impl);

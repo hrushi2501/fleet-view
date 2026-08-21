@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { put } from "@vercel/blob";
 import { getSession } from "@/lib/auth";
 import { SEVERITY_POINTS, safetyScore } from "@/lib/drivers";
-import { requireAction } from "@/lib/guard";
+import { requireAction, ActionError, safe } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -25,11 +25,11 @@ async function syncScore(driverId: string) {
 
 /* ------------------------------- competencies ------------------------------- */
 
-export async function saveCompetency(fd: FormData) {
+async function saveCompetency__impl(fd: FormData) {
   await requireAction("people.edit");
   const driverId = s(fd, "driverId");
   const assetClass = s(fd, "assetClass");
-  if (!driverId || !assetClass) throw new Error("Driver and machine class are required");
+  if (!driverId || !assetClass) throw new ActionError("Driver and machine class are required");
 
   const data = {
     level: s(fd, "level") || "TRAINED",
@@ -46,7 +46,7 @@ export async function saveCompetency(fd: FormData) {
   refresh();
 }
 
-export async function deleteCompetency(id: string) {
+async function deleteCompetency__impl(id: string) {
   await requireAction("people.edit");
   await db.competency.delete({ where: { id } });
   refresh();
@@ -54,10 +54,10 @@ export async function deleteCompetency(id: string) {
 
 /* -------------------------------- violations -------------------------------- */
 
-export async function saveViolation(fd: FormData) {
+async function saveViolation__impl(fd: FormData) {
   await requireAction("people.discipline");
   const driverId = s(fd, "driverId");
-  if (!driverId) throw new Error("Driver is required");
+  if (!driverId) throw new ActionError("Driver is required");
   const severity = s(fd, "severity") || "MINOR";
   const session = await getSession();
 
@@ -79,7 +79,7 @@ export async function saveViolation(fd: FormData) {
   refresh();
 }
 
-export async function updateViolation(id: string, fd: FormData) {
+async function updateViolation__impl(id: string, fd: FormData) {
   await requireAction("people.discipline");
   const v = await db.violation.update({
     where: { id },
@@ -93,7 +93,7 @@ export async function updateViolation(id: string, fd: FormData) {
   refresh();
 }
 
-export async function deleteViolation(id: string) {
+async function deleteViolation__impl(id: string) {
   await requireAction("people.discipline");
   const v = await db.violation.findUnique({ where: { id } });
   if (!v) return;
@@ -105,10 +105,10 @@ export async function deleteViolation(id: string) {
 /* -------------------------------- compliance -------------------------------- */
 
 /** Save or renew a document. Renewals chain to the old record rather than overwrite it. */
-export async function saveDocument(fd: FormData) {
+async function saveDocument__impl(fd: FormData) {
   await requireAction("compliance.edit");
   const assetId = s(fd, "assetId");
-  if (!assetId) throw new Error("Asset is required");
+  if (!assetId) throw new ActionError("Asset is required");
 
   const expiryDate = new Date(s(fd, "expiryDate"));
   const reminderDays = Math.round(n(fd, "reminderDays")) || 30;
@@ -148,14 +148,14 @@ export async function saveDocument(fd: FormData) {
   refresh();
 }
 
-export async function deleteDocument(id: string) {
+async function deleteDocument__impl(id: string) {
   await requireAction("compliance.edit");
   await db.complianceDoc.delete({ where: { id } });
   refresh();
 }
 
 /** Refresh every document's cached status against today's date. */
-export async function refreshDocStatuses() {
+async function refreshDocStatuses__impl() {
   await requireAction("compliance.edit");
   const docs = await db.complianceDoc.findMany();
   let changed = 0;
@@ -170,3 +170,20 @@ export async function refreshDocStatuses() {
   refresh();
   return { ok: true as const, changed };
 }
+
+/* ---------------------------------------------------------------------------
+ * Exported actions.
+ *
+ * Wrapped in `safe()` so an `ActionError` comes back as `{ error }` instead of
+ * being thrown — Next redacts thrown messages in production builds, which made
+ * every validation message in this file invisible to the person who triggered
+ * it. Return values are passed through untouched.
+ * ------------------------------------------------------------------------- */
+export const saveCompetency = safe(saveCompetency__impl);
+export const deleteCompetency = safe(deleteCompetency__impl);
+export const saveViolation = safe(saveViolation__impl);
+export const updateViolation = safe(updateViolation__impl);
+export const deleteViolation = safe(deleteViolation__impl);
+export const saveDocument = safe(saveDocument__impl);
+export const deleteDocument = safe(deleteDocument__impl);
+export const refreshDocStatuses = safe(refreshDocStatuses__impl);

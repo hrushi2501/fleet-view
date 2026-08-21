@@ -10,6 +10,7 @@ import { seedRoles, saveRole, deleteRole, assignRole, linkUserToDriver } from "@
 import { saveTicket, deleteTicket } from "@/app/(app)/weighbridge/actions";
 import { permissionsByModule, PERMISSIONS } from "@/lib/rbac";
 import { MATERIALS } from "@/lib/weighbridge";
+import { isActionError } from "@/lib/action-result";
 
 type Opt = { id: string; label: string };
 
@@ -105,6 +106,7 @@ export function SeedRolesButton() {
         onClick={() => start(async () => {
           try {
             const r = await seedRoles();
+            if (isActionError(r)) { setMsg(r.error); return; }
             setMsg(`${r.roles} roles · ${r.linked} users linked`);
             toast.success("✓ Installed standard roles successfully", `${r.roles} roles configured`);
             router.refresh();

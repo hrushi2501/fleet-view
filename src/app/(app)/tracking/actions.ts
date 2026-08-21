@@ -7,7 +7,7 @@ import crypto from "crypto";
 import { getSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { decideGaugeReading, makeQrToken, staleSessions, reconstructPath, detectFuelEvents, PROVIDERS, type GaugeExtraction, type SessionLite, type ReadingLite } from "@/lib/telematics";
-import { requireAction } from "@/lib/guard";
+import { requireAction, ActionError, safe } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -23,7 +23,7 @@ function refresh() {
 
 /** Issue permanent cabin QR tokens. Existing tokens are never regenerated —
  *  a sticker already on a windscreen must keep working. */
-export async function issueQrTokens() {
+async function issueQrTokens__impl() {
   await requireAction("fuel.receipt");
   const assets = await db.asset.findMany({ where: { qrToken: null }, select: { id: true } });
   for (const a of assets) {
@@ -41,7 +41,7 @@ export async function issueQrTokens() {
 
 /* --------------------------- telematics providers --------------------------- */
 
-export async function seedProviders() {
+async function seedProviders__impl() {
   await requireAction("admin.settings");
   for (const p of PROVIDERS) {
     await db.telematicsProvider.upsert({
@@ -54,7 +54,7 @@ export async function seedProviders() {
   return { ok: true as const, count: PROVIDERS.length };
 }
 
-export async function saveAssetTelematics(assetId: string, fd: FormData) {
+async function saveAssetTelematics__impl(assetId: string, fd: FormData) {
   await requireAction("admin.settings");
   await db.asset.update({
     where: { id: assetId },
@@ -75,13 +75,13 @@ export async function saveAssetTelematics(assetId: string, fd: FormData) {
  * anything under the confidence threshold, or implausible against the previous
  * reading, is held PENDING for a human rather than written into the ledger.
  */
-export async function saveGaugeReading(fd: FormData) {
+async function saveGaugeReading__impl(fd: FormData) {
   await requireAction("fuel.receipt");
   const assetId = s(fd, "assetId");
-  if (!assetId) throw new Error("Vehicle is required");
+  if (!assetId) throw new ActionError("Vehicle is required");
 
   const asset = await db.asset.findUnique({ where: { id: assetId } });
-  if (!asset) throw new Error("Vehicle not found");
+  if (!asset) throw new ActionError("Vehicle not found");
 
   const session = await getSession();
   const account = session ? await db.user.findUnique({ where: { id: session.id }, include: { driverRef: true } }) : null;
@@ -155,14 +155,14 @@ export async function saveGaugeReading(fd: FormData) {
 }
 
 /** Human verdict on a held reading. A correction is recorded as the truth. */
-export async function verifyGaugeReading(id: string, fd: FormData) {
+async function verifyGaugeReading__impl(id: string, fd: FormData) {
   await requireAction("fuel.approve");
   const session = await getSession();
   const verdict = s(fd, "verdict"); // VERIFIED | CORRECTED | REJECTED
   const corrected = s(fd, "correctedPct") ? n(fd, "correctedPct") : null;
 
   const reading = await db.fuelLevelReading.findUnique({ where: { id }, include: { asset: true } });
-  if (!reading) throw new Error("Reading not found");
+  if (!reading) throw new ActionError("Reading not found");
 
   const finalPct = verdict === "CORRECTED" ? corrected : verdict === "VERIFIED" ? reading.levelPct : null;
 
@@ -196,7 +196,7 @@ export async function verifyGaugeReading(id: string, fd: FormData) {
 /* ------------------------------- sessions ------------------------------- */
 
 /** Force-release a session — the supervisor override for a forgotten checkout. */
-export async function releaseSession(id: string) {
+async function releaseSession__impl(id: string) {
   await requireAction("fuel.receipt");
   const auth = await getSession();
   const sess = await db.tripSession.findUnique({ where: { id } });
@@ -217,7 +217,7 @@ export async function releaseSession(id: string) {
 }
 
 /** Close sessions a driver forgot to end. Safe to run on a schedule. */
-export async function closeStaleSessions() {
+async function closeStaleSessions__impl() {
   await requireAction("fuel.receipt");
   const open = await db.tripSession.findMany({ where: { status: "ACTIVE" } });
   const stale = staleSessions(open.map((x): SessionLite => ({ id: x.id, assetId: x.assetId, driverId: x.driverId, startedAt: x.startedAt, endedAt: x.endedAt, status: x.status })));
@@ -230,10 +230,10 @@ export async function closeStaleSessions() {
 }
 
 /** Scan the telemetry stream for fuel events worth investigating. */
-export async function scanFuelEvents(assetId: string) {
+async function scanFuelEvents__impl(assetId: string) {
   await requireAction("fuel.reconcile");
   const asset = await db.asset.findUnique({ where: { id: assetId } });
-  if (!asset) throw new Error("Vehicle not found");
+  if (!asset) throw new ActionError("Vehicle not found");
   const since = new Date(); since.setDate(since.getDate() - 30);
 
   const readings = await db.telemetryReading.findMany({
@@ -265,10 +265,10 @@ export async function scanFuelEvents(assetId: string) {
 }
 
 /** Manually trigger a pull from Tata Fleet Edge API and refresh views. */
-export async function triggerTataSync() {
+async function triggerTataSync__impl() {
   await requireAction("admin.settings");
   const session = await getSession();
-  if (!session) throw new Error("Unauthorized");
+  if (!session) throw new ActionError("Unauthorized");
 
   const { syncTataFleetEdge } = await import("@/lib/tata-fleet-edge");
   const res = await syncTataFleetEdge();
@@ -286,3 +286,21 @@ export async function triggerTataSync() {
   revalidatePath("/fleet/trips");
   return res;
 }
+
+/* ---------------------------------------------------------------------------
+ * Exported actions.
+ *
+ * Wrapped in `safe()` so an `ActionError` comes back as `{ error }` instead of
+ * being thrown — Next redacts thrown messages in production builds, which made
+ * every validation message in this file invisible to the person who triggered
+ * it. Return values are passed through untouched.
+ * ------------------------------------------------------------------------- */
+export const issueQrTokens = safe(issueQrTokens__impl);
+export const seedProviders = safe(seedProviders__impl);
+export const saveAssetTelematics = safe(saveAssetTelematics__impl);
+export const saveGaugeReading = safe(saveGaugeReading__impl);
+export const verifyGaugeReading = safe(verifyGaugeReading__impl);
+export const releaseSession = safe(releaseSession__impl);
+export const closeStaleSessions = safe(closeStaleSessions__impl);
+export const scanFuelEvents = safe(scanFuelEvents__impl);
+export const triggerTataSync = safe(triggerTataSync__impl);

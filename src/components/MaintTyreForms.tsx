@@ -108,7 +108,8 @@ export function SeedPmButton() {
   const router = useRouter();
   return (
     <div className="flex items-center gap-2">
-      <button onClick={() => start(async () => { const r = await seedPmSchedules(); setMsg(`${r.created} task${r.created === 1 ? "" : "s"} created`); router.refresh(); })}
+      <button onClick={() => start(async () => { const r = await seedPmSchedules();
+ if (isActionError(r)) { setMsg(r.error); return; } setMsg(`${r.created} task${r.created === 1 ? "" : "s"} created`); router.refresh(); })}
         disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 disabled:opacity-60">
         {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Install PM Templates
       </button>
@@ -169,6 +170,7 @@ export function PreOpChecklistForm({ assets }: { assets: Opt[] }) {
       <Modal open={open} onClose={() => { setOpen(false); setResultMsg(null); }} title="Daily Operator Pre-Op Safety Inspection" subtitle="Fast 5-point shift inspection. Any failed check automatically opens an urgent breakdown Work Order.">
         <form action={(fd) => start(async () => {
           const res = await submitPreOpChecklist(fd);
+          if (isActionError(res)) {  return; }
           if (res.failedCount > 0) {
             setResultMsg({ type: "warn", text: `⚠️ Inspection complete: ${res.failedCount} safety check(s) failed. Urgent Breakdown Work Order raised automatically!` });
           } else {
@@ -482,6 +484,7 @@ export function ComponentActionForm({ components, warehouses }: { components: Op
 
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { isActionError } from "@/lib/action-result";
 
 export function DeleteRow({ id, kind }: { id: string; kind: "schedule" | "woline" | "tyre" | "component" }) {
   const [open, setOpen] = useState(false);

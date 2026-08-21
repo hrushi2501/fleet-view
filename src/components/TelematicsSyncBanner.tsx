@@ -6,6 +6,7 @@ import { triggerTataSync } from "@/app/(app)/tracking/actions";
 import { useToast } from "@/components/Toast";
 import { timeAgo, fmtDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { isActionError } from "@/lib/action-result";
 
 export interface TelematicsSyncBannerProps {
   status: {
@@ -42,6 +43,7 @@ export function TelematicsSyncBanner({ status, className }: TelematicsSyncBanner
     startTransition(async () => {
       try {
         const res = await triggerTataSync();
+        if (isActionError(res)) { toast.error("Could not complete", res.error); return; }
         setLastSynced(new Date());
         if (res.ok) {
           if (res.skipped) {

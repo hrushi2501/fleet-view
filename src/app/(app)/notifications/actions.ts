@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { raiseWoFromSchedule } from "@/app/(app)/maintenance/actions";
-import { requireAction } from "@/lib/guard";
+import { requireAction, ActionError, safe, isActionError } from "@/lib/guard";
 
 function refresh() {
   revalidatePath("/notifications");
@@ -24,7 +24,7 @@ function n(fd: FormData, key: string): number {
 }
 
 /** Acknowledge an alert / reminder */
-export async function acknowledgeAlert(alertId: string) {
+async function acknowledgeAlert__impl(alertId: string) {
   await requireAction("maintenance.edit");
   const session = await getSession();
   await db.alert.update({
@@ -40,7 +40,7 @@ export async function acknowledgeAlert(alertId: string) {
 }
 
 /** Resolve an alert / reminder */
-export async function resolveAlert(alertId: string) {
+async function resolveAlert__impl(alertId: string) {
   await requireAction("maintenance.edit");
   await db.alert.update({
     where: { id: alertId },
@@ -54,17 +54,17 @@ export async function resolveAlert(alertId: string) {
 }
 
 /** Snooze a service reminder with mandatory reason logging */
-export async function snoozeAlert(fd: FormData) {
+async function snoozeAlert__impl(fd: FormData) {
   await requireAction("maintenance.edit");
   const alertId = s(fd, "alertId");
   const snoozeDays = n(fd, "snoozeDays") || 7;
   const reason = s(fd, "reason");
 
-  if (!alertId) throw new Error("Alert ID is required");
-  if (!reason) throw new Error("A reason for deferring the reminder is required");
+  if (!alertId) throw new ActionError("Alert ID is required");
+  if (!reason) throw new ActionError("A reason for deferring the reminder is required");
 
   const alert = await db.alert.findUnique({ where: { id: alertId } });
-  if (!alert) throw new Error("Alert not found");
+  if (!alert) throw new ActionError("Alert not found");
 
   const currentDue = alert.dueDate ? new Date(alert.dueDate) : new Date();
   const newDue = new Date(currentDue.getTime() + snoozeDays * 86400000);
@@ -85,9 +85,27 @@ export async function snoozeAlert(fd: FormData) {
 }
 
 /** Create PM Work Order directly from a due service reminder */
-export async function createWoFromReminder(scheduleId: string) {
+async function createWoFromReminder__impl(scheduleId: string) {
   await requireAction("maintenance.edit");
-  const woId = await raiseWoFromSchedule(scheduleId);
+  const created = await raiseWoFromSchedule(scheduleId);
+  // `raiseWoFromSchedule` is wrapped, so a refusal arrives as data rather
+  // than an exception. Re-raise it so this action fails instead of quietly
+  // returning an error object where a work-order id is expected.
+  if (isActionError(created)) throw new ActionError(created.error);
+  const woId = created;
   refresh();
   return woId;
 }
+
+/* ---------------------------------------------------------------------------
+ * Exported actions.
+ *
+ * Wrapped in `safe()` so an `ActionError` comes back as `{ error }` instead of
+ * being thrown — Next redacts thrown messages in production builds, which made
+ * every validation message in this file invisible to the person who triggered
+ * it. Return values are passed through untouched.
+ * ------------------------------------------------------------------------- */
+export const acknowledgeAlert = safe(acknowledgeAlert__impl);
+export const resolveAlert = safe(resolveAlert__impl);
+export const snoozeAlert = safe(snoozeAlert__impl);
+export const createWoFromReminder = safe(createWoFromReminder__impl);

@@ -6,6 +6,7 @@ import { X, Plus, Loader2, Play, Trash2, Fuel, AlertTriangle, CheckCircle2, Calc
 import { cn, inr, num } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { isActionError } from "@/lib/action-result";
 import {
   saveTank, saveReceipt, saveDip, runReconciliation,
   updateAnomaly, saveNorm, deleteReceipt, deleteDip
@@ -364,6 +365,7 @@ export function RunReconButton({ tankId, tankName }: { tankId: string; tankName:
         onClick={() =>
           start(async () => {
             const res = await runReconciliation(tankId);
+            if (isActionError(res)) { setMsg(res.error); return; }
             if (res.ok) {
               toast.success(`✓ ${tankName} reconciled`, `Variance: ${res.varianceL.toFixed(0)} L`);
               setMsg(`Reconciled — variance ${res.varianceL.toFixed(0)} L`);

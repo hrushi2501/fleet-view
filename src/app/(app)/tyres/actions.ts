@@ -3,7 +3,7 @@
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
-import { requireAction } from "@/lib/guard";
+import { requireAction, ActionError, safe } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -16,7 +16,7 @@ function refresh() {
 
 /* ---------------------------------- tyres ---------------------------------- */
 
-export async function saveTyre(id: string | null, fd: FormData) {
+async function saveTyre__impl(id: string | null, fd: FormData) {
   await requireAction("maintenance.edit");
   const status = s(fd, "status") || "IN_STOCK";
   const data = {
@@ -33,25 +33,25 @@ export async function saveTyre(id: string | null, fd: FormData) {
     warehouseId: status === "IN_USE" ? null : (s(fd, "warehouseId") || null),
     ...(status !== "IN_USE" ? { assetId: null, position: null } : {}),
   };
-  if (!data.serialNo) throw new Error("Serial number is required — serial-level tracking is what makes swaps visible");
+  if (!data.serialNo) throw new ActionError("Serial number is required — serial-level tracking is what makes swaps visible");
   if (id) await db.tyre.update({ where: { id }, data });
   else await db.tyre.create({ data });
   refresh();
 }
 
 
-export async function deleteTyre(id: string) {
+async function deleteTyre__impl(id: string) {
   await requireAction("maintenance.edit");
   await db.tyre.delete({ where: { id } });
   refresh();
 }
 
 /** Fit a tyre to a machine. Records the fitment meter so km-run is measurable. */
-export async function fitTyre(fd: FormData) {
+async function fitTyre__impl(fd: FormData) {
   await requireAction("maintenance.edit");
   const tyreId = s(fd, "tyreId");
   const assetId = s(fd, "assetId");
-  if (!tyreId || !assetId) throw new Error("Tyre and machine are required");
+  if (!tyreId || !assetId) throw new ActionError("Tyre and machine are required");
 
   const asset = await db.asset.findUnique({ where: { id: assetId } });
   const meter = n(fd, "meterValue") || asset?.meterValue || 0;
@@ -80,12 +80,12 @@ export async function fitTyre(fd: FormData) {
 }
 
 /** Remove a tyre, banking the kilometres it ran on this fitment. */
-export async function removeTyre(fd: FormData) {
+async function removeTyre__impl(fd: FormData) {
   await requireAction("maintenance.edit");
   const tyreId = s(fd, "tyreId");
-  if (!tyreId) throw new Error("Tyre is required");
+  if (!tyreId) throw new ActionError("Tyre is required");
   const t = await db.tyre.findUnique({ where: { id: tyreId }, include: { asset: true } });
-  if (!t) throw new Error("Tyre not found");
+  if (!t) throw new ActionError("Tyre not found");
 
   const meter = n(fd, "meterValue") || t.asset?.meterValue || 0;
   const ranKm = t.fittedMeter != null && meter > t.fittedMeter ? meter - t.fittedMeter : 0;
@@ -118,10 +118,10 @@ export async function removeTyre(fd: FormData) {
   refresh();
 }
 
-export async function inspectTyre(fd: FormData) {
+async function inspectTyre__impl(fd: FormData) {
   await requireAction("maintenance.edit");
   const tyreId = s(fd, "tyreId");
-  if (!tyreId) throw new Error("Tyre is required");
+  if (!tyreId) throw new ActionError("Tyre is required");
   const tread = n(fd, "treadMm");
   const session = await getSession();
   const t = await db.tyre.findUnique({ where: { id: tyreId }, include: { asset: true } });
@@ -138,12 +138,12 @@ export async function inspectTyre(fd: FormData) {
   refresh();
 }
 
-export async function retreadTyre(fd: FormData) {
+async function retreadTyre__impl(fd: FormData) {
   await requireAction("maintenance.edit");
   const tyreId = s(fd, "tyreId");
-  if (!tyreId) throw new Error("Tyre is required");
+  if (!tyreId) throw new ActionError("Tyre is required");
   const t = await db.tyre.findUnique({ where: { id: tyreId } });
-  if (!t) throw new Error("Tyre not found");
+  if (!t) throw new ActionError("Tyre not found");
   const tread = n(fd, "treadMm") || t.treadNewMm;
   const session = await getSession();
   const warehouseId = s(fd, "warehouseId") || null;
@@ -171,7 +171,7 @@ export async function retreadTyre(fd: FormData) {
 
 /* ------------------------------ major components ------------------------------ */
 
-export async function saveComponent(id: string | null, fd: FormData) {
+async function saveComponent__impl(id: string | null, fd: FormData) {
   await requireAction("maintenance.edit");
   const status = s(fd, "status") || "IN_STOCK";
   const data = {
@@ -188,30 +188,30 @@ export async function saveComponent(id: string | null, fd: FormData) {
     warehouseId: status === "IN_USE" ? null : (s(fd, "warehouseId") || null),
     notes: s(fd, "notes") || null,
   };
-  if (!data.serialNo) throw new Error("Serial number is required");
+  if (!data.serialNo) throw new ActionError("Serial number is required");
   if (id) await db.majorComponent.update({ where: { id }, data });
   else await db.majorComponent.create({ data });
   refresh();
 }
 
-export async function deleteComponent(id: string) {
+async function deleteComponent__impl(id: string) {
   await requireAction("maintenance.edit");
   await db.majorComponent.delete({ where: { id } });
   refresh();
 }
 
 /** Transfer a tyre from its current warehouse/status to another warehouse */
-export async function transferTyre(fd: FormData) {
+async function transferTyre__impl(fd: FormData) {
   await requireAction("maintenance.edit");
   const tyreId = s(fd, "tyreId");
   const warehouseId = s(fd, "warehouseId");
-  if (!tyreId || !warehouseId) throw new Error("Tyre and Destination Warehouse are required");
+  if (!tyreId || !warehouseId) throw new ActionError("Tyre and Destination Warehouse are required");
 
   const tyre = await db.tyre.findUnique({ where: { id: tyreId } });
-  if (!tyre) throw new Error("Tyre not found");
+  if (!tyre) throw new ActionError("Tyre not found");
 
   const targetWh = await db.inventoryWarehouse.findUnique({ where: { id: warehouseId } });
-  if (!targetWh) throw new Error("Destination warehouse not found");
+  if (!targetWh) throw new ActionError("Destination warehouse not found");
 
   const session = await getSession();
 
@@ -239,14 +239,14 @@ export async function transferTyre(fd: FormData) {
 }
 
 /** Transfer a major component from its current warehouse/status to another warehouse */
-export async function transferComponent(fd: FormData) {
+async function transferComponent__impl(fd: FormData) {
   await requireAction("maintenance.edit");
   const componentId = s(fd, "componentId");
   const warehouseId = s(fd, "warehouseId");
-  if (!componentId || !warehouseId) throw new Error("Component and Destination Warehouse are required");
+  if (!componentId || !warehouseId) throw new ActionError("Component and Destination Warehouse are required");
 
   const component = await db.majorComponent.findUnique({ where: { id: componentId } });
-  if (!component) throw new Error("Component not found");
+  if (!component) throw new ActionError("Component not found");
 
   await db.majorComponent.update({
     where: { id: componentId },
@@ -259,3 +259,22 @@ export async function transferComponent(fd: FormData) {
 
   refresh();
 }
+
+/* ---------------------------------------------------------------------------
+ * Exported actions.
+ *
+ * Wrapped in `safe()` so an `ActionError` comes back as `{ error }` instead of
+ * being thrown — Next redacts thrown messages in production builds, which made
+ * every validation message in this file invisible to the person who triggered
+ * it. Return values are passed through untouched.
+ * ------------------------------------------------------------------------- */
+export const saveTyre = safe(saveTyre__impl);
+export const deleteTyre = safe(deleteTyre__impl);
+export const fitTyre = safe(fitTyre__impl);
+export const removeTyre = safe(removeTyre__impl);
+export const inspectTyre = safe(inspectTyre__impl);
+export const retreadTyre = safe(retreadTyre__impl);
+export const saveComponent = safe(saveComponent__impl);
+export const deleteComponent = safe(deleteComponent__impl);
+export const transferTyre = safe(transferTyre__impl);
+export const transferComponent = safe(transferComponent__impl);

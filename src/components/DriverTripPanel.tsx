@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { QrCode, LogOut, Loader2, Camera, MapPin, TriangleAlert, CheckCircle2, X } from "lucide-react";
+import { isActionError } from "@/lib/action-result";
 
 type Vehicle = { id: string; code: string; registrationNo: string | null; assetClass: string; hasFuelSensor: boolean; tracking: string };
 type Active = { sessionId: string; vehicle: Vehicle; startedAt: string; trackingSource: string } | null;
@@ -235,6 +236,7 @@ function GaugeCapture({ assetId, onClose, onDone }: { assetId: string; onClose: 
 
     const { saveGaugeReading } = await import("@/app/(app)/tracking/actions");
     const res = await saveGaugeReading(fd);
+    if (isActionError(res)) {  return; }
     onDone(res.status === "VERIFIED"
       ? { kind: "ok", text: `फ्यूल दर्ज · Fuel recorded at ${res.levelPct}%` }
       : { kind: "warn", text: "फोटो भेज दी · Sent for checking", details: res.reasons });

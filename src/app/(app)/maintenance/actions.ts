@@ -17,7 +17,7 @@ function refresh() {
 
 /* ------------------------------- PM schedules ------------------------------- */
 
-export async function saveSchedule(id: string | null, fd: FormData) {
+async function saveSchedule__impl(id: string | null, fd: FormData) {
   await requireAction("maintenance.edit");
   const data = {
     assetId: s(fd, "assetId") || null,
@@ -34,20 +34,20 @@ export async function saveSchedule(id: string | null, fd: FormData) {
     active: fd.get("active") == null ? true : b(fd, "active"),
     notes: s(fd, "notes") || null,
   };
-  if (!data.taskName) throw new Error("Task name is required");
+  if (!data.taskName) throw new ActionError("Task name is required");
   if (id) await db.maintenanceSchedule.update({ where: { id }, data });
   else await db.maintenanceSchedule.create({ data });
   refresh();
 }
 
-export async function deleteSchedule(id: string) {
+async function deleteSchedule__impl(id: string) {
   await requireAction("maintenance.edit");
   await db.maintenanceSchedule.delete({ where: { id } });
   refresh();
 }
 
 /** Applies the shipped PM task templates to every matching asset. */
-export async function seedPmSchedules() {
+async function seedPmSchedules__impl() {
   await requireAction("maintenance.edit");
   const assets = await db.asset.findMany({ select: { id: true, assetClass: true, meterValue: true } });
   let created = 0;
@@ -77,14 +77,14 @@ export async function seedPmSchedules() {
 }
 
 import { PM_PARTS_KITS } from "@/lib/maintenance";
-import { requireAction } from "@/lib/guard";
+import { requireAction, ActionError, safe } from "@/lib/guard";
 import { transition } from "@/lib/transition";
 
 /** Raise a work order straight from a due schedule, auto-populating parts kit lines. */
-export async function raiseWoFromSchedule(scheduleId: string) {
+async function raiseWoFromSchedule__impl(scheduleId: string) {
   await requireAction("maintenance.edit");
   const sch = await db.maintenanceSchedule.findUnique({ where: { id: scheduleId }, include: { asset: true } });
-  if (!sch || !sch.assetId || !sch.asset) throw new Error("Schedule has no asset");
+  if (!sch || !sch.assetId || !sch.asset) throw new ActionError("Schedule has no asset");
 
   const count = await db.workOrder.count();
   const woNo = `WO-${new Date().getFullYear()}-${String(count + 1).padStart(4, "0")}`;
@@ -125,11 +125,11 @@ export async function raiseWoFromSchedule(scheduleId: string) {
 }
 
 /** Close a PM or Breakdown work order and roll its schedule forward if applicable. */
-export async function completeWorkOrder(id: string, fd: FormData) {
+async function completeWorkOrder__impl(id: string, fd: FormData) {
   await requireAction("maintenance.edit");
   const session = await getSession();
   const wo = await db.workOrder.findUnique({ where: { id }, include: { asset: true } });
-  if (!wo) throw new Error("Work order not found");
+  if (!wo) throw new ActionError("Work order not found");
 
   const laborCost = n(fd, "laborCost");
   const partsCost = n(fd, "partsCost");
@@ -176,13 +176,13 @@ export async function completeWorkOrder(id: string, fd: FormData) {
 }
 
 /** Submit a daily operator pre-operational inspection checklist. */
-export async function submitPreOpChecklist(fd: FormData) {
+async function submitPreOpChecklist__impl(fd: FormData) {
   await requireAction("maintenance.edit");
   const assetId = s(fd, "assetId");
-  if (!assetId) throw new Error("Asset selection is required for Pre-Op Inspection");
+  if (!assetId) throw new ActionError("Asset selection is required for Pre-Op Inspection");
 
   const asset = await db.asset.findUnique({ where: { id: assetId } });
-  if (!asset) throw new Error("Asset not found");
+  if (!asset) throw new ActionError("Asset not found");
 
   const checks = [
     { name: "Fluid Levels (Oil/Coolant)", pass: b(fd, "check_fluids") },
@@ -232,7 +232,7 @@ export async function submitPreOpChecklist(fd: FormData) {
 
 /* ------------------------------ lines & checklist ------------------------------ */
 
-export async function addWoLine(workOrderId: string, fd: FormData) {
+async function addWoLine__impl(workOrderId: string, fd: FormData) {
   await requireAction("maintenance.edit");
   const qty = n(fd, "qty") || 1;
   const rate = n(fd, "rate");
@@ -256,7 +256,7 @@ export async function addWoLine(workOrderId: string, fd: FormData) {
   refresh();
 }
 
-export async function deleteWoLine(id: string) {
+async function deleteWoLine__impl(id: string) {
   await requireAction("maintenance.edit");
   const line = await db.workOrderLine.findUnique({ where: { id } });
   if (!line) return;
@@ -268,7 +268,7 @@ export async function deleteWoLine(id: string) {
   refresh();
 }
 
-export async function addChecklistItem(workOrderId: string, fd: FormData) {
+async function addChecklistItem__impl(workOrderId: string, fd: FormData) {
   await requireAction("maintenance.edit");
   await db.jobCardItem.create({
     data: { workOrderId, task: s(fd, "task"), critical: b(fd, "critical") },
@@ -276,7 +276,7 @@ export async function addChecklistItem(workOrderId: string, fd: FormData) {
   refresh();
 }
 
-export async function toggleChecklistItem(id: string, done: boolean) {
+async function toggleChecklistItem__impl(id: string, done: boolean) {
   await requireAction("maintenance.edit");
   const session = await getSession();
   await db.jobCardItem.update({
@@ -285,3 +285,22 @@ export async function toggleChecklistItem(id: string, done: boolean) {
   });
   refresh();
 }
+
+/* ---------------------------------------------------------------------------
+ * Exported actions.
+ *
+ * Wrapped in `safe()` so an `ActionError` comes back as `{ error }` instead of
+ * being thrown — Next redacts thrown messages in production builds, which made
+ * every validation message in this file invisible to the person who triggered
+ * it. Return values are passed through untouched.
+ * ------------------------------------------------------------------------- */
+export const saveSchedule = safe(saveSchedule__impl);
+export const deleteSchedule = safe(deleteSchedule__impl);
+export const seedPmSchedules = safe(seedPmSchedules__impl);
+export const raiseWoFromSchedule = safe(raiseWoFromSchedule__impl);
+export const completeWorkOrder = safe(completeWorkOrder__impl);
+export const submitPreOpChecklist = safe(submitPreOpChecklist__impl);
+export const addWoLine = safe(addWoLine__impl);
+export const deleteWoLine = safe(deleteWoLine__impl);
+export const addChecklistItem = safe(addChecklistItem__impl);
+export const toggleChecklistItem = safe(toggleChecklistItem__impl);

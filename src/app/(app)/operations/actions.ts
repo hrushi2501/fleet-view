@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
-import { requireAction } from "@/lib/guard";
+import { requireAction, ActionError, safe } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -28,10 +28,10 @@ function refresh() {
 
 /* ================================ SITES ================================ */
 
-export async function saveSite(id: string | null, fd: FormData) {
+async function saveSite__impl(id: string | null, fd: FormData) {
   await requireAction("fleet.edit");
   const projectId = s(fd, "projectId");
-  if (!projectId) throw new Error("Project is required");
+  if (!projectId) throw new ActionError("Project is required");
   const data = {
     projectId,
     code: s(fd, "code"),
@@ -43,11 +43,11 @@ export async function saveSite(id: string | null, fd: FormData) {
     address: s(fd, "address") || null,
     active: fd.get("active") == null ? true : fd.get("active") === "on",
   };
-  if (!data.code || !data.name) throw new Error("Site code and name are required");
+  if (!data.code || !data.name) throw new ActionError("Site code and name are required");
 
   // Validate project exists
   const project = await db.project.findUnique({ where: { id: projectId } });
-  if (!project) throw new Error("Selected project does not exist");
+  if (!project) throw new ActionError("Selected project does not exist");
 
   if (id) {
     await db.site.update({ where: { id }, data });
@@ -63,10 +63,10 @@ export async function saveSite(id: string | null, fd: FormData) {
   refresh();
 }
 
-export async function deleteSite(id: string) {
+async function deleteSite__impl(id: string) {
   await requireAction("fleet.edit");
   const site = await db.site.findUnique({ where: { id }, include: { allocations: { select: { id: true } } } });
-  if (!site) throw new Error("Site not found");
+  if (!site) throw new ActionError("Site not found");
 
   // Release any allocations tied to this site before deleting
   await db.$transaction([
@@ -86,18 +86,18 @@ export async function deleteSite(id: string) {
 
 /* ================================ EQUIPMENT PLAN ================================ */
 
-export async function saveEquipmentPlan(fd: FormData) {
+async function saveEquipmentPlan__impl(fd: FormData) {
   await requireAction("production.edit");
   const projectId = s(fd, "projectId");
   const assetClass = s(fd, "assetClass");
-  if (!projectId || !assetClass) throw new Error("Project and machine class are required");
+  if (!projectId || !assetClass) throw new ActionError("Project and machine class are required");
 
   // Validate project exists
   const project = await db.project.findUnique({ where: { id: projectId } });
-  if (!project) throw new Error("Selected project does not exist");
+  if (!project) throw new ActionError("Selected project does not exist");
 
   const plannedCount = Math.max(0, Math.round(n(fd, "plannedCount")));
-  if (plannedCount < 1) throw new Error("Planned count must be at least 1");
+  if (plannedCount < 1) throw new ActionError("Planned count must be at least 1");
 
   const data = {
     plannedCount,
@@ -109,7 +109,7 @@ export async function saveEquipmentPlan(fd: FormData) {
 
   // Date sanity
   if (data.toDate && data.toDate <= data.fromDate) {
-    throw new Error("End date must be after start date");
+    throw new ActionError("End date must be after start date");
   }
 
   await db.equipmentPlan.upsert({
@@ -127,10 +127,10 @@ export async function saveEquipmentPlan(fd: FormData) {
   refresh();
 }
 
-export async function deleteEquipmentPlan(id: string) {
+async function deleteEquipmentPlan__impl(id: string) {
   await requireAction("production.edit");
   const plan = await db.equipmentPlan.findUnique({ where: { id }, include: { project: { select: { code: true } } } });
-  if (!plan) throw new Error("Equipment plan not found");
+  if (!plan) throw new ActionError("Equipment plan not found");
 
   await db.equipmentPlan.delete({ where: { id } });
 
@@ -146,31 +146,31 @@ export async function deleteEquipmentPlan(id: string) {
 
 /* ================================ ALLOCATIONS ================================ */
 
-export async function saveAllocation(fd: FormData) {
+async function saveAllocation__impl(fd: FormData) {
   await requireAction("production.edit");
   const assetId = s(fd, "assetId");
   const projectId = s(fd, "projectId");
-  if (!assetId || !projectId) throw new Error("Asset and project are required");
+  if (!assetId || !projectId) throw new ActionError("Asset and project are required");
 
   // Validate foreign keys exist
   const [asset, project] = await Promise.all([
     db.asset.findUnique({ where: { id: assetId } }),
     db.project.findUnique({ where: { id: projectId } }),
   ]);
-  if (!asset) throw new Error("Selected asset does not exist");
-  if (!project) throw new Error("Selected project does not exist");
+  if (!asset) throw new ActionError("Selected asset does not exist");
+  if (!project) throw new ActionError("Selected project does not exist");
 
   // Validate site belongs to this project (if provided)
   const siteId = s(fd, "siteId") || null;
   if (siteId) {
     const site = await db.site.findUnique({ where: { id: siteId } });
-    if (!site) throw new Error("Selected site does not exist");
-    if (site.projectId !== projectId) throw new Error("Site does not belong to the selected project");
+    if (!site) throw new ActionError("Selected site does not exist");
+    if (site.projectId !== projectId) throw new ActionError("Site does not belong to the selected project");
   }
 
   const fromDate = s(fd, "fromDate") ? new Date(s(fd, "fromDate")) : new Date();
   const toDate = s(fd, "toDate") ? new Date(s(fd, "toDate")) : null;
-  if (toDate && toDate <= fromDate) throw new Error("End date must be after start date");
+  if (toDate && toDate <= fromDate) throw new ActionError("End date must be after start date");
 
   const status = s(fd, "status") || "PLANNED";
   const session = await getSession();
@@ -182,7 +182,7 @@ export async function saveAllocation(fd: FormData) {
         where: { assetId, status: "ACTIVE" },
       });
       if (otherActive) {
-        throw new Error(`Machine ${asset.code} already has an active allocation on another project.`);
+        throw new ActionError(`Machine ${asset.code} already has an active allocation on another project.`);
       }
     }
 
@@ -215,13 +215,13 @@ export async function saveAllocation(fd: FormData) {
   refresh();
 }
 
-export async function updateAllocationStatus(id: string, fd: FormData) {
+async function updateAllocationStatus__impl(id: string, fd: FormData) {
   await requireAction("production.edit");
   const status = s(fd, "status");
-  if (!status) throw new Error("Status is required");
+  if (!status) throw new ActionError("Status is required");
 
   const existing = await db.allocation.findUnique({ where: { id } });
-  if (!existing) throw new Error("Allocation not found");
+  if (!existing) throw new ActionError("Allocation not found");
 
   // ACID: single transaction for allocation status change + asset project sync + race condition guard
   await db.$transaction(async (tx) => {
@@ -230,7 +230,7 @@ export async function updateAllocationStatus(id: string, fd: FormData) {
         where: { assetId: existing.assetId, status: "ACTIVE", NOT: { id } },
       });
       if (otherActive) {
-        throw new Error(`Machine already has another active allocation.`);
+        throw new ActionError(`Machine already has another active allocation.`);
       }
     }
 
@@ -264,13 +264,13 @@ export async function updateAllocationStatus(id: string, fd: FormData) {
   refresh();
 }
 
-export async function deleteAllocation(id: string) {
+async function deleteAllocation__impl(id: string) {
   await requireAction("production.edit");
   const alloc = await db.allocation.findUnique({
     where: { id },
     include: { asset: { select: { code: true } }, project: { select: { code: true } } },
   });
-  if (!alloc) throw new Error("Allocation not found");
+  if (!alloc) throw new ActionError("Allocation not found");
 
   // If this was the ACTIVE allocation, clear the asset's project link
   await db.$transaction(async (tx) => {
@@ -292,25 +292,25 @@ export async function deleteAllocation(id: string) {
 
 /* ================================ MOBILISATION ================================ */
 
-export async function saveMobilization(fd: FormData) {
+async function saveMobilization__impl(fd: FormData) {
   await requireAction("production.edit");
   const assetId = s(fd, "assetId");
-  if (!assetId) throw new Error("Asset is required");
+  if (!assetId) throw new ActionError("Asset is required");
 
   // Validate asset exists
   const asset = await db.asset.findUnique({ where: { id: assetId } });
-  if (!asset) throw new Error("Selected asset does not exist");
+  if (!asset) throw new ActionError("Selected asset does not exist");
 
   // Validate projects if provided
   const toProjectId = s(fd, "toProjectId") || null;
   const fromProjectId = s(fd, "fromProjectId") || null;
   if (toProjectId) {
     const proj = await db.project.findUnique({ where: { id: toProjectId } });
-    if (!proj) throw new Error("Destination project does not exist");
+    if (!proj) throw new ActionError("Destination project does not exist");
   }
   if (fromProjectId) {
     const proj = await db.project.findUnique({ where: { id: fromProjectId } });
-    if (!proj) throw new Error("Source project does not exist");
+    if (!proj) throw new ActionError("Source project does not exist");
   }
 
   const session = await getSession();
@@ -344,13 +344,13 @@ export async function saveMobilization(fd: FormData) {
   refresh();
 }
 
-export async function updateMobilization(id: string, fd: FormData) {
+async function updateMobilization__impl(id: string, fd: FormData) {
   await requireAction("production.edit");
   const status = s(fd, "status");
-  if (!status) throw new Error("Status is required");
+  if (!status) throw new ActionError("Status is required");
 
   const existing = await db.mobilizationOrder.findUnique({ where: { id }, include: { asset: true } });
-  if (!existing) throw new Error("Mobilisation order not found");
+  if (!existing) throw new ActionError("Mobilisation order not found");
 
   // ACID: single transaction for mob order update + asset status/project sync + lifecycle event
   await db.$transaction(async (tx) => {
@@ -401,13 +401,13 @@ export async function updateMobilization(id: string, fd: FormData) {
   refresh();
 }
 
-export async function deleteMobilization(id: string) {
+async function deleteMobilization__impl(id: string) {
   await requireAction("production.edit");
   const order = await db.mobilizationOrder.findUnique({
     where: { id },
     include: { asset: true },
   });
-  if (!order) throw new Error("Mobilisation order not found");
+  if (!order) throw new ActionError("Mobilisation order not found");
 
   // Revert asset status & project assignment if in transit or arrived
   await db.$transaction(async (tx) => {
@@ -439,3 +439,22 @@ export async function deleteMobilization(id: string) {
   });
   refresh();
 }
+
+/* ---------------------------------------------------------------------------
+ * Exported actions.
+ *
+ * Wrapped in `safe()` so an `ActionError` comes back as `{ error }` instead of
+ * being thrown — Next redacts thrown messages in production builds, which made
+ * every validation message in this file invisible to the person who triggered
+ * it. Return values are passed through untouched.
+ * ------------------------------------------------------------------------- */
+export const saveSite = safe(saveSite__impl);
+export const deleteSite = safe(deleteSite__impl);
+export const saveEquipmentPlan = safe(saveEquipmentPlan__impl);
+export const deleteEquipmentPlan = safe(deleteEquipmentPlan__impl);
+export const saveAllocation = safe(saveAllocation__impl);
+export const updateAllocationStatus = safe(updateAllocationStatus__impl);
+export const deleteAllocation = safe(deleteAllocation__impl);
+export const saveMobilization = safe(saveMobilization__impl);
+export const updateMobilization = safe(updateMobilization__impl);
+export const deleteMobilization = safe(deleteMobilization__impl);

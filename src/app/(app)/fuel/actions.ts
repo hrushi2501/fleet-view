@@ -6,7 +6,7 @@ import { put } from "@vercel/blob";
 import { getSession } from "@/lib/auth";
 import { getDieselRate } from "@/lib/settings";
 import { reconcileTank, scoreTankRecon, type TankLite } from "@/lib/fuel-recon";
-import { requireAction } from "@/lib/guard";
+import { requireAction, ActionError, safe } from "@/lib/guard";
 import { transition } from "@/lib/transition";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
@@ -31,7 +31,7 @@ function refresh() {
 
 /* --------------------------------- tanks --------------------------------- */
 
-export async function saveTank(id: string | null, fd: FormData) {
+async function saveTank__impl(id: string | null, fd: FormData) {
   await requireAction("fuel.receipt");
   const data = {
     name: s(fd, "name"),
@@ -48,7 +48,7 @@ export async function saveTank(id: string | null, fd: FormData) {
   refresh();
 }
 
-export async function deleteTank(id: string) {
+async function deleteTank__impl(id: string) {
   await requireAction("fuel.reconcile");
   await db.fuelTank.delete({ where: { id } });
   refresh();
@@ -57,13 +57,13 @@ export async function deleteTank(id: string) {
 /* -------------------------------- receipts -------------------------------- */
 
 /** Bulk diesel delivery in. Shortfall (invoiced − actually dipped in) is the control point. */
-export async function saveReceipt(fd: FormData) {
+async function saveReceipt__impl(fd: FormData) {
   await requireAction("fuel.receipt");
   const qtyInvoiced = n(fd, "qtyInvoiced");
   const qtyReceived = n(fd, "qtyReceived") || qtyInvoiced;
   const rate = n(fd, "rate") || (await getDieselRate());
   const tankId = s(fd, "tankId");
-  if (!tankId) throw new Error("Tank is required");
+  if (!tankId) throw new ActionError("Tank is required");
 
   const photo = await uploadPhoto(fd.get("invoicePhoto"), "receipt");
   const session = await getSession();
@@ -113,7 +113,7 @@ export async function saveReceipt(fd: FormData) {
   refresh();
 }
 
-export async function deleteReceipt(id: string) {
+async function deleteReceipt__impl(id: string) {
   await requireAction("fuel.receipt");
   await db.$transaction(async (tx) => {
     const r = await tx.fuelReceipt.findUnique({ where: { id } });
@@ -128,10 +128,10 @@ export async function deleteReceipt(id: string) {
 /* ---------------------------------- dips ---------------------------------- */
 
 /** Physical dipstick reading — the ground truth. Re-anchors the tank's book balance. */
-export async function saveDip(fd: FormData) {
+async function saveDip__impl(fd: FormData) {
   await requireAction("fuel.receipt");
   const tankId = s(fd, "tankId");
-  if (!tankId) throw new Error("Tank is required");
+  if (!tankId) throw new ActionError("Tank is required");
   const level = n(fd, "level");
   const photo = await uploadPhoto(fd.get("photo"), "dip");
   const session = await getSession();
@@ -152,7 +152,7 @@ export async function saveDip(fd: FormData) {
   refresh();
 }
 
-export async function deleteDip(id: string) {
+async function deleteDip__impl(id: string) {
   await requireAction("fuel.receipt");
   await db.tankDip.delete({ where: { id } });
   refresh();
@@ -165,7 +165,7 @@ export async function deleteDip(id: string) {
  * Run reconciliation for one tank over a window and persist the result.
  * Raises/updates an anomaly when the gap is beyond tolerance.
  */
-export async function runReconciliation(tankId: string, fromStr?: string, toStr?: string) {
+async function runReconciliation__impl(tankId: string, fromStr?: string, toStr?: string) {
   await requireAction("fuel.reconcile");
   const from = fromStr ? new Date(fromStr) : undefined;
   const to = toStr ? new Date(toStr) : undefined;
@@ -178,7 +178,7 @@ export async function runReconciliation(tankId: string, fromStr?: string, toStr?
       issues: { where: { type: "ISSUE" } },
     },
   });
-  if (!tank) throw new Error("Tank not found");
+  if (!tank) throw new ActionError("Tank not found");
 
   const lite: TankLite = { id: tank.id, name: tank.name, location: tank.location, capacity: tank.capacity, minLevel: tank.minLevel };
   const recon = reconcileTank(
@@ -256,7 +256,7 @@ export async function runReconciliation(tankId: string, fromStr?: string, toStr?
  * the reconciliation also sign it off — the exact pairing `SOD_CONFLICTS` names
  * as "can issue diesel and sign off the reconciliation that would expose a gap".
  */
-export async function setReconStatus(id: string, status: string, notes?: string) {
+async function setReconStatus__impl(id: string, status: string, notes?: string) {
   const session = await getSession();
   await transition({
     entity: "FuelReconciliation",
@@ -274,7 +274,7 @@ export async function setReconStatus(id: string, status: string, notes?: string)
 
 /* -------------------------------- anomalies -------------------------------- */
 
-export async function updateAnomaly(id: string, fd: FormData) {
+async function updateAnomaly__impl(id: string, fd: FormData) {
   await requireAction("fuel.approve");
   const status = s(fd, "status");
   const session = await getSession();
@@ -293,7 +293,7 @@ export async function updateAnomaly(id: string, fd: FormData) {
 
 /* ---------------------------------- norms ---------------------------------- */
 
-export async function saveNorm(fd: FormData) {
+async function saveNorm__impl(fd: FormData) {
   await requireAction("fuel.reconcile");
   const assetClass = s(fd, "assetClass") || null;
   const unit = s(fd, "unit") || "KMPL";
@@ -302,7 +302,7 @@ export async function saveNorm(fd: FormData) {
     normHigh: n(fd, "normHigh"),
     tolerancePct: n(fd, "tolerancePct") || 15,
   };
-  if (!assetClass) throw new Error("Asset class is required");
+  if (!assetClass) throw new ActionError("Asset class is required");
   await db.consumptionNorm.upsert({
     where: { assetClass_unit: { assetClass, unit } },
     create: { assetClass, unit, ...data },
@@ -310,3 +310,22 @@ export async function saveNorm(fd: FormData) {
   });
   refresh();
 }
+
+/* ---------------------------------------------------------------------------
+ * Exported actions.
+ *
+ * Wrapped in `safe()` so an `ActionError` comes back as `{ error }` instead of
+ * being thrown — Next redacts thrown messages in production builds, which made
+ * every validation message in this file invisible to the person who triggered
+ * it. Return values are passed through untouched.
+ * ------------------------------------------------------------------------- */
+export const saveTank = safe(saveTank__impl);
+export const deleteTank = safe(deleteTank__impl);
+export const saveReceipt = safe(saveReceipt__impl);
+export const deleteReceipt = safe(deleteReceipt__impl);
+export const saveDip = safe(saveDip__impl);
+export const deleteDip = safe(deleteDip__impl);
+export const runReconciliation = safe(runReconciliation__impl);
+export const setReconStatus = safe(setReconStatus__impl);
+export const updateAnomaly = safe(updateAnomaly__impl);
+export const saveNorm = safe(saveNorm__impl);

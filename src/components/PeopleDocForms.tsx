@@ -205,7 +205,8 @@ export function RefreshStatusButton() {
   const router = useRouter();
   return (
     <div className="flex items-center gap-2">
-      <button onClick={() => start(async () => { const r = await refreshDocStatuses(); setMsg(`${r.changed} updated`); router.refresh(); })} disabled={pending}
+      <button onClick={() => start(async () => { const r = await refreshDocStatuses();
+ if (isActionError(r)) { setMsg(r.error); return; } setMsg(`${r.changed} updated`); router.refresh(); })} disabled={pending}
         className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 disabled:opacity-60">
         {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Refresh Statuses
       </button>
@@ -216,6 +217,7 @@ export function RefreshStatusButton() {
 
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { isActionError } from "@/lib/action-result";
 
 export function DeleteRow({ id, kind }: { id: string; kind: "competency" | "violation" | "document" }) {
   const [open, setOpen] = useState(false);

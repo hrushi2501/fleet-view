@@ -7,7 +7,7 @@ import { audit } from "@/lib/audit";
 import { sweepAlerts, dueForEscalation, DEFAULT_ALERT_RULES, type AlertRuleLite, type SweepInput } from "@/lib/alerts";
 import { pmDue, type ScheduleLite } from "@/lib/maintenance";
 import { allocationConflicts, mobilizationStats, type AllocationLite, type MobLite } from "@/lib/operations";
-import { requireAction } from "@/lib/guard";
+import { requireAction, ActionError, safe } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -21,7 +21,7 @@ function refresh() {
  * Kept from the original build so the existing AlertsClient keeps working;
  * now also stamps who acted and when, which M18's response-time stats need.
  */
-export async function updateAlert(id: string, status: "Acknowledged" | "Resolved") {
+async function updateAlert__impl(id: string, status: "Acknowledged" | "Resolved") {
   await requireAction("maintenance.edit");
   const session = await getSession();
   await db.alert.update({
@@ -36,7 +36,7 @@ export async function updateAlert(id: string, status: "Acknowledged" | "Resolved
   revalidatePath("/");
 }
 
-export async function acknowledgeAlert(id: string) {
+async function acknowledgeAlert__impl(id: string) {
   await requireAction("maintenance.edit");
   const session = await getSession();
   await db.alert.update({
@@ -46,13 +46,13 @@ export async function acknowledgeAlert(id: string) {
   refresh();
 }
 
-export async function resolveAlert(id: string) {
+async function resolveAlert__impl(id: string) {
   await requireAction("maintenance.edit");
   await db.alert.update({ where: { id }, data: { status: "Resolved", resolvedAt: new Date() } });
   refresh();
 }
 
-export async function escalateAlert(id: string) {
+async function escalateAlert__impl(id: string) {
   await requireAction("maintenance.edit");
   const session = await getSession();
   await db.alert.update({
@@ -62,7 +62,7 @@ export async function escalateAlert(id: string) {
   refresh();
 }
 
-export async function assignAlert(id: string, supervisor: string) {
+async function assignAlert__impl(id: string, supervisor: string) {
   await requireAction("maintenance.edit");
   const session = await getSession();
   await db.alert.update({
@@ -77,7 +77,7 @@ export async function assignAlert(id: string, supervisor: string) {
   refresh();
 }
 
-export async function seedAlertRules() {
+async function seedAlertRules__impl() {
   await requireAction("admin.settings");
   for (const r of DEFAULT_ALERT_RULES) {
     await db.alertRule.upsert({
@@ -94,7 +94,7 @@ export async function seedAlertRules() {
   return { ok: true as const, count: DEFAULT_ALERT_RULES.length };
 }
 
-export async function updateAlertRule(id: string, fd: FormData) {
+async function updateAlertRule__impl(id: string, fd: FormData) {
   await requireAction("admin.settings");
   await db.alertRule.update({
     where: { id },
@@ -114,10 +114,10 @@ export async function updateAlertRule(id: string, fd: FormData) {
  * Sweep every module for alert conditions. Idempotent via dedupeKey, so running
  * it on a schedule refreshes existing alerts rather than posting duplicates.
  */
-export async function runAlertSweep() {
+async function runAlertSweep__impl() {
   await requireAction("maintenance.edit");
   let rules = await db.alertRule.findMany();
-  if (rules.length === 0) { await seedAlertRules(); rules = await db.alertRule.findMany(); }
+  if (rules.length === 0) { await seedAlertRules__impl(); rules = await db.alertRule.findMany(); }
   const ruleLites: AlertRuleLite[] = rules.map((r) => ({
     code: r.code, enabled: r.enabled, threshold: r.threshold, severity: r.severity,
     escalateAfterHours: r.escalateAfterHours, channels: r.channels,
@@ -215,3 +215,20 @@ export async function runAlertSweep() {
   refresh();
   return { ok: true as const, found: candidates.length, created, updated, escalated: toEscalate.length };
 }
+
+/* ---------------------------------------------------------------------------
+ * Exported actions.
+ *
+ * Wrapped in `safe()` so an `ActionError` comes back as `{ error }` instead of
+ * being thrown — Next redacts thrown messages in production builds, which made
+ * every validation message in this file invisible to the person who triggered
+ * it. Return values are passed through untouched.
+ * ------------------------------------------------------------------------- */
+export const updateAlert = safe(updateAlert__impl);
+export const acknowledgeAlert = safe(acknowledgeAlert__impl);
+export const resolveAlert = safe(resolveAlert__impl);
+export const escalateAlert = safe(escalateAlert__impl);
+export const assignAlert = safe(assignAlert__impl);
+export const seedAlertRules = safe(seedAlertRules__impl);
+export const updateAlertRule = safe(updateAlertRule__impl);
+export const runAlertSweep = safe(runAlertSweep__impl);

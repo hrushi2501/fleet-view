@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { getDieselRate } from "@/lib/settings";
 import { scanSignals, DEFAULT_RULES, nextCaseNo, type RuleLite, type ScanInput } from "@/lib/loss-prevention";
-import { requireAction, ActionError } from "@/lib/guard";
+import { requireAction, ActionError, safe } from "@/lib/guard";
 import { transition } from "@/lib/transition";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
@@ -19,7 +19,7 @@ function refresh(id?: string) {
 /* ---------------------------------- rules ---------------------------------- */
 
 /** Installs the shipped rule library. Safe to call repeatedly. */
-export async function seedRules() {
+async function seedRules__impl() {
   await requireAction("admin.settings");
   for (const r of DEFAULT_RULES) {
     await db.controlRule.upsert({
@@ -31,7 +31,7 @@ export async function seedRules() {
   refresh();
 }
 
-export async function updateRule(id: string, fd: FormData) {
+async function updateRule__impl(id: string, fd: FormData) {
   await requireAction("admin.settings");
   await db.controlRule.update({
     where: { id },
@@ -51,14 +51,14 @@ export async function updateRule(id: string, fd: FormData) {
  * Pull signals from every module and open or refresh a case for each.
  * Idempotent via `signalKey`, so it's safe to run on a schedule or on demand.
  */
-export async function runScan() {
+async function runScan__impl() {
   await requireAction("loss.investigate");
   const session = await getSession();
   const dieselRate = await getDieselRate();
 
   let rules = await db.controlRule.findMany();
   if (rules.length === 0) {
-    await seedRules();
+    await seedRules__impl();
     rules = await db.controlRule.findMany();
   }
   const ruleLites: RuleLite[] = rules.map((r) => ({ code: r.code, enabled: r.enabled, threshold: r.threshold, severity: r.severity, autoCase: r.autoCase }));
@@ -175,7 +175,7 @@ export async function runScan() {
 
 /* ---------------------------------- cases ---------------------------------- */
 
-export async function createCase(fd: FormData) {
+async function createCase__impl(fd: FormData) {
   await requireAction("loss.investigate");
   const session = await getSession();
   const seq = await db.fraudCase.count();
@@ -212,7 +212,7 @@ export async function createCase(fd: FormData) {
  * single `loss.investigate` check, so an investigator could close their own
  * case and the segregation existed only on paper.
  */
-export async function updateCase(id: string, fd: FormData) {
+async function updateCase__impl(id: string, fd: FormData) {
   await requireAction("loss.investigate");
   const session = await getSession();
   const status = s(fd, "status");
@@ -248,7 +248,7 @@ export async function updateCase(id: string, fd: FormData) {
   refresh(id);
 }
 
-export async function addNote(id: string, fd: FormData) {
+async function addNote__impl(id: string, fd: FormData) {
   await requireAction("loss.investigate");
   const session = await getSession();
   const note = s(fd, "note");
@@ -257,7 +257,7 @@ export async function addNote(id: string, fd: FormData) {
   refresh(id);
 }
 
-export async function addEvidence(id: string, fd: FormData) {
+async function addEvidence__impl(id: string, fd: FormData) {
   await requireAction("loss.investigate");
   const session = await getSession();
   await db.caseEvidence.create({
@@ -275,7 +275,7 @@ export async function addEvidence(id: string, fd: FormData) {
 }
 
 /** Records money actually clawed back and rolls it up onto the case. */
-export async function addRecovery(id: string, fd: FormData) {
+async function addRecovery__impl(id: string, fd: FormData) {
   await requireAction("loss.close");
   const session = await getSession();
   const amount = n(fd, "amount");
@@ -301,7 +301,7 @@ export async function addRecovery(id: string, fd: FormData) {
   refresh(id);
 }
 
-export async function deleteCase(id: string) {
+async function deleteCase__impl(id: string) {
   await requireAction("loss.close");
   await db.fraudCase.delete({ where: { id } });
   revalidatePath("/loss-prevention");
@@ -399,3 +399,21 @@ export async function getFraudIntelligence() {
     rollbackCount: meterRollbacks.length,
   };
 }
+
+/* ---------------------------------------------------------------------------
+ * Exported actions.
+ *
+ * Wrapped in `safe()` so an `ActionError` comes back as `{ error }` instead of
+ * being thrown — Next redacts thrown messages in production builds, which made
+ * every validation message in this file invisible to the person who triggered
+ * it. Return values are passed through untouched.
+ * ------------------------------------------------------------------------- */
+export const seedRules = safe(seedRules__impl);
+export const updateRule = safe(updateRule__impl);
+export const runScan = safe(runScan__impl);
+export const createCase = safe(createCase__impl);
+export const updateCase = safe(updateCase__impl);
+export const addNote = safe(addNote__impl);
+export const addEvidence = safe(addEvidence__impl);
+export const addRecovery = safe(addRecovery__impl);
+export const deleteCase = safe(deleteCase__impl);

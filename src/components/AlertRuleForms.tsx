@@ -4,6 +4,7 @@ import { useState, useTransition, ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { X, Plus, Loader2, Radar } from "lucide-react";
 import { seedAlertRules, updateAlertRule, runAlertSweep } from "@/app/(app)/alerts/actions";
+import { isActionError } from "@/lib/action-result";
 
 const inputCls = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
 
@@ -34,6 +35,7 @@ export function SweepButton() {
       <button
         onClick={() => start(async () => {
           const r = await runAlertSweep();
+          if (isActionError(r)) { setMsg(r.error); return; }
           setMsg(`${r.found} conditions · ${r.created} new · ${r.updated} refreshed${r.escalated ? ` · ${r.escalated} escalated` : ""}`);
           router.refresh();
         })}
