@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { parseBusinessDay, businessMonth } from "@/lib/business-time";
+import { requireAction } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -16,6 +17,7 @@ function refresh() {
 
 /** Manual cost line — tyres, insurance, EMI, tolls. Fuel/maintenance/hire come from their modules. */
 export async function saveCost(fd: FormData) {
+  await requireAction("cost.edit");
   const date = parseBusinessDay(s(fd, "date"));
   await db.costTransaction.create({
     data: {
@@ -31,6 +33,7 @@ export async function saveCost(fd: FormData) {
 }
 
 export async function deleteCost(id: string) {
+  await requireAction("cost.edit");
   const session = await getSession();
   if (!session) throw new Error("Not authenticated");
 
@@ -55,6 +58,7 @@ export async function deleteCost(id: string) {
 
 /** Money in on a project — RA bills, advances, retention released. */
 export async function saveRevenue(fd: FormData) {
+  await requireAction("cost.edit");
   const projectId = s(fd, "projectId");
   if (!projectId) throw new Error("Project is required");
   const date = parseBusinessDay(s(fd, "date"));
@@ -72,6 +76,7 @@ export async function saveRevenue(fd: FormData) {
 }
 
 export async function deleteRevenue(id: string) {
+  await requireAction("cost.edit");
   const session = await getSession();
   if (!session) throw new Error("Not authenticated");
 
@@ -96,6 +101,7 @@ export async function deleteRevenue(id: string) {
 
 /** Depreciation basis for an asset — drives book value and replace-vs-repair. */
 export async function saveDepreciation(assetId: string, fd: FormData) {
+  await requireAction("cost.edit");
   await db.asset.update({
     where: { id: assetId },
     data: {

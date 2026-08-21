@@ -3,8 +3,41 @@ import { timingSafeEqual } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { db } from "./db";
 import { can, type RoleLite } from "./rbac";
+import { issueToken, verifyToken, isRevoked, SESSION_TTL_MS } from "./session-token";
 
 const COOKIE = "fv_session";
+
+/**
+ * Where a user's session revocation epoch lives.
+ *
+ * Any token issued before this timestamp is refused. Bumping it is how "sign
+ * out everywhere" and "this person has left" are enforced against tokens
+ * already in the wild. It uses the `Setting` key/value store for the same
+ * reason `access.ts` does — this deployment's database role cannot add a
+ * column to `User`.
+ */
+const epochKey = (userId: string) => `auth:epoch:${userId}`;
+
+async function revocationEpoch(userId: string): Promise<number | null> {
+  const row = await db.setting.findUnique({ where: { key: epochKey(userId) } });
+  if (!row?.value) return null;
+  const parsed = Number(row.value);
+  // An unreadable epoch fails closed — treated as "revoked now" rather than
+  // silently accepting every token for that user.
+  return Number.isFinite(parsed) ? parsed : Date.now();
+}
+
+/**
+ * Invalidates every session token already issued to a user.
+ *
+ * Call on password change, on deactivation, and whenever an admin needs to cut
+ * access immediately. Deleting a cookie only affects the one browser holding it.
+ */
+export async function revokeSessions(userId: string): Promise<void> {
+  const key = epochKey(userId);
+  const value = String(Date.now());
+  await db.setting.upsert({ where: { key }, update: { value }, create: { key, value } });
+}
 
 export async function hashPassword(plain: string) {
   return bcrypt.hash(plain, 10);
@@ -20,24 +53,47 @@ export function isHashed(stored: string) {
   return stored.startsWith("$2");
 }
 
+/**
+ * The signed-in user, or null.
+ *
+ * The cookie is a signed token, never a bare user id. It is verified before
+ * its contents are used for anything: a forged or edited cookie fails the
+ * signature check and is treated as no session at all.
+ *
+ * Every route in the app resolves identity through this function, so the
+ * signature, expiry, revocation and deactivation checks all apply everywhere
+ * at once.
+ */
 export async function getSession() {
   const store = await cookies();
-  const uid = store.get(COOKIE)?.value;
-  if (!uid) return null;
+  const raw = store.get(COOKIE)?.value;
+
+  const verified = verifyToken(raw);
+  if (!verified.ok) return null;
+
+  const { sub: userId, iat } = verified.payload;
+
   const user = await db.user.findUnique({
-    where: { id: uid },
+    where: { id: userId },
     select: { id: true, name: true, email: true, role: true, active: true },
   });
   if (!user) return null;
   // A deactivated account kept working for as long as its cookie lived, which
   // makes "remove their access" a promise the app could not keep.
   if (user.active === false) return null;
+
+  // Tokens issued before the user's revocation epoch are dead even though
+  // their signature is valid and they have not expired.
+  if (isRevoked({ sub: userId, iat, exp: verified.payload.exp }, await revocationEpoch(userId))) {
+    return null;
+  }
+
   return { id: user.id, name: user.name, email: user.email, role: user.role };
 }
 
 export async function setSession(userId: string) {
   const store = await cookies();
-  store.set(COOKIE, userId, {
+  store.set(COOKIE, issueToken(userId), {
     httpOnly: true,
     sameSite: "lax",
     // The session cookie is the whole of the caller's identity, so it must never
@@ -45,7 +101,9 @@ export async function setSession(userId: string) {
     // still works on http://localhost.
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: 60 * 60 * 24 * 7,
+    // Kept in step with the token's own expiry so the browser and the server
+    // agree on when the session ends.
+    maxAge: Math.floor(SESSION_TTL_MS / 1000),
   });
 }
 

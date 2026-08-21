@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { DEFAULT_PROD_NORMS } from "@/lib/production";
 import { parseBusinessDay } from "@/lib/business-time";
+import { requireAction } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -18,6 +19,7 @@ function refresh() {
 
 /** One shift of output for one machine. Upserted, so a correction overwrites. */
 export async function saveProduction(fd: FormData) {
+  await requireAction("production.edit");
   const assetId = s(fd, "assetId");
   if (!assetId) throw new Error("Asset is required");
   const date = parseBusinessDay(s(fd, "date"));
@@ -51,11 +53,13 @@ export async function saveProduction(fd: FormData) {
 }
 
 export async function deleteProduction(id: string) {
+  await requireAction("production.edit");
   await db.productionLog.delete({ where: { id } });
   refresh();
 }
 
 export async function saveProdNorm(fd: FormData) {
+  await requireAction("production.edit");
   const assetClass = s(fd, "assetClass");
   const unit = s(fd, "unit");
   if (!assetClass || !unit) throw new Error("Asset class and unit are required");
@@ -70,6 +74,7 @@ export async function saveProdNorm(fd: FormData) {
 
 /** Installs the shipped production targets. Safe to run repeatedly. */
 export async function seedProdNorms() {
+  await requireAction("production.edit");
   for (const nm of DEFAULT_PROD_NORMS) {
     await db.productionNorm.upsert({
       where: { assetClass_unit: { assetClass: nm.assetClass, unit: nm.unit } },

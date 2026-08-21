@@ -3,10 +3,11 @@
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
-import { audit } from "@/app/(app)/admin/actions";
+import { audit } from "@/lib/audit";
 import { sweepAlerts, dueForEscalation, DEFAULT_ALERT_RULES, type AlertRuleLite, type SweepInput } from "@/lib/alerts";
 import { pmDue, type ScheduleLite } from "@/lib/maintenance";
 import { allocationConflicts, mobilizationStats, type AllocationLite, type MobLite } from "@/lib/operations";
+import { requireAction } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -21,6 +22,7 @@ function refresh() {
  * now also stamps who acted and when, which M18's response-time stats need.
  */
 export async function updateAlert(id: string, status: "Acknowledged" | "Resolved") {
+  await requireAction("maintenance.edit");
   const session = await getSession();
   await db.alert.update({
     where: { id },
@@ -35,6 +37,7 @@ export async function updateAlert(id: string, status: "Acknowledged" | "Resolved
 }
 
 export async function acknowledgeAlert(id: string) {
+  await requireAction("maintenance.edit");
   const session = await getSession();
   await db.alert.update({
     where: { id },
@@ -44,11 +47,13 @@ export async function acknowledgeAlert(id: string) {
 }
 
 export async function resolveAlert(id: string) {
+  await requireAction("maintenance.edit");
   await db.alert.update({ where: { id }, data: { status: "Resolved", resolvedAt: new Date() } });
   refresh();
 }
 
 export async function escalateAlert(id: string) {
+  await requireAction("maintenance.edit");
   const session = await getSession();
   await db.alert.update({
     where: { id },
@@ -58,6 +63,7 @@ export async function escalateAlert(id: string) {
 }
 
 export async function assignAlert(id: string, supervisor: string) {
+  await requireAction("maintenance.edit");
   const session = await getSession();
   await db.alert.update({
     where: { id },
@@ -72,6 +78,7 @@ export async function assignAlert(id: string, supervisor: string) {
 }
 
 export async function seedAlertRules() {
+  await requireAction("admin.settings");
   for (const r of DEFAULT_ALERT_RULES) {
     await db.alertRule.upsert({
       where: { code: r.code },
@@ -88,6 +95,7 @@ export async function seedAlertRules() {
 }
 
 export async function updateAlertRule(id: string, fd: FormData) {
+  await requireAction("admin.settings");
   await db.alertRule.update({
     where: { id },
     data: {
@@ -107,6 +115,7 @@ export async function updateAlertRule(id: string, fd: FormData) {
  * it on a schedule refreshes existing alerts rather than posting duplicates.
  */
 export async function runAlertSweep() {
+  await requireAction("maintenance.edit");
   let rules = await db.alertRule.findMany();
   if (rules.length === 0) { await seedAlertRules(); rules = await db.alertRule.findMany(); }
   const ruleLites: AlertRuleLite[] = rules.map((r) => ({

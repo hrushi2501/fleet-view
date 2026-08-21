@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { raiseWoFromSchedule } from "@/app/(app)/maintenance/actions";
+import { requireAction } from "@/lib/guard";
 
 function refresh() {
   revalidatePath("/notifications");
@@ -24,6 +25,7 @@ function n(fd: FormData, key: string): number {
 
 /** Acknowledge an alert / reminder */
 export async function acknowledgeAlert(alertId: string) {
+  await requireAction("maintenance.edit");
   const session = await getSession();
   await db.alert.update({
     where: { id: alertId },
@@ -39,6 +41,7 @@ export async function acknowledgeAlert(alertId: string) {
 
 /** Resolve an alert / reminder */
 export async function resolveAlert(alertId: string) {
+  await requireAction("maintenance.edit");
   await db.alert.update({
     where: { id: alertId },
     data: {
@@ -52,6 +55,7 @@ export async function resolveAlert(alertId: string) {
 
 /** Snooze a service reminder with mandatory reason logging */
 export async function snoozeAlert(fd: FormData) {
+  await requireAction("maintenance.edit");
   const alertId = s(fd, "alertId");
   const snoozeDays = n(fd, "snoozeDays") || 7;
   const reason = s(fd, "reason");
@@ -82,6 +86,7 @@ export async function snoozeAlert(fd: FormData) {
 
 /** Create PM Work Order directly from a due service reminder */
 export async function createWoFromReminder(scheduleId: string) {
+  await requireAction("maintenance.edit");
   const woId = await raiseWoFromSchedule(scheduleId);
   refresh();
   return woId;

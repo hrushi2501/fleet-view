@@ -3,7 +3,8 @@
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
-import { audit } from "@/app/(app)/admin/actions";
+import { audit } from "@/lib/audit";
+import { requireAction } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -28,6 +29,7 @@ function refresh() {
 /* ================================ SITES ================================ */
 
 export async function saveSite(id: string | null, fd: FormData) {
+  await requireAction("fleet.edit");
   const projectId = s(fd, "projectId");
   if (!projectId) throw new Error("Project is required");
   const data = {
@@ -62,6 +64,7 @@ export async function saveSite(id: string | null, fd: FormData) {
 }
 
 export async function deleteSite(id: string) {
+  await requireAction("fleet.edit");
   const site = await db.site.findUnique({ where: { id }, include: { allocations: { select: { id: true } } } });
   if (!site) throw new Error("Site not found");
 
@@ -84,6 +87,7 @@ export async function deleteSite(id: string) {
 /* ================================ EQUIPMENT PLAN ================================ */
 
 export async function saveEquipmentPlan(fd: FormData) {
+  await requireAction("production.edit");
   const projectId = s(fd, "projectId");
   const assetClass = s(fd, "assetClass");
   if (!projectId || !assetClass) throw new Error("Project and machine class are required");
@@ -124,6 +128,7 @@ export async function saveEquipmentPlan(fd: FormData) {
 }
 
 export async function deleteEquipmentPlan(id: string) {
+  await requireAction("production.edit");
   const plan = await db.equipmentPlan.findUnique({ where: { id }, include: { project: { select: { code: true } } } });
   if (!plan) throw new Error("Equipment plan not found");
 
@@ -142,6 +147,7 @@ export async function deleteEquipmentPlan(id: string) {
 /* ================================ ALLOCATIONS ================================ */
 
 export async function saveAllocation(fd: FormData) {
+  await requireAction("production.edit");
   const assetId = s(fd, "assetId");
   const projectId = s(fd, "projectId");
   if (!assetId || !projectId) throw new Error("Asset and project are required");
@@ -210,6 +216,7 @@ export async function saveAllocation(fd: FormData) {
 }
 
 export async function updateAllocationStatus(id: string, fd: FormData) {
+  await requireAction("production.edit");
   const status = s(fd, "status");
   if (!status) throw new Error("Status is required");
 
@@ -258,6 +265,7 @@ export async function updateAllocationStatus(id: string, fd: FormData) {
 }
 
 export async function deleteAllocation(id: string) {
+  await requireAction("production.edit");
   const alloc = await db.allocation.findUnique({
     where: { id },
     include: { asset: { select: { code: true } }, project: { select: { code: true } } },
@@ -285,6 +293,7 @@ export async function deleteAllocation(id: string) {
 /* ================================ MOBILISATION ================================ */
 
 export async function saveMobilization(fd: FormData) {
+  await requireAction("production.edit");
   const assetId = s(fd, "assetId");
   if (!assetId) throw new Error("Asset is required");
 
@@ -336,6 +345,7 @@ export async function saveMobilization(fd: FormData) {
 }
 
 export async function updateMobilization(id: string, fd: FormData) {
+  await requireAction("production.edit");
   const status = s(fd, "status");
   if (!status) throw new Error("Status is required");
 
@@ -392,6 +402,7 @@ export async function updateMobilization(id: string, fd: FormData) {
 }
 
 export async function deleteMobilization(id: string) {
+  await requireAction("production.edit");
   const order = await db.mobilizationOrder.findUnique({
     where: { id },
     include: { asset: true },

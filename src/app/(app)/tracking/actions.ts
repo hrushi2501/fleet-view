@@ -5,8 +5,9 @@ import { revalidatePath } from "next/cache";
 import { put } from "@vercel/blob";
 import crypto from "crypto";
 import { getSession } from "@/lib/auth";
-import { audit } from "@/app/(app)/admin/actions";
+import { audit } from "@/lib/audit";
 import { decideGaugeReading, makeQrToken, staleSessions, reconstructPath, detectFuelEvents, PROVIDERS, type GaugeExtraction, type SessionLite, type ReadingLite } from "@/lib/telematics";
+import { requireAction } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -23,6 +24,7 @@ function refresh() {
 /** Issue permanent cabin QR tokens. Existing tokens are never regenerated —
  *  a sticker already on a windscreen must keep working. */
 export async function issueQrTokens() {
+  await requireAction("fuel.receipt");
   const assets = await db.asset.findMany({ where: { qrToken: null }, select: { id: true } });
   for (const a of assets) {
     let token = makeQrToken(crypto.randomFillSync(new Uint8Array(10)));
@@ -40,6 +42,7 @@ export async function issueQrTokens() {
 /* --------------------------- telematics providers --------------------------- */
 
 export async function seedProviders() {
+  await requireAction("admin.settings");
   for (const p of PROVIDERS) {
     await db.telematicsProvider.upsert({
       where: { code: p.code },
@@ -52,6 +55,7 @@ export async function seedProviders() {
 }
 
 export async function saveAssetTelematics(assetId: string, fd: FormData) {
+  await requireAction("admin.settings");
   await db.asset.update({
     where: { id: assetId },
     data: {
@@ -72,6 +76,7 @@ export async function saveAssetTelematics(assetId: string, fd: FormData) {
  * reading, is held PENDING for a human rather than written into the ledger.
  */
 export async function saveGaugeReading(fd: FormData) {
+  await requireAction("fuel.receipt");
   const assetId = s(fd, "assetId");
   if (!assetId) throw new Error("Vehicle is required");
 
@@ -151,6 +156,7 @@ export async function saveGaugeReading(fd: FormData) {
 
 /** Human verdict on a held reading. A correction is recorded as the truth. */
 export async function verifyGaugeReading(id: string, fd: FormData) {
+  await requireAction("fuel.approve");
   const session = await getSession();
   const verdict = s(fd, "verdict"); // VERIFIED | CORRECTED | REJECTED
   const corrected = s(fd, "correctedPct") ? n(fd, "correctedPct") : null;
@@ -191,6 +197,7 @@ export async function verifyGaugeReading(id: string, fd: FormData) {
 
 /** Force-release a session — the supervisor override for a forgotten checkout. */
 export async function releaseSession(id: string) {
+  await requireAction("fuel.receipt");
   const auth = await getSession();
   const sess = await db.tripSession.findUnique({ where: { id } });
   if (!sess || sess.status !== "ACTIVE") return;
@@ -211,6 +218,7 @@ export async function releaseSession(id: string) {
 
 /** Close sessions a driver forgot to end. Safe to run on a schedule. */
 export async function closeStaleSessions() {
+  await requireAction("fuel.receipt");
   const open = await db.tripSession.findMany({ where: { status: "ACTIVE" } });
   const stale = staleSessions(open.map((x): SessionLite => ({ id: x.id, assetId: x.assetId, driverId: x.driverId, startedAt: x.startedAt, endedAt: x.endedAt, status: x.status })));
   for (const x of stale) {
@@ -223,6 +231,7 @@ export async function closeStaleSessions() {
 
 /** Scan the telemetry stream for fuel events worth investigating. */
 export async function scanFuelEvents(assetId: string) {
+  await requireAction("fuel.reconcile");
   const asset = await db.asset.findUnique({ where: { id: assetId } });
   if (!asset) throw new Error("Vehicle not found");
   const since = new Date(); since.setDate(since.getDate() - 30);
@@ -257,6 +266,7 @@ export async function scanFuelEvents(assetId: string) {
 
 /** Manually trigger a pull from Tata Fleet Edge API and refresh views. */
 export async function triggerTataSync() {
+  await requireAction("admin.settings");
   const session = await getSession();
   if (!session) throw new Error("Unauthorized");
 

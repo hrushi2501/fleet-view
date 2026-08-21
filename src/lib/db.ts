@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { auditExtension } from "./audit-extension";
 
 /**
  * Build a runtime-safe connection URL.
@@ -34,11 +35,27 @@ const resolvedUrl = resolveDbUrl();
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
-export const db =
+/**
+ * The unextended client.
+ *
+ * Exported for one purpose: writing audit rows. Going through the extended
+ * client below to record an audit event would audit the audit write, so the
+ * logger has to sit underneath the extension rather than inside it.
+ */
+export const rawDb =
   globalForPrisma.prisma ??
   new PrismaClient({
     datasourceUrl: resolvedUrl,
     log: process.env.NODE_ENV === "development" ? ["error"] : [],
   });
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = rawDb;
+
+/**
+ * The client the application uses.
+ *
+ * Extended so that a write to a business model leaves an audit row without the
+ * caller having to remember. See `audit-extension.ts` for what that covers and,
+ * more importantly, what it deliberately does not.
+ */
+export const db = rawDb.$extends(auditExtension) as unknown as PrismaClient;

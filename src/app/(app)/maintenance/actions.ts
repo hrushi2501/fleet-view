@@ -18,6 +18,7 @@ function refresh() {
 /* ------------------------------- PM schedules ------------------------------- */
 
 export async function saveSchedule(id: string | null, fd: FormData) {
+  await requireAction("maintenance.edit");
   const data = {
     assetId: s(fd, "assetId") || null,
     assetClass: s(fd, "assetClass") || null,
@@ -40,12 +41,14 @@ export async function saveSchedule(id: string | null, fd: FormData) {
 }
 
 export async function deleteSchedule(id: string) {
+  await requireAction("maintenance.edit");
   await db.maintenanceSchedule.delete({ where: { id } });
   refresh();
 }
 
 /** Applies the shipped PM task templates to every matching asset. */
 export async function seedPmSchedules() {
+  await requireAction("maintenance.edit");
   const assets = await db.asset.findMany({ select: { id: true, assetClass: true, meterValue: true } });
   let created = 0;
   for (const t of DEFAULT_PM_TASKS) {
@@ -74,9 +77,12 @@ export async function seedPmSchedules() {
 }
 
 import { PM_PARTS_KITS } from "@/lib/maintenance";
+import { requireAction } from "@/lib/guard";
+import { transition } from "@/lib/transition";
 
 /** Raise a work order straight from a due schedule, auto-populating parts kit lines. */
 export async function raiseWoFromSchedule(scheduleId: string) {
+  await requireAction("maintenance.edit");
   const sch = await db.maintenanceSchedule.findUnique({ where: { id: scheduleId }, include: { asset: true } });
   if (!sch || !sch.assetId || !sch.asset) throw new Error("Schedule has no asset");
 
@@ -120,6 +126,7 @@ export async function raiseWoFromSchedule(scheduleId: string) {
 
 /** Close a PM or Breakdown work order and roll its schedule forward if applicable. */
 export async function completeWorkOrder(id: string, fd: FormData) {
+  await requireAction("maintenance.edit");
   const session = await getSession();
   const wo = await db.workOrder.findUnique({ where: { id }, include: { asset: true } });
   if (!wo) throw new Error("Work order not found");
@@ -138,10 +145,15 @@ export async function completeWorkOrder(id: string, fd: FormData) {
     }
   }
 
-  await db.workOrder.update({
-    where: { id },
+  // Completion is a stage change, so it goes through the workflow: an already
+  // Closed or Cancelled work order cannot be quietly re-completed, and the move
+  // is recorded with both states rather than as an anonymous field update.
+  await transition({
+    entity: "WorkOrder",
+    id,
+    to: "Completed",
+    note: `₹${Math.round(laborCost + partsCost).toLocaleString("en-IN")} total cost`,
     data: {
-      status: "Completed",
       description: updatedDescription,
       laborCost,
       partsCost,
@@ -165,6 +177,7 @@ export async function completeWorkOrder(id: string, fd: FormData) {
 
 /** Submit a daily operator pre-operational inspection checklist. */
 export async function submitPreOpChecklist(fd: FormData) {
+  await requireAction("maintenance.edit");
   const assetId = s(fd, "assetId");
   if (!assetId) throw new Error("Asset selection is required for Pre-Op Inspection");
 
@@ -220,6 +233,7 @@ export async function submitPreOpChecklist(fd: FormData) {
 /* ------------------------------ lines & checklist ------------------------------ */
 
 export async function addWoLine(workOrderId: string, fd: FormData) {
+  await requireAction("maintenance.edit");
   const qty = n(fd, "qty") || 1;
   const rate = n(fd, "rate");
   await db.workOrderLine.create({
@@ -243,6 +257,7 @@ export async function addWoLine(workOrderId: string, fd: FormData) {
 }
 
 export async function deleteWoLine(id: string) {
+  await requireAction("maintenance.edit");
   const line = await db.workOrderLine.findUnique({ where: { id } });
   if (!line) return;
   await db.workOrderLine.delete({ where: { id } });
@@ -254,6 +269,7 @@ export async function deleteWoLine(id: string) {
 }
 
 export async function addChecklistItem(workOrderId: string, fd: FormData) {
+  await requireAction("maintenance.edit");
   await db.jobCardItem.create({
     data: { workOrderId, task: s(fd, "task"), critical: b(fd, "critical") },
   });
@@ -261,6 +277,7 @@ export async function addChecklistItem(workOrderId: string, fd: FormData) {
 }
 
 export async function toggleChecklistItem(id: string, done: boolean) {
+  await requireAction("maintenance.edit");
   const session = await getSession();
   await db.jobCardItem.update({
     where: { id },

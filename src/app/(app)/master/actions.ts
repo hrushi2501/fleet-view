@@ -4,9 +4,10 @@ import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { put } from "@vercel/blob";
 import { getSession } from "@/lib/auth";
-import { audit } from "@/app/(app)/admin/actions";
+import { audit } from "@/lib/audit";
 import { checkReading, type MeterType, type ReadingLite } from "@/lib/master";
 import { parseBusinessDay } from "@/lib/business-time";
+import { requireAction } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -26,6 +27,7 @@ function refresh() {
  * The asset's cached meter only moves forward.
  */
 export async function saveReading(fd: FormData) {
+  await requireAction("fleet.edit");
   const assetId = s(fd, "assetId");
   if (!assetId) throw new Error("Asset is required");
   const meterType = (s(fd, "meterType") || "ODOMETER") as MeterType;
@@ -70,12 +72,14 @@ export async function saveReading(fd: FormData) {
 }
 
 export async function deleteReading(id: string) {
+  await requireAction("fleet.edit");
   await db.meterReading.delete({ where: { id } });
   refresh();
 }
 
 /** Extra master-data fields the demo's asset form never captured. */
 export async function saveAssetMaster(assetId: string, fd: FormData) {
+  await requireAction("fleet.edit");
   const before = await db.asset.findUnique({ where: { id: assetId } });
   await db.asset.update({
     where: { id: assetId },
@@ -95,6 +99,7 @@ export async function saveAssetMaster(assetId: string, fd: FormData) {
 }
 
 export async function saveLifecycleEvent(fd: FormData) {
+  await requireAction("fleet.edit");
   const assetId = s(fd, "assetId");
   if (!assetId) throw new Error("Asset is required");
   const session = await getSession();
@@ -122,6 +127,7 @@ export async function saveLifecycleEvent(fd: FormData) {
 /* ------------------------------ M2 personnel ------------------------------ */
 
 export async function saveAttendance(fd: FormData) {
+  await requireAction("people.edit");
   const driverId = s(fd, "driverId");
   if (!driverId) throw new Error("Person is required");
   const date = parseBusinessDay(s(fd, "date"));
@@ -145,6 +151,7 @@ export async function saveAttendance(fd: FormData) {
 }
 
 export async function deleteAttendance(id: string) {
+  await requireAction("people.edit");
   await db.attendance.delete({ where: { id } });
   refresh();
 }
@@ -159,6 +166,7 @@ export async function batchSaveAttendance(
     note?: string | null;
   }>
 ) {
+  await requireAction("people.edit");
   const session = await getSession();
   const markedBy = session?.name || "Supervisor";
 
@@ -183,6 +191,7 @@ export async function batchSaveAttendance(
 }
 
 export async function savePersonDoc(fd: FormData) {
+  await requireAction("people.edit");
   const driverId = s(fd, "driverId");
   if (!driverId) throw new Error("Person is required");
 
@@ -212,11 +221,13 @@ export async function savePersonDoc(fd: FormData) {
 }
 
 export async function deletePersonDoc(id: string) {
+  await requireAction("people.edit");
   await db.personDocument.delete({ where: { id } });
   refresh();
 }
 
 export async function savePersonMaster(driverId: string, fd: FormData) {
+  await requireAction("people.edit");
   await db.driver.update({
     where: { id: driverId },
     data: {

@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { getDieselRate } from "@/lib/settings";
 import { scanSignals, DEFAULT_RULES, nextCaseNo, type RuleLite, type ScanInput } from "@/lib/loss-prevention";
+import { requireAction, ActionError } from "@/lib/guard";
+import { transition } from "@/lib/transition";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -18,6 +20,7 @@ function refresh(id?: string) {
 
 /** Installs the shipped rule library. Safe to call repeatedly. */
 export async function seedRules() {
+  await requireAction("admin.settings");
   for (const r of DEFAULT_RULES) {
     await db.controlRule.upsert({
       where: { code: r.code },
@@ -29,6 +32,7 @@ export async function seedRules() {
 }
 
 export async function updateRule(id: string, fd: FormData) {
+  await requireAction("admin.settings");
   await db.controlRule.update({
     where: { id },
     data: {
@@ -48,6 +52,7 @@ export async function updateRule(id: string, fd: FormData) {
  * Idempotent via `signalKey`, so it's safe to run on a schedule or on demand.
  */
 export async function runScan() {
+  await requireAction("loss.investigate");
   const session = await getSession();
   const dieselRate = await getDieselRate();
 
@@ -171,6 +176,7 @@ export async function runScan() {
 /* ---------------------------------- cases ---------------------------------- */
 
 export async function createCase(fd: FormData) {
+  await requireAction("loss.investigate");
   const session = await getSession();
   const seq = await db.fraudCase.count();
   const c = await db.fraudCase.create({
@@ -195,33 +201,55 @@ export async function createCase(fd: FormData) {
   return c.id;
 }
 
+/**
+ * Edit a case, and optionally move it to a new stage.
+ *
+ * The two halves are deliberately separated. Editing the assignee or root cause
+ * is investigation work (`loss.investigate`). *Closing* a case — recording a
+ * recovery, writing the loss off — is `loss.close`, and `SOD_CONFLICTS` names
+ * holding both as a conflict: "can investigate a case and close it without
+ * review". This action used to take whatever status the form posted after a
+ * single `loss.investigate` check, so an investigator could close their own
+ * case and the segregation existed only on paper.
+ */
 export async function updateCase(id: string, fd: FormData) {
+  await requireAction("loss.investigate");
   const session = await getSession();
   const status = s(fd, "status");
   const prev = await db.fraudCase.findUnique({ where: { id }, select: { status: true } });
+  if (!prev) throw new ActionError("That case no longer exists.");
 
-  const closing = ["RECOVERED", "WRITTEN_OFF", "FALSE_POSITIVE", "CLOSED"].includes(status);
+  // Field edits are investigation work and are allowed at this permission.
   await db.fraudCase.update({
     where: { id },
     data: {
-      status,
       assignedTo: s(fd, "assignedTo") || null,
       rootCause: s(fd, "rootCause") || null,
       disposition: s(fd, "disposition") || null,
       dueDate: s(fd, "dueDate") ? new Date(s(fd, "dueDate")) : null,
-      closedAt: closing ? new Date() : null,
     },
   });
 
-  if (prev && prev.status !== status) {
+  // The stage change is a separate control, with its own permission per move.
+  if (status && status !== prev.status) {
+    const closing = ["RECOVERED", "WRITTEN_OFF", "FALSE_POSITIVE", "CLOSED"].includes(status);
+    await transition({
+      entity: "FraudCase",
+      id,
+      to: status,
+      data: closing ? { closedAt: new Date() } : {},
+    });
+
     await db.caseAction.create({
       data: { caseId: id, action: "STATUS_CHANGE", note: `${prev.status} → ${status}`, by: session?.name ?? null },
     });
   }
+
   refresh(id);
 }
 
 export async function addNote(id: string, fd: FormData) {
+  await requireAction("loss.investigate");
   const session = await getSession();
   const note = s(fd, "note");
   if (!note) return;
@@ -230,6 +258,7 @@ export async function addNote(id: string, fd: FormData) {
 }
 
 export async function addEvidence(id: string, fd: FormData) {
+  await requireAction("loss.investigate");
   const session = await getSession();
   await db.caseEvidence.create({
     data: {
@@ -247,6 +276,7 @@ export async function addEvidence(id: string, fd: FormData) {
 
 /** Records money actually clawed back and rolls it up onto the case. */
 export async function addRecovery(id: string, fd: FormData) {
+  await requireAction("loss.close");
   const session = await getSession();
   const amount = n(fd, "amount");
   if (amount <= 0) return;
@@ -272,6 +302,7 @@ export async function addRecovery(id: string, fd: FormData) {
 }
 
 export async function deleteCase(id: string) {
+  await requireAction("loss.close");
   await db.fraudCase.delete({ where: { id } });
   revalidatePath("/loss-prevention");
 }
@@ -302,6 +333,7 @@ export type MeterRollbackSignal = {
  * consolidated fraud intelligence panel on the Loss Prevention page.
  */
 export async function getFraudIntelligence() {
+  await requireAction("loss.view");
   const [anomalies, fuelTxns, assets, tanks] = await Promise.all([
     db.fuelAnomaly.findMany({
       where: { status: { in: ["OPEN", "INVESTIGATING"] } },

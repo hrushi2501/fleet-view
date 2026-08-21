@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { put } from "@vercel/blob";
 import { getSession } from "@/lib/auth";
 import { SEVERITY_POINTS, safetyScore } from "@/lib/drivers";
+import { requireAction } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -25,6 +26,7 @@ async function syncScore(driverId: string) {
 /* ------------------------------- competencies ------------------------------- */
 
 export async function saveCompetency(fd: FormData) {
+  await requireAction("people.edit");
   const driverId = s(fd, "driverId");
   const assetClass = s(fd, "assetClass");
   if (!driverId || !assetClass) throw new Error("Driver and machine class are required");
@@ -45,6 +47,7 @@ export async function saveCompetency(fd: FormData) {
 }
 
 export async function deleteCompetency(id: string) {
+  await requireAction("people.edit");
   await db.competency.delete({ where: { id } });
   refresh();
 }
@@ -52,6 +55,7 @@ export async function deleteCompetency(id: string) {
 /* -------------------------------- violations -------------------------------- */
 
 export async function saveViolation(fd: FormData) {
+  await requireAction("people.discipline");
   const driverId = s(fd, "driverId");
   if (!driverId) throw new Error("Driver is required");
   const severity = s(fd, "severity") || "MINOR";
@@ -76,6 +80,7 @@ export async function saveViolation(fd: FormData) {
 }
 
 export async function updateViolation(id: string, fd: FormData) {
+  await requireAction("people.discipline");
   const v = await db.violation.update({
     where: { id },
     data: {
@@ -89,6 +94,7 @@ export async function updateViolation(id: string, fd: FormData) {
 }
 
 export async function deleteViolation(id: string) {
+  await requireAction("people.discipline");
   const v = await db.violation.findUnique({ where: { id } });
   if (!v) return;
   await db.violation.delete({ where: { id } });
@@ -100,6 +106,7 @@ export async function deleteViolation(id: string) {
 
 /** Save or renew a document. Renewals chain to the old record rather than overwrite it. */
 export async function saveDocument(fd: FormData) {
+  await requireAction("compliance.edit");
   const assetId = s(fd, "assetId");
   if (!assetId) throw new Error("Asset is required");
 
@@ -142,12 +149,14 @@ export async function saveDocument(fd: FormData) {
 }
 
 export async function deleteDocument(id: string) {
+  await requireAction("compliance.edit");
   await db.complianceDoc.delete({ where: { id } });
   refresh();
 }
 
 /** Refresh every document's cached status against today's date. */
 export async function refreshDocStatuses() {
+  await requireAction("compliance.edit");
   const docs = await db.complianceDoc.findMany();
   let changed = 0;
   for (const d of docs) {

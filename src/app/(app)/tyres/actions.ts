@@ -3,6 +3,7 @@
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
+import { requireAction } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -16,6 +17,7 @@ function refresh() {
 /* ---------------------------------- tyres ---------------------------------- */
 
 export async function saveTyre(id: string | null, fd: FormData) {
+  await requireAction("maintenance.edit");
   const status = s(fd, "status") || "IN_STOCK";
   const data = {
     serialNo: s(fd, "serialNo"),
@@ -39,12 +41,14 @@ export async function saveTyre(id: string | null, fd: FormData) {
 
 
 export async function deleteTyre(id: string) {
+  await requireAction("maintenance.edit");
   await db.tyre.delete({ where: { id } });
   refresh();
 }
 
 /** Fit a tyre to a machine. Records the fitment meter so km-run is measurable. */
 export async function fitTyre(fd: FormData) {
+  await requireAction("maintenance.edit");
   const tyreId = s(fd, "tyreId");
   const assetId = s(fd, "assetId");
   if (!tyreId || !assetId) throw new Error("Tyre and machine are required");
@@ -77,6 +81,7 @@ export async function fitTyre(fd: FormData) {
 
 /** Remove a tyre, banking the kilometres it ran on this fitment. */
 export async function removeTyre(fd: FormData) {
+  await requireAction("maintenance.edit");
   const tyreId = s(fd, "tyreId");
   if (!tyreId) throw new Error("Tyre is required");
   const t = await db.tyre.findUnique({ where: { id: tyreId }, include: { asset: true } });
@@ -114,6 +119,7 @@ export async function removeTyre(fd: FormData) {
 }
 
 export async function inspectTyre(fd: FormData) {
+  await requireAction("maintenance.edit");
   const tyreId = s(fd, "tyreId");
   if (!tyreId) throw new Error("Tyre is required");
   const tread = n(fd, "treadMm");
@@ -133,6 +139,7 @@ export async function inspectTyre(fd: FormData) {
 }
 
 export async function retreadTyre(fd: FormData) {
+  await requireAction("maintenance.edit");
   const tyreId = s(fd, "tyreId");
   if (!tyreId) throw new Error("Tyre is required");
   const t = await db.tyre.findUnique({ where: { id: tyreId } });
@@ -165,6 +172,7 @@ export async function retreadTyre(fd: FormData) {
 /* ------------------------------ major components ------------------------------ */
 
 export async function saveComponent(id: string | null, fd: FormData) {
+  await requireAction("maintenance.edit");
   const status = s(fd, "status") || "IN_STOCK";
   const data = {
     serialNo: s(fd, "serialNo"),
@@ -187,12 +195,14 @@ export async function saveComponent(id: string | null, fd: FormData) {
 }
 
 export async function deleteComponent(id: string) {
+  await requireAction("maintenance.edit");
   await db.majorComponent.delete({ where: { id } });
   refresh();
 }
 
 /** Transfer a tyre from its current warehouse/status to another warehouse */
 export async function transferTyre(fd: FormData) {
+  await requireAction("maintenance.edit");
   const tyreId = s(fd, "tyreId");
   const warehouseId = s(fd, "warehouseId");
   if (!tyreId || !warehouseId) throw new Error("Tyre and Destination Warehouse are required");
@@ -230,6 +240,7 @@ export async function transferTyre(fd: FormData) {
 
 /** Transfer a major component from its current warehouse/status to another warehouse */
 export async function transferComponent(fd: FormData) {
+  await requireAction("maintenance.edit");
   const componentId = s(fd, "componentId");
   const warehouseId = s(fd, "warehouseId");
   if (!componentId || !warehouseId) throw new Error("Component and Destination Warehouse are required");

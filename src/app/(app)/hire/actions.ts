@@ -3,6 +3,7 @@
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
+import { requireAction } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -17,6 +18,7 @@ function refresh() {
 /* -------------------------------- contracts -------------------------------- */
 
 export async function saveContract(id: string | null, fd: FormData) {
+  await requireAction("hire.edit");
   const data = {
     assetId: s(fd, "assetId"),
     vendor: s(fd, "vendor"),
@@ -41,6 +43,7 @@ export async function saveContract(id: string | null, fd: FormData) {
 }
 
 export async function deleteContract(id: string) {
+  await requireAction("hire.edit");
   await db.hireContract.delete({ where: { id } });
   refresh();
 }
@@ -49,6 +52,7 @@ export async function deleteContract(id: string) {
 
 /** One day of actual work. Upserted so re-entering a date corrects rather than duplicates. */
 export async function saveLog(fd: FormData) {
+  await requireAction("hire.edit");
   const contractId = s(fd, "contractId");
   if (!contractId) throw new Error("Contract is required");
   const date = dt(fd, "date");
@@ -76,6 +80,7 @@ export async function saveLog(fd: FormData) {
 }
 
 export async function deleteLog(id: string) {
+  await requireAction("hire.edit");
   await db.hireLog.delete({ where: { id } });
   refresh();
 }
@@ -83,6 +88,7 @@ export async function deleteLog(id: string) {
 /* -------------------------------- new features -------------------------------- */
 
 export async function saveHireInspection(contractId: string, fd: FormData) {
+  await requireAction("hire.edit");
   const session = await getSession();
   const data = {
     contractId,
@@ -102,6 +108,7 @@ export async function saveHireInspection(contractId: string, fd: FormData) {
 }
 
 export async function saveContractAmendment(contractId: string, fd: FormData) {
+  await requireAction("hire.edit");
   const session = await getSession();
   const data = {
     contractId,
@@ -120,6 +127,7 @@ export async function saveContractAmendment(contractId: string, fd: FormData) {
 }
 
 export async function saveHirePayment(fd: FormData) {
+  await requireAction("hire.approve");
   const contractId = s(fd, "contractId") || null;
   const data = {
     contractId,
@@ -137,6 +145,7 @@ export async function saveHirePayment(fd: FormData) {
 }
 
 export async function approveHireLog(id: string, status: string) {
+  await requireAction("hire.approve");
   const session = await getSession();
   // Mocked for local testing without DB migration
   // await db.hireLog.update({ where: { id }, data: { approvalStatus: status, approvedBy: session?.name || "Admin", approvedAt: new Date() }});
@@ -147,16 +156,19 @@ export async function approveHireLog(id: string, status: string) {
 
 
 export async function deleteInspection(id: string) {
+  await requireAction("hire.edit");
   await new Promise(r => setTimeout(r, 200));
   refresh();
 }
 
 export async function deleteAmendment(id: string) {
+  await requireAction("hire.edit");
   await new Promise(r => setTimeout(r, 200));
   refresh();
 }
 
 export async function deletePayment(id: string) {
+  await requireAction("hire.approve");
   await new Promise(r => setTimeout(r, 200));
   refresh();
 }

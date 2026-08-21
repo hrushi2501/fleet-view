@@ -3,8 +3,10 @@
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { put } from "@vercel/blob";
-import { hashPassword, verifyPassword, getSession } from "@/lib/auth";
+import { hashPassword, verifyPassword, getSession, revokeSessions } from "@/lib/auth";
 import { getDieselRate } from "@/lib/settings";
+import { requireAction, requireUser, ActionError } from "@/lib/guard";
+import { audit } from "@/lib/audit";
 
 async function uploadPhoto(file: FormDataEntryValue | null, prefix: string): Promise<string | null> {
   if (!file || typeof file === "string") return null;
@@ -25,6 +27,7 @@ function docStatus(expiry: Date) {
 
 /* ----------------------------- ASSETS ----------------------------- */
 export async function saveAsset(id: string | null, fd: FormData) {
+  await requireAction("fleet.edit");
   const data = {
     code: s(fd, "code"),
     name: s(fd, "name"),
@@ -55,6 +58,7 @@ export async function saveAsset(id: string | null, fd: FormData) {
 }
 
 export async function deleteAsset(id: string) {
+  await requireAction("fleet.delete");
   await db.$transaction([
     db.fuelTransaction.deleteMany({ where: { assetId: id } }),
     db.trip.deleteMany({ where: { assetId: id } }),
@@ -69,6 +73,7 @@ export async function deleteAsset(id: string) {
 
 /* ----------------------------- DRIVERS ----------------------------- */
 export async function saveDriver(id: string | null, fd: FormData) {
+  await requireAction("people.edit");
   const phone = s(fd, "phone");
 
   // Phone format validation — 10-digit Indian mobile number (no country code).
@@ -147,6 +152,7 @@ export async function saveDriver(id: string | null, fd: FormData) {
 }
 
 export async function deleteDriver(id: string) {
+  await requireAction("people.edit");
   await db.asset.updateMany({ where: { driverId: id }, data: { driverId: null } });
   await db.trip.updateMany({ where: { driverId: id }, data: { driverId: null } });
   await db.alert.updateMany({ where: { driverId: id }, data: { driverId: null } });
@@ -158,6 +164,7 @@ export async function deleteDriver(id: string) {
 
 /* ----------------------------- FUEL ----------------------------- */
 export async function saveFuel(fd: FormData) {
+  await requireAction("fuel.issue");
   const type = s(fd, "type") || "ISSUE";
   const quantity = n(fd, "quantity");
   const rate = n(fd, "rate") || (await getDieselRate());
@@ -230,6 +237,7 @@ export async function saveFuel(fd: FormData) {
 
 /* ----------------------------- SERVICE / REPAIR PHOTOS (driver) ----------------------------- */
 export async function saveServicePhotos(fd: FormData) {
+  await requireAction("maintenance.edit");
   const assetId = s(fd, "assetId");
   if (!assetId) throw new Error("Select a vehicle.");
   const collect = async (field: string, prefix: string) => {
@@ -257,6 +265,7 @@ export async function saveServicePhotos(fd: FormData) {
 }
 
 export async function setDieselRate(fd: FormData) {
+  await requireAction("admin.settings");
   const session = await getSession();
   if (session?.role !== "Admin") throw new Error("Only admins can set the rate.");
   const rate = n(fd, "rate");
@@ -267,6 +276,7 @@ export async function setDieselRate(fd: FormData) {
 }
 
 export async function updateFuel(id: string, fd: FormData) {
+  await requireAction("fuel.issue");
   const quantity = n(fd, "quantity");
   const rate = n(fd, "rate") || 92.5;
   const data: { quantity: number; rate: number; amount: number; meterValue: number; date?: Date } = {
@@ -280,6 +290,7 @@ export async function updateFuel(id: string, fd: FormData) {
 }
 
 export async function deleteFuel(id: string) {
+  await requireAction("fuel.approve");
   await db.fuelTransaction.delete({ where: { id } });
   revalidatePath("/fuel");
   revalidatePath("/");
@@ -287,6 +298,7 @@ export async function deleteFuel(id: string) {
 
 /* ----------------------------- WORK ORDER ----------------------------- */
 export async function saveWorkOrder(fd: FormData) {
+  await requireAction("maintenance.edit");
   const labor = n(fd, "laborCost");
   const parts = n(fd, "partsCost");
   await db.workOrder.create({
@@ -311,6 +323,7 @@ export async function saveWorkOrder(fd: FormData) {
 }
 
 export async function updateWorkOrderStatus(id: string, status: string) {
+  await requireAction("maintenance.edit");
   await db.workOrder.update({
     where: { id },
     data: { status, completedAt: status === "Completed" || status === "Closed" ? new Date() : null },
@@ -320,6 +333,7 @@ export async function updateWorkOrderStatus(id: string, status: string) {
 
 /* ----------------------------- COMPLIANCE ----------------------------- */
 export async function saveCompliance(fd: FormData) {
+  await requireAction("compliance.edit");
   const expiry = new Date(s(fd, "expiryDate") || Date.now());
   await db.complianceDoc.create({
     data: {
@@ -337,6 +351,7 @@ export async function saveCompliance(fd: FormData) {
 
 /* ----------------------------- USERS / ACCESS ----------------------------- */
 export async function saveUser(fd: FormData) {
+  await requireAction("admin.users");
   const email = s(fd, "email").toLowerCase();
   const existing = await db.user.findUnique({ where: { email } });
   if (existing) throw new Error("A user with this email already exists.");
@@ -380,37 +395,76 @@ export async function saveUser(fd: FormData) {
   revalidatePath("/drivers");
 }
 
+/**
+ * Guarded on identity rather than a permission — everyone may change their own
+ * password, and nobody may change it without proving they know the current one.
+ */
 export async function changeOwnPassword(fd: FormData) {
-  const session = await getSession();
-  if (!session) throw new Error("Not signed in.");
+  const access = await requireUser();
   const current = s(fd, "current"), next = s(fd, "next"), confirm = s(fd, "confirm");
-  if (next.length < 6) throw new Error("New password must be at least 6 characters.");
-  if (next !== confirm) throw new Error("New passwords do not match.");
-  const user = await db.user.findUnique({ where: { id: session.id } });
-  if (!user || !(await verifyPassword(current, user.password))) throw new Error("Current password is incorrect.");
+  if (next.length < 6) throw new ActionError("New password must be at least 6 characters.");
+  if (next !== confirm) throw new ActionError("New passwords do not match.");
+  const user = await db.user.findUnique({ where: { id: access.session.id } });
+  if (!user || !(await verifyPassword(current, user.password))) {
+    throw new ActionError("Current password is incorrect.");
+  }
   await db.user.update({ where: { id: user.id }, data: { password: await hashPassword(next) } });
+
+  // The point of changing a password is usually that the old one is no longer
+  // trusted. Sessions opened with it have to die with it, on every device.
+  await revokeSessions(user.id);
+  await audit({
+    action: "UPDATE", module: "ADMIN", entity: "User", entityId: user.id,
+    summary: `${user.name} changed their own password`,
+  });
 }
 
 export async function adminResetUserPassword(userId: string, newPass: string) {
-  const session = await getSession();
-  if (session?.role !== "Admin") throw new Error("Only admins can reset passwords.");
-  if (!newPass || newPass.length < 6) throw new Error("Password must be at least 6 characters.");
+  await requireAction("admin.users");
+  if (!newPass || newPass.length < 6) throw new ActionError("Password must be at least 6 characters.");
+  const target = await db.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
+  if (!target) throw new ActionError("That user no longer exists.");
+
   await db.user.update({ where: { id: userId }, data: { password: await hashPassword(newPass) } });
+  // A reset is an access-removal event as often as it is a helpdesk one.
+  await revokeSessions(userId);
+  await audit({
+    action: "UPDATE", module: "ADMIN", entity: "User", entityId: userId,
+    summary: `Reset the password for ${target.name} (${target.email})`,
+  });
   revalidatePath("/users");
 }
 
 export async function deleteUser(id: string) {
+  const access = await requireAction("admin.users");
   const user = await db.user.findUnique({ where: { id } });
-  if (user?.role === "Admin") {
+  if (!user) throw new ActionError("That user no longer exists.");
+
+  if (user.role === "Admin") {
     const admins = await db.user.count({ where: { role: "Admin" } });
-    if (admins <= 1) throw new Error("Cannot delete the last admin account.");
+    if (admins <= 1) throw new ActionError("Cannot delete the last admin account.");
   }
+  // Deleting your own login locks you out mid-session and, if you were the
+  // second-to-last admin, can leave the system with no way back in.
+  if (user.id === access.session.id) {
+    throw new ActionError("You cannot delete the account you are signed in with.");
+  }
+
   await db.user.delete({ where: { id } });
+  // The row is gone; the cookie is not. Without this, a deleted user's session
+  // keeps working until it expires.
+  await revokeSessions(id);
+  await audit({
+    action: "DELETE", module: "ADMIN", entity: "User", entityId: id,
+    summary: `Deleted the user ${user.name} (${user.email})`,
+    changes: { name: user.name, email: user.email, role: user.role },
+  });
   revalidatePath("/users");
 }
 
 /* ----------------------------- PROJECT ----------------------------- */
 export async function saveProject(fd: FormData) {
+  await requireAction("fleet.edit");
   const code = s(fd, "code");
   const name = s(fd, "name");
   if (!code || !name) throw new Error("Project code and name are required");
@@ -433,7 +487,6 @@ export async function saveProject(fd: FormData) {
     },
   });
 
-  const { audit } = await import("@/app/(app)/admin/actions");
   await audit({
     action: "CREATE",
     module: "PROJECT",
@@ -453,6 +506,7 @@ export async function saveProject(fd: FormData) {
 }
 
 export async function updateProject(id: string, fd: FormData) {
+  await requireAction("fleet.edit");
   const code = s(fd, "code");
   const name = s(fd, "name");
   if (!code || !name) throw new Error("Project code and name are required");
@@ -479,7 +533,6 @@ export async function updateProject(id: string, fd: FormData) {
     },
   });
 
-  const { audit } = await import("@/app/(app)/admin/actions");
   await audit({
     action: "UPDATE",
     module: "PROJECT",
@@ -500,6 +553,7 @@ export async function updateProject(id: string, fd: FormData) {
 }
 
 export async function deleteProject(id: string) {
+  await requireAction("fleet.edit");
   const project = await db.project.findUnique({ where: { id } });
   if (!project) throw new Error("Project not found");
 
@@ -529,7 +583,6 @@ export async function deleteProject(id: string) {
     await tx.project.delete({ where: { id } });
   });
 
-  const { audit } = await import("@/app/(app)/admin/actions");
   await audit({
     action: "DELETE",
     module: "PROJECT",

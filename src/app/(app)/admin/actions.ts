@@ -4,6 +4,8 @@ import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { DEFAULT_ROLES } from "@/lib/rbac";
+import { requireAction } from "@/lib/guard";
+import { audit } from "@/lib/audit";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -14,32 +16,10 @@ function refresh() {
   revalidatePath("/users");
 }
 
-/**
- * Append an audit entry. Nothing in the app ever updates or deletes these rows —
- * that convention is what makes the log worth having.
- */
-export async function audit(input: {
-  action: string; module: string; summary: string;
-  entity?: string; entityId?: string; changes?: unknown;
-}) {
-  const session = await getSession();
-  await db.auditEvent.create({
-    data: {
-      actorId: session?.id ?? null,
-      actorName: session?.name ?? "System",
-      actorRole: session?.role ?? null,
-      action: input.action,
-      module: input.module,
-      entity: input.entity ?? null,
-      entityId: input.entityId ?? null,
-      summary: input.summary,
-      changes: input.changes ? JSON.stringify(input.changes) : null,
-    },
-  });
-}
 
 /** Installs the shipped role set and links existing users by their legacy role string. */
 export async function seedRoles() {
+  await requireAction("admin.roles");
   for (const r of DEFAULT_ROLES) {
     await db.role.upsert({
       where: { name: r.name },
@@ -68,6 +48,7 @@ export async function seedRoles() {
 }
 
 export async function saveRole(id: string | null, fd: FormData) {
+  await requireAction("admin.roles");
   const permissions = fd.getAll("permissions").map(String).filter(Boolean);
   const data = {
     label: s(fd, "label"),
@@ -93,6 +74,7 @@ export async function saveRole(id: string | null, fd: FormData) {
 }
 
 export async function deleteRole(id: string) {
+  await requireAction("admin.roles");
   const r = await db.role.findUnique({ where: { id } });
   if (!r) return;
   if (r.isSystem) throw new Error("System roles cannot be deleted");
@@ -103,6 +85,7 @@ export async function deleteRole(id: string) {
 }
 
 export async function assignRole(userId: string, roleId: string) {
+  await requireAction("admin.roles");
   const [u, r] = await Promise.all([
     db.user.findUnique({ where: { id: userId } }),
     roleId ? db.role.findUnique({ where: { id: roleId } }) : null,
@@ -120,6 +103,7 @@ export async function assignRole(userId: string, roleId: string) {
  * tell which machine, papers or safety score belong to whoever signed in.
  */
 export async function linkUserToDriver(userId: string, driverId: string) {
+  await requireAction("admin.users");
   if (driverId) {
     // The relation is one-to-one, so free the person from any other login first.
     const held = await db.user.findFirst({ where: { driverId, NOT: { id: userId } } });

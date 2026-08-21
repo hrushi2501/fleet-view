@@ -4,7 +4,8 @@ import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { put } from "@vercel/blob";
 import { getSession } from "@/lib/auth";
-import { audit } from "@/app/(app)/admin/actions";
+import { audit } from "@/lib/audit";
+import { requireAction } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -16,6 +17,7 @@ function refresh() {
 }
 
 export async function saveTicket(fd: FormData) {
+  await requireAction("weighbridge.edit");
   const ticketNo = s(fd, "ticketNo");
   if (!ticketNo) throw new Error("Ticket number is required");
 
@@ -70,6 +72,7 @@ export async function saveTicket(fd: FormData) {
 }
 
 export async function deleteTicket(id: string) {
+  await requireAction("weighbridge.edit");
   const t = await db.weighbridgeTicket.findUnique({ where: { id } });
   await db.weighbridgeTicket.delete({ where: { id } });
   if (t) await audit({ action: "DELETE", module: "WEIGHBRIDGE", entity: "WeighbridgeTicket", entityId: id, summary: `Deleted ticket ${t.ticketNo}` });
