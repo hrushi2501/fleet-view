@@ -128,6 +128,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       .map((s) => ({
         from: s.from, to: s.to, hours: s.hours,
         distanceKm: s.distanceKm, fuelDeltaL: s.fuelDeltaL, litresConsumed: s.litresConsumed,
+        // The tank at both ends, and where it sat if it did not move. A delta on
+        // its own cannot be checked against a dipstick, and a loss with no place
+        // attached is not something anyone can be sent to look at.
+        fuelBeforeL: s.fuelBeforeL, fuelAfterL: s.fuelAfterL, parkedAt: s.parkedAt,
         kmPerL: s.kmPerL, event: s.event, excessLitres: s.excessLitres,
         confidence: s.confidence, reasons: s.reasons,
       })),

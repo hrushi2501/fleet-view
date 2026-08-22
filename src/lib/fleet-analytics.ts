@@ -601,6 +601,28 @@ export type Segment = {
   gpsDistanceKm: number | null;
   /** Negative = fell, positive = rose. Raw, before any judgement. */
   fuelDeltaL: number | null;
+  /**
+   * The tank at each end of the segment, in litres.
+   *
+   * The delta alone answers "how much moved" but not "moved from what", and the
+   * second question is the one asked in a dispute. "260 L when it parked, 220 L
+   * when it started" is a sentence a yard supervisor can check against a
+   * dipstick; "−40 L" is a number they have to take on trust. Both endpoints
+   * were always in hand here — only the difference was being kept.
+   */
+  fuelBeforeL: number | null;
+  fuelAfterL: number | null;
+  /**
+   * Where the vehicle sat, when it did not move.
+   *
+   * Populated only for a stationary segment, because that is the only case where
+   * one position describes the whole window. During a blind spot the vehicle is
+   * parked by definition, so its location is known even though nothing was
+   * transmitted — which turns "40 L vanished overnight" into "40 L vanished
+   * overnight, here", and that is the difference between an alert and an
+   * investigation.
+   */
+  parkedAt: { lat: number; lng: number } | null;
   /** Null unless the fall cleared the noise band and a plausible burn rate. */
   litresConsumed: number | null;
   kmPerL: number | null;
@@ -707,6 +729,16 @@ export function analyseSegment(
                 `${noiseBandL.toFixed(1)} L.`,
             );
           }
+
+          // The two readings that bracket the window, stated plainly. This is
+          // the line somebody checks against a dipstick — a delta on its own
+          // cannot be verified against anything.
+          if (a.fuelLevelL != null && b.fuelLevelL != null) {
+            reasons.push(
+              `Tank read ${a.fuelLevelL.toFixed(1)} L when it stopped and ` +
+                `${b.fuelLevelL.toFixed(1)} L when it moved again.`,
+            );
+          }
         }
       } else if (norm && distanceKm != null) {
         // Worst credible burn: the journey driven at the *poorest* efficiency the
@@ -754,6 +786,16 @@ export function analyseSegment(
     distanceKm,
     gpsDistanceKm,
     fuelDeltaL,
+    fuelBeforeL: a.fuelLevelL ?? null,
+    fuelAfterL: b.fuelLevelL ?? null,
+    // Only meaningful when the vehicle stayed put — otherwise one coordinate
+    // pair describes the start of a journey, not where the fuel went. The
+    // opening reading is used because that is where it was parked; `b` is the
+    // moment it was found, which may be after it moved off.
+    parkedAt:
+      (distanceKm ?? gpsDistanceKm ?? 0) < cfg.stationaryKm && a.lat != null && a.lng != null
+        ? { lat: a.lat, lng: a.lng }
+        : null,
     litresConsumed,
     kmPerL,
     event,

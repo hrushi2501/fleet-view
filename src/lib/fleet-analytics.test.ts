@@ -435,6 +435,59 @@ describe("TEST 10 — vehicle stopped", () => {
     assert.ok(seg.excessLitres > 30);
     assert.ok(seg.reasons.some((r) => /parked engine burns nothing/i.test(r)));
   });
+
+  test("the tank level at both ends is reported, not just the difference", () => {
+    // "-40 L" cannot be checked against anything. "260 L when it stopped, 220 L
+    // when it moved again" is a claim a yard supervisor can verify with a dipstick,
+    // which is the difference between a number and evidence.
+    const a = reading({ recordedAt: at(0), odometerKm: 5_000, fuelLevelL: 260, ignitionOn: false });
+    const b = reading({ recordedAt: at(60), odometerKm: 5_000, fuelLevelL: 220, ignitionOn: false });
+    const seg = analyseSegment(a, b, TRUCK_NORM, TANK);
+
+    assert.equal(seg.fuelBeforeL, 260);
+    assert.equal(seg.fuelAfterL, 220);
+    assert.ok(
+      seg.reasons.some((r) => /260\.0 L when it stopped and 220\.0 L when it moved again/.test(r)),
+      `expected a before/after line, got: ${seg.reasons.join(" | ")}`,
+    );
+  });
+
+  test("a stationary drop records where the vehicle was parked", () => {
+    // During a blind spot the vehicle is parked by definition, so its position is
+    // known even though nothing was transmitted. That is what turns "40 L vanished
+    // overnight" into somewhere to send someone.
+    const a = reading({ recordedAt: at(0), odometerKm: 5_000, fuelLevelL: 260, ignitionOn: false, lat: 27.9881, lng: 73.7749 });
+    const b = reading({ recordedAt: at(60), odometerKm: 5_000, fuelLevelL: 220, ignitionOn: false, lat: 27.9881, lng: 73.7749 });
+    const seg = analyseSegment(a, b, TRUCK_NORM, TANK);
+
+    assert.equal(seg.event, "STATIONARY_DROP");
+    assert.deepEqual(seg.parkedAt, { lat: 27.9881, lng: 73.7749 });
+  });
+
+  test("a moving vehicle is never given a parked location", () => {
+    // The failure that would matter: one coordinate pair describing a journey
+    // would put a fuel loss at the point of departure, and send an investigator
+    // to the wrong place with apparent precision.
+    const a = reading({ recordedAt: at(0), odometerKm: 5_000, fuelLevelL: 260, ignitionOn: true, lat: 27.9881, lng: 73.7749 });
+    const b = reading({ recordedAt: at(60), odometerKm: 5_180, fuelLevelL: 200, ignitionOn: true, lat: 28.4, lng: 74.2 });
+    const seg = analyseSegment(a, b, TRUCK_NORM, TANK);
+
+    assert.equal(seg.parkedAt, null);
+    // The endpoints are still reported — they are useful on any segment.
+    assert.equal(seg.fuelBeforeL, 260);
+    assert.equal(seg.fuelAfterL, 200);
+  });
+
+  test("a missing sender reading leaves the endpoints null rather than zero", () => {
+    // `?? 0` on a measurement turns unknown into a confident reading, which the
+    // README names as the bug that has fabricated fuel-theft cases here before.
+    const a = reading({ recordedAt: at(0), odometerKm: 5_000, fuelLevelL: null, ignitionOn: false });
+    const b = reading({ recordedAt: at(60), odometerKm: 5_000, fuelLevelL: 220, ignitionOn: false });
+    const seg = analyseSegment(a, b, TRUCK_NORM, TANK);
+
+    assert.equal(seg.fuelBeforeL, null);
+    assert.equal(seg.fuelAfterL, 220);
+  });
 });
 
 // ---------------------------------------------------------------------------
