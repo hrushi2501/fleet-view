@@ -12,6 +12,26 @@ export const maxDuration = 120;
 /**
  * Tata Fleet Edge push receiver.
  *
+ * Verified against "FleetEdge Basic Push(Web hook) API" (4pp, v1.6).
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * WHAT THE SPEC PINS DOWN
+ *
+ *   - The path is ours to choose. The spec's `/api/endpoint` is explicitly "for
+ *     illustration purpose"; Fleet Edge posts to whatever URL was supplied at
+ *     subscription time.
+ *   - The body is one `VehicleTelemetry` object — the same model the Basic Pull
+ *     API returns, which is why `TataFleetEdgeAdapter` parses both. It reads a
+ *     bare object as readily as a `{ vehicles: [...] }` batch.
+ *   - `PrimaryFuelLevel` and `SecondaryFuelLevel1` are documented with leading
+ *     capitals while the live pull sends them lowercase. Both spellings are
+ *     read; see `interpretFleetEdgeFuel`.
+ *   - Documented responses are 200 and 404 "No vehicle registered".
+ *   - Fleet Edge pushes from **3.6.12.131**. Nothing here filters on it — the
+ *     shared secret is the control, and an IP allowlist that silently drops
+ *     traffic would look identical to the feed simply stopping. Worth adding at
+ *     the edge if that address is ever confirmed stable.
+ *
  * ─────────────────────────────────────────────────────────────────────────────
  * THE URL TO GIVE TATA
  *
@@ -251,6 +271,20 @@ export async function POST(req: Request) {
       where: { id: asset.id },
       data: assetCacheUpdate(r, asset),
     });
+  }
+
+  // The spec documents 404 as "No vehicle registered". Honour it: when nothing
+  // in the payload matched a vehicle in this fleet, that is the answer Fleet
+  // Edge is written to expect, and a 200 would tell it the readings landed.
+  //
+  // Only when *nothing* matched. A batch where one vehicle is unknown and the
+  // rest stored fine is a success with a note, not a failure — answering 404
+  // there could make the sender retry or disable a feed that is mostly working.
+  if (accepted === 0 && duplicates === 0 && unmatched.length > 0) {
+    return NextResponse.json(
+      { error: "No vehicle registered", unmatched, accepted: 0 },
+      { status: 404 },
+    );
   }
 
   return NextResponse.json({ ok: true, accepted, duplicates, unmatched });
