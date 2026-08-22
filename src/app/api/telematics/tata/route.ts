@@ -102,16 +102,59 @@ async function resolveAsset(ping: TelemetryPing) {
   return assets[0]!;
 }
 
+/**
+ * Reachability probe.
+ *
+ * Fleet Edge's subscription form has a CHECK button that must go green before
+ * the endpoint can be submitted — and it runs *before* they issue the key, so a
+ * probe cannot be authenticated. Requiring the credential here would make
+ * verification impossible: no green tick, no subscription, no key.
+ *
+ * Answering 200 is safe because this handler writes nothing and discloses
+ * nothing. `ready` reports whether the credential has been installed yet, which
+ * is the one thing worth knowing while setting this up.
+ */
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    service: "fleetview-erp",
+    endpoint: "tata-fleet-edge-push",
+    ready: Boolean(process.env.TATA_PUSH_KEY?.trim()),
+  });
+}
+
+/** Some checkers probe with HEAD. Next derives it from GET, but be explicit. */
+export async function HEAD() {
+  return new Response(null, { status: 200 });
+}
+
 export async function POST(req: Request) {
   let body: unknown;
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "bad json" }, { status: 400 });
+    // A probe may POST an empty body with no content type at all. Nothing is
+    // written on this path, so acknowledging it cannot be abused.
+    return NextResponse.json({ ok: true, probe: true, accepted: 0 });
   }
 
-  // Accepts Authorization: Bearer, x-fleet-key, ?key=, or a `key` field.
-  // Fails closed when TATA_PUSH_KEY is unset.
+  // Same reasoning as GET: an empty body carries no telemetry, so treat it as a
+  // reachability check rather than demanding a key that has not been issued.
+  const isEmpty =
+    body == null ||
+    (typeof body === "object" && Object.keys(body as Record<string, unknown>).length === 0);
+  if (isEmpty) {
+    return NextResponse.json({
+      ok: true,
+      probe: true,
+      accepted: 0,
+      ready: Boolean(process.env.TATA_PUSH_KEY?.trim()),
+    });
+  }
+
+  // Anything carrying data must be authenticated. Accepts Authorization:
+  // Bearer, x-fleet-key, ?key=, or a `key` field; fails closed when
+  // TATA_PUSH_KEY is unset, so telemetry is never written unauthenticated.
   const bodyKey = body && typeof body === "object" ? (body as Record<string, unknown>).key : undefined;
   const auth = checkSharedSecret(req, "TATA_PUSH_KEY", { bodyKey });
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
