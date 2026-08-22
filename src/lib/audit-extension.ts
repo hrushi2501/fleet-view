@@ -92,7 +92,28 @@ export const auditExtension = Prisma.defineExtension({
           const count = countFrom(result);
           const entityId = idFrom(args);
 
+          // Who did it, when there is a signed-in caller.
+          //
+          // Without this every automatically-audited write is attributed to
+          // "System" — including one an administrator made by clicking Save,
+          // which is what the live log showed the first time this ran. An audit
+          // trail whose answer to "who did this" is always "System" does not
+          // answer the question it exists for.
+          //
+          // Imported lazily, and allowed to fail: outside a request scope — the
+          // cron, the telematics worker — there is no cookie to read, and
+          // "System" is then the truthful answer rather than a fallback.
+          let actor: { id: string; name: string; role: string } | null = null;
+          try {
+            const { getSession } = await import("./auth");
+            const s = await getSession();
+            if (s) actor = { id: s.id, name: s.name, role: s.role };
+          } catch {
+            // No request context.
+          }
+
           await recordSystemAudit({
+            actor,
             action: actionFor(operation),
             module: moduleForModel(model!),
             entity: model!,

@@ -46,6 +46,21 @@ export const NEVER_AUDITED = new Set<string>([
   // Infrastructure, not business decisions.
   "PushSubscription",
 
+  /**
+   * Sync heartbeat, not a decision.
+   *
+   * Every run of the telemetry sync stamps `lastSyncAt` / `lastSyncStatus` on
+   * the provider row. At one run a minute that is roughly 2,880 audit rows a
+   * day of pure noise, and on the live system it was already the overwhelming
+   * majority of the log — burying the events somebody would actually search
+   * for.
+   *
+   * This is exactly the failure the allowlist exists to prevent, and it was
+   * missed on the first pass because the flood comes from a status field on an
+   * otherwise-legitimate business model rather than from a telemetry table.
+   */
+  "TelematicsProvider",
+
   // The key/value store now carries session revocation epochs and failed-login
   // counters, which change on every sign-in attempt. The security events that
   // matter are audited explicitly by the auth code with real summaries.

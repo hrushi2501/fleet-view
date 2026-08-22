@@ -35,6 +35,13 @@ describe("machine-written data stays out of the audit log", () => {
     }
   });
 
+  test("the sync heartbeat is excluded", () => {
+    // The telemetry sync stamps lastSyncAt on the provider row every minute.
+    // Auditing that adds ~2,880 rows a day and buried every real event on the
+    // live system — the exact failure this allowlist exists to prevent.
+    assert.equal(auditableModel("TelematicsProvider"), false);
+  });
+
   test("the key/value store is excluded because auth counters live there now", () => {
     // Session revocation epochs and failed-login counters change on every
     // sign-in attempt. The security events that matter are audited explicitly.
