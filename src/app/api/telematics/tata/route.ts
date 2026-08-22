@@ -27,21 +27,20 @@ export const maxDuration = 120;
  *     capitals while the live pull sends them lowercase. Both spellings are
  *     read; see `interpretFleetEdgeFuel`.
  *   - Documented responses are 200 and 404 "No vehicle registered".
- *   - Fleet Edge pushes from **3.6.12.131**. Nothing here filters on it — the
- *     shared secret is the control, and an IP allowlist that silently drops
- *     traffic would look identical to the feed simply stopping. Worth adding at
- *     the edge if that address is ever confirmed stable.
+ *   - **The spec defines no authentication.** No key, no token, no header, no
+ *     signature. The only access control it names is the source address:
+ *     "if the endpoint has restricted access please make sure you allow access
+ *     to the this IP 3.6.12.131". See `authorisePush` for what follows from
+ *     that.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * THE URL TO GIVE TATA
  *
  *   https://fleetview-erp-indol.vercel.app/api/telematics/tata
  *
- * Their subscription flow asks for an endpoint first and issues the credential
- * afterwards, so this route exists and answers before the key is known. Until
- * `TATA_PUSH_KEY` is set it refuses every request with 503 rather than
- * accepting unauthenticated telemetry — an ingest endpoint that is open while
- * "not configured yet" is an endpoint anyone can write fuel readings into.
+ * The subscription flow asks for the endpoint before anything is sent, so this
+ * route answers a credential-free CHECK probe. Real telemetry is gated by
+ * `authorisePush`.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * WHY A SEPARATE ROUTE FROM /api/telematics
@@ -55,10 +54,11 @@ export const maxDuration = 120;
  * against live responses rather than the PDF, so this route reuses it instead
  * of asking Tata to rename their fields.
  *
- * Credentials: `FLEET_INGEST_KEY` is a single shared secret that can write
- * telemetry for *any* vehicle. Handing that to an OEM would mean a leak
- * anywhere gives an attacker the OEM feed too. Tata gets its own key, and
- * revoking it costs nothing else.
+ * Trust: `/api/telematics` requires `FLEET_INGEST_KEY`, a secret that can write
+ * telemetry for any vehicle. Fleet Edge cannot present it — it sends no
+ * credential at all — so pushing them through that route would mean either
+ * publishing that secret or rejecting every reading. A separate route lets this
+ * one feed be admitted on its own terms without weakening the other.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * WHY `source: "GPS_API"` AND NOT A NEW SOURCE
@@ -126,26 +126,126 @@ async function resolveAsset(ping: TelemetryPing) {
  * Reachability probe.
  *
  * Fleet Edge's subscription form has a CHECK button that must go green before
- * the endpoint can be submitted — and it runs *before* they issue the key, so a
- * probe cannot be authenticated. Requiring the credential here would make
- * verification impossible: no green tick, no subscription, no key.
+ * the endpoint can be submitted, and it carries no credential. Answering 200 is
+ * safe because this handler writes nothing and discloses nothing.
  *
- * Answering 200 is safe because this handler writes nothing and discloses
- * nothing. `ready` reports whether the credential has been installed yet, which
- * is the one thing worth knowing while setting this up.
+ * `accepts` states how a real push will be authorised, so the setup can be
+ * verified without sending telemetry. It previously reported readiness purely
+ * on whether a shared secret existed, which was misleading once it emerged that
+ * the provider issues none — it read "not ready" on a correctly configured
+ * deployment.
  */
 export async function GET() {
+  const secret = Boolean(process.env.TATA_PUSH_KEY?.trim());
   return NextResponse.json({
     ok: true,
     service: "fleetview-erp",
     endpoint: "tata-fleet-edge-push",
-    ready: Boolean(process.env.TATA_PUSH_KEY?.trim()),
+    ready: true,
+    accepts: secret
+      ? "shared-secret"
+      : process.env.TATA_PUSH_TRUST_ANY === "true"
+        ? "any-source (debug)"
+        : `source-ip: ${allowedIps().join(", ")}`,
   });
 }
 
 /** Some checkers probe with HEAD. Next derives it from GET, but be explicit. */
 export async function HEAD() {
   return new Response(null, { status: 200 });
+}
+
+/**
+ * Fleet Edge's published egress address.
+ *
+ * The spec names exactly one: "if the endpoint has restricted access please
+ * make sure you allow access to the this IP 3.6.12.131". Overridable because a
+ * provider changing an IP without notice must not need a code change —
+ * `TATA_PUSH_ALLOWED_IPS` takes a comma-separated list.
+ */
+const DEFAULT_TATA_IPS = ["3.6.12.131"];
+
+function allowedIps(): string[] {
+  const configured = process.env.TATA_PUSH_ALLOWED_IPS?.trim();
+  if (!configured) return DEFAULT_TATA_IPS;
+  return configured.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+/**
+ * The caller's address, as Vercel reports it.
+ *
+ * Behind the platform proxy the socket peer is Vercel, so the left-most entry
+ * of `x-forwarded-for` is the originating client. Vercel sets this header
+ * itself rather than passing through whatever the client sent, which is what
+ * makes it usable as a control here — on a self-hosted deployment without a
+ * trusted proxy in front, it would not be.
+ */
+function callerIp(req: Request): string | null {
+  const fwd = req.headers.get("x-forwarded-for");
+  if (fwd) return fwd.split(",")[0]!.trim() || null;
+  return req.headers.get("x-real-ip");
+}
+
+/**
+ * Decides whether a push carrying telemetry may be accepted.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * WHY THIS IS NOT A SHARED SECRET
+ *
+ * This endpoint originally demanded `TATA_PUSH_KEY` and failed closed without
+ * it, on the assumption that subscribing would issue a credential. Reading the
+ * webhook specification showed otherwise: it defines no authentication at all —
+ * no key, no token, no header, no signature. The only access control it
+ * describes is the source address.
+ *
+ * So the original design could never have worked. Fleet Edge would post real
+ * readings, this route would answer 503, and every one would be discarded —
+ * silently, because a provider that gets an error does not tell the customer.
+ *
+ * The security model is therefore what the provider actually implements:
+ *
+ *   1. If `TATA_PUSH_KEY` is set, require it. Kept because Tata may add
+ *      authentication later, and a deployment that has a secret should use it.
+ *   2. Otherwise accept only from Fleet Edge's published egress address.
+ *   3. `TATA_PUSH_TRUST_ANY=true` disables the address check, for debugging a
+ *      feed that is failing for the wrong reason. It is deliberately awkward to
+ *      set and never the default.
+ *
+ * The residual risk is that anyone who learns this URL *and* can present that
+ * source address could write telemetry. That is the exposure Fleet Edge's own
+ * design accepts, and it is bounded: readings pass the same validation as every
+ * other path, and a payload naming a vehicle outside this fleet is rejected.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+function authorisePush(
+  req: Request,
+  body: unknown,
+): { ok: true } | { ok: false; status: 401 | 403 | 503; error: string } {
+  // 1. A configured secret is the strongest control available, so it wins.
+  const secret = process.env.TATA_PUSH_KEY?.trim();
+  if (secret) {
+    const bodyKey = body && typeof body === "object" ? (body as Record<string, unknown>).key : undefined;
+    const auth = checkSharedSecret(req, "TATA_PUSH_KEY", { bodyKey });
+    return auth.ok ? { ok: true } : { ok: false, status: auth.status as 401 | 503, error: auth.error };
+  }
+
+  // 3. Explicit escape hatch, for diagnosing a feed in the wrong shape.
+  if (process.env.TATA_PUSH_TRUST_ANY === "true") return { ok: true };
+
+  // 2. The address is the control the provider's own spec relies on.
+  const ip = callerIp(req);
+  const permitted = allowedIps();
+  if (ip && permitted.includes(ip)) return { ok: true };
+
+  return {
+    ok: false,
+    status: 403,
+    error:
+      `Pushes are accepted only from Fleet Edge (${permitted.join(", ")}). ` +
+      `This request came from ${ip ?? "an unknown address"}. ` +
+      `Set TATA_PUSH_KEY to authenticate by shared secret instead, or ` +
+      `TATA_PUSH_ALLOWED_IPS if the provider's address has changed.`,
+  };
 }
 
 export async function POST(req: Request) {
@@ -168,16 +268,12 @@ export async function POST(req: Request) {
       ok: true,
       probe: true,
       accepted: 0,
-      ready: Boolean(process.env.TATA_PUSH_KEY?.trim()),
+      ready: true,
     });
   }
 
-  // Anything carrying data must be authenticated. Accepts Authorization:
-  // Bearer, x-fleet-key, ?key=, or a `key` field; fails closed when
-  // TATA_PUSH_KEY is unset, so telemetry is never written unauthenticated.
-  const bodyKey = body && typeof body === "object" ? (body as Record<string, unknown>).key : undefined;
-  const auth = checkSharedSecret(req, "TATA_PUSH_KEY", { bodyKey });
-  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const gate = authorisePush(req, body);
+  if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
 
   const pings = await new TataFleetEdgeAdapter().parsePayload(body);
 
