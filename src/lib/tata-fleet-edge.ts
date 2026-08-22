@@ -57,6 +57,7 @@
  */
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { withPollLock } from "@/lib/poll-lock";
 import { TataFleetEdgeAdapter, type TelemetryPing } from "@/lib/telematics-adapters";
 import { analyseSegment, riskScore, severityFor, type AnalyticsReading } from "@/lib/fleet-analytics";
 import {
@@ -542,17 +543,41 @@ function resolveAsset(ping: TelemetryPing, index: Map<string, ResolvedAsset>): R
 let isSyncInProgress = false;
 
 /**
- * Pulls from Fleet Edge and persists each ping as history, mirroring the push
- * route: `TelemetryReading` is the record, the asset's own lat/lng/fuel columns
- * are only a cache for the map.
+ * How long a sync may hold the shared lock.
+ *
+ * Comfortably above the route's `maxDuration` of 120s, so a slow-but-healthy
+ * run is never treated as dead and overtaken mid-flight. A run that genuinely
+ * crashes blocks its successors for at most this long.
+ */
+const SYNC_LOCK_TTL_MS = 150_000;
+
+/** The lock name. One subscription, one poller, one lock. */
+export const SYNC_LOCK = "tata-fleet-edge-sync";
+
+/**
+ * Pulls from Fleet Edge, guaranteeing only one sync runs at a time across every
+ * server instance.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * WHY THE LOCK
+ *
+ * Fleet Edge allows 60 calls an hour for the whole subscription, and its Basic
+ * Pull API is a snapshot with no history endpoint — so a call refused with 429
+ * is a moment that can never be recovered. Two overlapping syncs spend two of
+ * those calls describing the same minute.
+ *
+ * The module-level `isSyncInProgress` flag below cannot prevent that on its own:
+ * on Vercel each serverless instance holds its own copy, so two instances can
+ * both be syncing while each correctly believes it is alone. The flag is kept as
+ * a free early-out within one instance; the database lock is what actually
+ * holds across them.
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 export async function syncTataFleetEdge(): Promise<TataSyncResult> {
   const base: TataSyncResult = { ok: false, fetched: 0, stored: 0, unmatched: [] };
 
-  if (isSyncInProgress) {
-    return { ...base, ok: true, skipped: "Sync already in progress" };
-  }
-
+  // Cheap checks before taking a lock — no point serialising callers only to
+  // discover the integration is switched off.
   if (process.env.TATA_FLEET_EDGE_ENABLED !== "true") {
     return { ...base, ok: true, skipped: "TATA_FLEET_EDGE_ENABLED is not 'true'" };
   }
@@ -561,7 +586,28 @@ export async function syncTataFleetEdge(): Promise<TataSyncResult> {
     return { ...base, ok: true, skipped: `missing env: ${missing.join(", ")}` };
   }
 
-  isSyncInProgress = true;
+  if (isSyncInProgress) {
+    return { ...base, ok: true, skipped: "Sync already in progress on this instance" };
+  }
+
+  const attempt = await withPollLock(SYNC_LOCK, SYNC_LOCK_TTL_MS, async () => {
+    isSyncInProgress = true;
+    try {
+      return await runTataSync(base);
+    } finally {
+      isSyncInProgress = false;
+    }
+  });
+
+  if (!attempt.ran) {
+    // Not an error: the other run is fetching exactly the data this one would.
+    return { ...base, ok: true, skipped: "Sync already running on another instance" };
+  }
+  return attempt.result;
+}
+
+/** The sync itself. Only ever called by `syncTataFleetEdge`, under the lock. */
+async function runTataSync(base: TataSyncResult): Promise<TataSyncResult> {
 
   // Self-healing: the provider row is what Tracking → Sessions binds assets to,
   // and what records sync health. Create it on first run rather than depending
@@ -797,8 +843,6 @@ export async function syncTataFleetEdge(): Promise<TataSyncResult> {
       });
     }
     return { ...base, error: message };
-  } finally {
-    isSyncInProgress = false;
   }
 }
 
