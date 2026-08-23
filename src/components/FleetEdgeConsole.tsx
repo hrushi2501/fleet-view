@@ -750,6 +750,17 @@ function DetailCard({
           />
           <Metric label="Idling Duration" value={fmtDuration(v.today.idlingMinutes)} muted={v.today.idlingMinutes == null} />
           <Metric label="Stoppage Duration" value={fmtDuration(v.today.stoppageMinutes)} muted={v.today.stoppageMinutes == null} />
+          {/* Without this the panel does not add up: distance spans the whole
+              day from the odometer at each end, while idling and stoppage count
+              only well-sampled intervals. Naming the remainder is what stops
+              "100 km, 29 min idling" reading as a day spent driving when most
+              of it was simply never seen. */}
+          <Metric
+            label="Not Observed"
+            value={fmtDuration(v.today.unobservedMinutes)}
+            muted={!v.today.unobservedMinutes}
+            hint="Time today no telemetry covers — the vehicle was out of contact, so idling and stoppage exclude it. Distance still spans it, because the odometer is read at each end."
+          />
           <Metric label="Engine Run Hrs" value={fmt(v.today.engineRunHours, 1)} muted={v.today.engineRunHours == null} />
           <Metric
             label="Fuel Efficiency"

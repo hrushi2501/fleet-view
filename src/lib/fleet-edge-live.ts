@@ -54,6 +54,8 @@ const OFFLINE_AFTER_MS = 15 * 60_000;
 
 /** Below this the vehicle is not travelling; GPS speed jitters around zero. */
 const MOVING_SPEED_KPH = 3;
+/** Beyond this an interval is an outage, not a vehicle standing still. Minutes. */
+const OBSERVED_GAP_LIMIT_MIN = 20;
 
 /** Service falls to DUE inside either of these, matching Preventive Service. */
 const SERVICE_DUE_KM = 500;
@@ -81,6 +83,8 @@ export type TodayStats = {
   distanceKm: number | null;
   idlingMinutes: number | null;
   stoppageMinutes: number | null;
+  /** Elapsed time no sample covers, so the day's figures add up honestly. */
+  unobservedMinutes: number | null;
   engineRunHours: number | null;
   kmPerL: number | null;
   confidence: Confidence | null;
@@ -297,17 +301,33 @@ function nearestService(
  * ninety seconds between pings is invisible, and inventing that time would be
  * exactly the kind of confident wrong number this system refuses to print.
  */
-function stationaryMinutes(samples: AnalyticsReading[]): { idling: number; stopped: number } {
+function stationaryMinutes(
+  samples: AnalyticsReading[],
+): { idling: number; stopped: number; unobserved: number } {
   let idling = 0;
   let stopped = 0;
+  let unobserved = 0;
 
   for (let i = 1; i < samples.length; i++) {
     const a = samples[i - 1];
     const b = samples[i];
     const minutes = (b.recordedAt.getTime() - a.recordedAt.getTime()) / 60_000;
+    if (!Number.isFinite(minutes) || minutes <= 0) continue;
+
     // A gap this wide is an outage, not a vehicle standing still. Counting it
     // would report a truck as having idled through the hours it was unobserved.
-    if (!Number.isFinite(minutes) || minutes <= 0 || minutes > 20) continue;
+    //
+    // Discarding it silently is its own problem, though: distance comes from
+    // the odometer at each end of the day and therefore spans these gaps, while
+    // idling and stoppage do not. Printed side by side the three read as one
+    // account of the day and do not reconcile — on this fleet two thirds of the
+    // elapsed time could vanish between them, which makes a truck that sat
+    // unobserved for ten hours look like one that drove all day. So the
+    // remainder is measured and returned rather than dropped.
+    if (minutes > OBSERVED_GAP_LIMIT_MIN) {
+      unobserved += minutes;
+      continue;
+    }
 
     const moving = (a.speedKph ?? 0) >= MOVING_SPEED_KPH || (b.speedKph ?? 0) >= MOVING_SPEED_KPH;
     if (moving) continue;
@@ -316,7 +336,11 @@ function stationaryMinutes(samples: AnalyticsReading[]): { idling: number; stopp
     else if (a.ignitionOn === false) stopped += minutes;
   }
 
-  return { idling: Math.round(idling), stopped: Math.round(stopped) };
+  return {
+    idling: Math.round(idling),
+    stopped: Math.round(stopped),
+    unobserved: Math.round(unobserved),
+  };
 }
 
 /**
@@ -500,6 +524,7 @@ export async function getLiveFleet(scope: LiveFleetScope = undefined): Promise<L
       distanceKm: samples.length >= 2 ? usage.distanceKm : null,
       idlingMinutes: samples.length >= 2 ? stationary.idling : null,
       stoppageMinutes: samples.length >= 2 ? stationary.stopped : null,
+      unobservedMinutes: samples.length >= 2 ? stationary.unobserved : null,
       engineRunHours: engineHoursToday(samples),
       // Withheld outright when the day was too thinly sampled to measure a burn.
       kmPerL: usage.insufficientData ? null : usage.avgKmPerL,
