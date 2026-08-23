@@ -271,7 +271,7 @@ async function triggerTataSync__impl() {
   if (!session) throw new ActionError("Unauthorized");
 
   const { syncTataFleetEdge } = await import("@/lib/tata-fleet-edge");
-  const res = await syncTataFleetEdge();
+  const res = await syncTataFleetEdge("manual");
 
   await audit({
     action: "UPDATE",

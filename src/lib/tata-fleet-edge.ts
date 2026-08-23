@@ -58,6 +58,7 @@
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { withPollLock } from "@/lib/poll-lock";
+import { reserveCall, budgetStatus, TATA_CALLS_PER_HOUR } from "@/lib/api-budget";
 import { TataFleetEdgeAdapter, type TelemetryPing } from "@/lib/telematics-adapters";
 import { analyseSegment, riskScore, severityFor, type AnalyticsReading } from "@/lib/fleet-analytics";
 import {
@@ -128,9 +129,56 @@ export class TataFleetEdgeError extends Error {
   }
 }
 
+/**
+ * The bearer token, shared across serverless instances.
+ *
+ * Stored in `Setting`, which is excluded from the audit extension so this
+ * churn does not flood the log. Read and write both fail soft: a token that
+ * cannot be shared costs one extra call, while an exception here would fail
+ * the whole sync.
+ */
+const TOKEN_KEY = "tata:token";
+
+async function readSharedToken(): Promise<{ value: string; expiresAt: number } | null> {
+  try {
+    const row = await db.setting.findUnique({ where: { key: TOKEN_KEY } });
+    if (!row?.value) return null;
+    const parsed = JSON.parse(row.value) as { value: string; expiresAt: number };
+    return typeof parsed?.value === "string" && typeof parsed.expiresAt === "number" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeSharedToken(tok: { value: string; expiresAt: number }): Promise<void> {
+  try {
+    const value = JSON.stringify(tok);
+    await db.setting.upsert({ where: { key: TOKEN_KEY }, update: { value }, create: { key: TOKEN_KEY, value } });
+  } catch {
+    // Sharing is an optimisation, never a requirement.
+  }
+}
+
 async function getAccessToken(cfg: TataConfig): Promise<string> {
   if (cachedToken && cachedToken.expiresAt > Date.now() + EXPIRY_MARGIN_MS) {
     return cachedToken.value;
+  }
+
+  // The module cache above is per-instance. On a one-minute cron most
+  // invocations land on a cold instance, so nearly every sync was spending a
+  // second call on a token it could have shared — doubling consumption against
+  // a 60-an-hour ceiling and producing the 429s.
+  //
+  // The comment this replaces argued a bearer token in a table is a worse
+  // failure than an extra token call. That reasoning does not survive contact
+  // with the arithmetic: the extra call was not occasional, it was every run,
+  // and it cost real telemetry. The token is short-lived, the row is reachable
+  // only by this application's database role, and the credentials that mint it
+  // are already in the same environment.
+  const shared = await readSharedToken();
+  if (shared && shared.expiresAt > Date.now() + EXPIRY_MARGIN_MS) {
+    cachedToken = shared;
+    return shared.value;
   }
 
   // Standard RFC 6749 client-credentials grant. If Fleet Edge expects HTTP Basic
@@ -166,11 +214,15 @@ async function getAccessToken(cfg: TataConfig): Promise<string> {
   // Default to 5 minutes when the server omits expires_in — short enough to be safe.
   const ttlMs = (parsed.expires_in ?? 300) * 1000;
   cachedToken = { value: parsed.access_token, expiresAt: Date.now() + ttlMs };
+  await writeSharedToken(cachedToken);
   return cachedToken.value;
 }
 
 /** Drops the cached token. Call after a 401 so the next attempt re-authenticates. */
 export function invalidateToken(): void {
+  // Clear the shared copy as well; otherwise a revoked token is handed straight
+  // back to the next instance that reads it.
+  void db.setting.deleteMany({ where: { key: TOKEN_KEY } }).catch(() => {});
   cachedToken = null;
 }
 
@@ -554,6 +606,9 @@ const SYNC_LOCK_TTL_MS = 150_000;
 /** The lock name. One subscription, one poller, one lock. */
 export const SYNC_LOCK = "tata-fleet-edge-sync";
 
+/** Budget key. One subscription, one allowance, shared by every caller. */
+export const TATA_BUDGET = "tata-fleet-edge";
+
 /**
  * Pulls from Fleet Edge, guaranteeing only one sync runs at a time across every
  * server instance.
@@ -573,7 +628,10 @@ export const SYNC_LOCK = "tata-fleet-edge-sync";
  * holds across them.
  * ─────────────────────────────────────────────────────────────────────────────
  */
-export async function syncTataFleetEdge(): Promise<TataSyncResult> {
+export async function syncTataFleetEdge(
+  /** A person waiting on a screen may spend the reserve the cron may not. */
+  priority: "scheduled" | "manual" = "scheduled",
+): Promise<TataSyncResult> {
   const base: TataSyncResult = { ok: false, fetched: 0, stored: 0, unmatched: [] };
 
   // Cheap checks before taking a lock — no point serialising callers only to
@@ -593,6 +651,20 @@ export async function syncTataFleetEdge(): Promise<TataSyncResult> {
   const attempt = await withPollLock(SYNC_LOCK, SYNC_LOCK_TTL_MS, async () => {
     isSyncInProgress = true;
     try {
+      // Spend from the hour's allowance before calling, not after being
+      // refused. A 429 costs a call and returns nothing; skipping costs
+      // neither, and on a snapshot API the moment it would have described
+      // cannot be fetched later regardless.
+      const slot = await reserveCall(TATA_BUDGET, TATA_CALLS_PER_HOUR, priority);
+      if (!slot.ok) {
+        return {
+          ...base,
+          ok: true,
+          skipped:
+            `Hourly allowance of ${TATA_CALLS_PER_HOUR} Fleet Edge calls is spent. ` +
+            `Next slot frees in ${slot.retryInSeconds}s.`,
+        };
+      }
       return await runTataSync(base);
     } finally {
       isSyncInProgress = false;
@@ -850,6 +922,8 @@ export type TataStatusInfo = {
   enabled: boolean;
   configured: boolean;
   missingKeys: string[];
+  /** Calls used and left in the trailing hour, so the ceiling is visible. */
+  budget: { used: number; limit: number; remaining: number };
   provider: {
     id: string;
     code: string;
@@ -894,10 +968,13 @@ export async function getTataSyncStatus(): Promise<TataStatusInfo> {
     db.telemetryReading.count({ where: { source: "GPS_API" } }),
   ]);
 
+  const budget = await budgetStatus(TATA_BUDGET, TATA_CALLS_PER_HOUR);
+
   return {
     enabled,
     configured,
     missingKeys: missing,
+    budget,
     provider,
     lastReadingAt: lastReading?.recordedAt ?? null,
     activeVehiclesCount: activeVehicles,
