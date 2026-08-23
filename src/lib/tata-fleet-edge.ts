@@ -58,7 +58,7 @@
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { withPollLock } from "@/lib/poll-lock";
-import { reserveCall, budgetStatus, TATA_CALLS_PER_HOUR } from "@/lib/api-budget";
+import { reserveCall, budgetStatus, startCooldown, cooldownRemaining, TATA_CALLS_PER_HOUR } from "@/lib/api-budget";
 import { TataFleetEdgeAdapter, type TelemetryPing } from "@/lib/telematics-adapters";
 import { analyseSegment, riskScore, severityFor, type AnalyticsReading } from "@/lib/fleet-analytics";
 import {
@@ -609,6 +609,9 @@ export const SYNC_LOCK = "tata-fleet-edge-sync";
 /** Budget key. One subscription, one allowance, shared by every caller. */
 export const TATA_BUDGET = "tata-fleet-edge";
 
+/** How long to stop calling after the provider refuses. */
+const RATE_LIMIT_COOLDOWN_MS = 10 * 60_000;
+
 /**
  * Pulls from Fleet Edge, guaranteeing only one sync runs at a time across every
  * server instance.
@@ -651,6 +654,19 @@ export async function syncTataFleetEdge(
   const attempt = await withPollLock(SYNC_LOCK, SYNC_LOCK_TTL_MS, async () => {
     isSyncInProgress = true;
     try {
+      // A 429 leaves the provider's own window full, and a refused request
+      // still lands on their counter — so retrying every minute keeps it topped
+      // up and it never drains. Wait it out instead; a call made now would
+      // return nothing anyway.
+      const cooling = await cooldownRemaining(TATA_BUDGET);
+      if (cooling > 0) {
+        return {
+          ...base,
+          ok: true,
+          skipped: `Backing off after a rate limit — resuming in ${cooling}s.`,
+        };
+      }
+
       // Spend from the hour's allowance before calling, not after being
       // refused. A 429 costs a call and returns nothing; skipping costs
       // neither, and on a snapshot API the moment it would have described
@@ -899,6 +915,10 @@ async function runTataSync(base: TataSyncResult): Promise<TataSyncResult> {
     // as an ERROR would leave the provider showing red most of the day and
     // train whoever watches it to ignore a status that eventually matters.
     if (err instanceof TataFleetEdgeError && err.status === 429) {
+      // Long enough for the provider's window to drain meaningfully. Shorter
+      // and the retries keep it full; much longer and a transient limit costs
+      // more telemetry than it needs to.
+      await startCooldown(TATA_BUDGET, RATE_LIMIT_COOLDOWN_MS);
       if (provider) {
         await db.telematicsProvider.update({
           where: { id: provider.id },

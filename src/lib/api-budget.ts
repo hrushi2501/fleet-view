@@ -113,6 +113,42 @@ export async function reserveCall(
   return { ok: true, remaining: Math.max(0, ceiling - recent.length) };
 }
 
+const coolKey = (name: string) => `cooldown:${name}`;
+
+/**
+ * Stops calling for a while after the provider says no.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * WHY A COOLDOWN AND NOT JUST THE BUDGET
+ *
+ * The local budget stops us exceeding the limit as *we* count it. It cannot
+ * help when the provider's own window is already full — which is the state left
+ * behind by any period of over-consumption, and exactly what happened here.
+ *
+ * In that state every retry is refused, and a refused request still lands on
+ * the provider's counter. Retrying once a minute therefore keeps the window
+ * permanently topped up and it never drains: the integration rate-limits itself
+ * indefinitely, long after the original cause is fixed.
+ *
+ * Backing off completely is the only way out. Nothing is lost by waiting,
+ * because a call made during the block would return no data anyway.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+export async function startCooldown(name: string, ms: number): Promise<void> {
+  const key = coolKey(name);
+  const value = String(Date.now() + ms);
+  await db.setting.upsert({ where: { key }, update: { value }, create: { key, value } });
+}
+
+/** Seconds left on a cooldown, or 0 when calling is permitted. */
+export async function cooldownRemaining(name: string): Promise<number> {
+  const row = await db.setting.findUnique({ where: { key: coolKey(name) } });
+  if (!row?.value) return 0;
+  const until = Number(row.value);
+  if (!Number.isFinite(until) || until <= Date.now()) return 0;
+  return Math.ceil((until - Date.now()) / 1000);
+}
+
 /** Calls used and left in the trailing hour. For status screens; reserves nothing. */
 export async function budgetStatus(
   name: string,
