@@ -6,6 +6,7 @@ import { Fuel, Truck, MapPin, IndianRupee, Clock, ShieldAlert } from "lucide-rea
 import Link from "next/link";
 
 import { requirePage, assetScope } from "@/lib/access";
+import { detectFills } from "@/lib/fuel-fill-reconcile";
 
 /**
  * Every fill, with its time, place and photographs.
@@ -30,6 +31,13 @@ export async function FuelRecords() {
     getDieselRate(),
   ]);
 
+  // What the tanks actually saw, matched against what was written down. The
+  // screen claimed to show "every fill" while reading only the keyed table, so
+  // a fill nobody entered could not appear on it at all.
+  const detected = await detectFills(visible, dieselRate, 7);
+  const unlogged = detected.filter((f) => !f.logged);
+  const unloggedValue = unlogged.reduce((s, f) => s + f.estimatedValue, 0);
+
   const totalSpend = issues.reduce((s, i) => s + i.amount, 0);
   const totalLitres = issues.reduce((s, i) => s + i.quantity, 0);
   const assetMap = new Map(assets.map((a) => [a.id, a]));
@@ -50,6 +58,83 @@ export async function FuelRecords() {
         <StatCard label="Active Fleet Vehicles" value={num(assets.length)} accent="emerald" icon={<Truck className="h-5 w-5" />} />
         <StatCard label="Site Diesel Tanks" value={num(tanks.length)} accent="amber" icon={<MapPin className="h-5 w-5" />} />
       </div>
+
+      {unlogged.length > 0 && (
+        <Card className="p-0 ring-1 ring-amber-200">
+          <div className="p-5 pb-3">
+            <SectionTitle
+              title={`${unlogged.length} fill${unlogged.length === 1 ? "" : "s"} the tank saw but nobody logged`}
+              subtitle="Detected from the fuel sensor over the last 7 days, with no matching entry in Fill History. Usually a receipt not yet entered, or diesel drawn from a site tank — worth confirming while the day is still fresh."
+            />
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-amber-50/60 text-left text-xs uppercase tracking-wider text-amber-800">
+                <tr>
+                  <th className="px-5 py-3 font-medium">When</th>
+                  <th className="px-5 py-3 font-medium">Vehicle</th>
+                  <th className="px-5 py-3 font-medium">Litres</th>
+                  <th className="px-5 py-3 font-medium">Tank went</th>
+                  <th className="px-5 py-3 font-medium">Approx. value</th>
+                  <th className="px-5 py-3 font-medium">Where</th>
+                  <th className="px-5 py-3 font-medium">Confidence</th>
+                </tr>
+              </thead>
+              <tbody>
+                {unlogged.map((f) => (
+                  <tr key={`${f.assetId}-${f.at.toISOString()}`} className="border-t border-amber-100 hover:bg-amber-50/40">
+                    <td className="px-5 py-3 whitespace-nowrap text-xs text-slate-600">
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-3.5 w-3.5 text-slate-400" />
+                        {fmtDate(f.at)}
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 font-semibold text-brand-700">
+                      <Link href={`/fleet/${f.assetId}`} className="hover:underline">
+                        {f.assetCode} ({f.registrationNo ?? "—"})
+                      </Link>
+                    </td>
+                    <td className="px-5 py-3 font-bold text-ink-900">{num(f.litresAdded)} L</td>
+                    <td className="px-5 py-3 text-slate-600">
+                      {f.fromL != null && f.toL != null ? `${num(f.fromL)} → ${num(f.toL)} L` : "—"}
+                    </td>
+                    <td className="px-5 py-3 font-medium text-ink-900">
+                      {inr(f.estimatedValue, { compact: true })}
+                    </td>
+                    <td className="px-5 py-3">
+                      {f.lat != null && f.lng != null ? (
+                        <a href={`https://www.google.com/maps?q=${f.lat},${f.lng}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-brand-600 hover:underline">
+                          <MapPin className="h-3.5 w-3.5" /> Map
+                        </a>
+                      ) : (
+                        <span className="text-slate-300">No GPS</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3">
+                      <Badge
+                        color={
+                          f.confidence === "HIGH"
+                            ? "bg-emerald-100 text-emerald-700 ring-emerald-600/20"
+                            : f.confidence === "MEDIUM"
+                              ? "bg-amber-100 text-amber-700 ring-amber-600/20"
+                              : "bg-slate-100 text-slate-600 ring-slate-500/20"
+                        }
+                      >
+                        {f.confidence}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="border-t border-amber-100 bg-amber-50/40 px-5 py-3 text-xs text-amber-900">
+            <ShieldAlert className="mr-1 inline h-3.5 w-3.5" />
+            About {inr(unloggedValue, { compact: true })} of diesel at the current rate. This is fuel that
+            physically moved without paperwork behind it — not evidence of loss, but a question worth answering.
+          </div>
+        </Card>
+      )}
 
       {/* Timestamped Transaction Audit Feed */}
       <Card className="p-0">

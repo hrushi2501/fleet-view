@@ -1,0 +1,144 @@
+/**
+ * Fills the tank saw, against fills somebody wrote down.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * WHY THIS EXISTS
+ *
+ * There are two records of a vehicle being fuelled and nothing joined them.
+ *
+ *   `FuelTransaction`  what a person keyed in — litres, rate, amount, photos.
+ *   telemetry          what the tank sensor observed — a level rising.
+ *
+ * The Fuel Records screen read only the first, under the heading "Every fill
+ * with its date, vehicle, site tank, location and photo evidence". It was not
+ * every fill. On this fleet a 233 L fill — a near-empty 300 L tank taken to
+ * full, about ₹23,000 of diesel — was detected by the sensor, correctly
+ * classified as a refuel, located to six decimal places, and appeared on no
+ * screen at all, because nobody had entered it.
+ *
+ * That is the exact shape of loss this product exists to catch, and it was
+ * invisible. Not because the detection failed — it worked perfectly — but
+ * because the two halves were never compared.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * WHAT AN UNLOGGED FILL IS AND IS NOT
+ *
+ * It is not an accusation. The ordinary explanations dominate: a receipt not
+ * yet entered, or diesel drawn from a site tank and booked against the tank
+ * rather than the vehicle. What it *is* is fuel that physically moved with no
+ * paperwork behind it, which is a question worth someone answering while they
+ * can still remember the day.
+ *
+ * The matched cases matter too. When both records exist, the difference between
+ * litres invoiced and litres the tank actually gained is the shortfall that
+ * `saveReceipt` already looks for on bulk deliveries — applied here to vehicle
+ * fills, where it has never been checked.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+import { db } from "@/lib/db";
+import { analyseUsage, type AnalyticsReading } from "@/lib/fleet-analytics";
+
+/**
+ * How far apart a sensor event and a keyed entry may be and still be the same
+ * fill. Entries are frequently written up at the end of a shift with the date
+ * set to the day, so this is deliberately generous — a missed match reads as an
+ * unlogged fill, and a false alarm is worse than a slightly loose window.
+ */
+const MATCH_WINDOW_HOURS = 12;
+
+/** Below this a rise is sender noise or slosh, not a fill worth chasing. */
+const MIN_FILL_LITRES = 20;
+
+export type DetectedFill = {
+  assetId: string;
+  assetCode: string;
+  registrationNo: string | null;
+  at: Date;
+  litresAdded: number;
+  fromL: number | null;
+  toL: number | null;
+  lat: number | null;
+  lng: number | null;
+  confidence: "HIGH" | "MEDIUM" | "LOW";
+  /** Value at the current diesel rate. Indicative — the real price is on the bill. */
+  estimatedValue: number;
+  /** The keyed entry this was matched to, when there is one. */
+  logged: { id: string; quantity: number; amount: number; date: Date } | null;
+  /** Litres the sensor saw minus litres entered. Positive = more fuel than paperwork. */
+  varianceL: number | null;
+};
+
+/**
+ * Sensor-detected fills over a window, each matched to its entry if it has one.
+ *
+ * Reuses `analyseUsage` rather than re-deriving refuels, so what this reports
+ * cannot drift from what the vehicle screen shows.
+ */
+export async function detectFills(
+  assetWhere: Record<string, unknown>,
+  dieselRate: number,
+  sinceDays = 7,
+): Promise<DetectedFill[]> {
+  const since = new Date(Date.now() - sinceDays * 86_400_000);
+
+  const assets = await db.asset.findMany({
+    where: assetWhere,
+    select: { id: true, code: true, registrationNo: true, fuelCapacity: true },
+  });
+  if (assets.length === 0) return [];
+
+  const out: DetectedFill[] = [];
+
+  for (const asset of assets) {
+    const rows = await db.telemetryReading.findMany({
+      where: { assetId: asset.id, recordedAt: { gte: since } },
+      orderBy: { recordedAt: "asc" },
+      select: {
+        recordedAt: true, lat: true, lng: true, speedKph: true,
+        odometerKm: true, fuelLevelL: true, fuelLevelPct: true, ignitionOn: true,
+      },
+    });
+    if (rows.length < 2) continue;
+
+    const { usage } = analyseUsage(rows as AnalyticsReading[], null, asset.fuelCapacity ?? null);
+
+    const entries = await db.fuelTransaction.findMany({
+      where: { assetId: asset.id, type: "ISSUE", date: { gte: new Date(since.getTime() - 86_400_000) } },
+      select: { id: true, quantity: true, amount: true, date: true },
+      orderBy: { date: "asc" },
+    });
+    // An entry may only be claimed once, so two sensor fills on one day cannot
+    // both point at the same receipt and each look accounted for.
+    const claimed = new Set<string>();
+
+    for (const r of usage.diagnostics.fuel.refuels) {
+      if (r.litresAdded < MIN_FILL_LITRES) continue;
+
+      const at = new Date(r.at);
+      const match = entries.find(
+        (e) =>
+          !claimed.has(e.id) &&
+          Math.abs(e.date.getTime() - at.getTime()) <= MATCH_WINDOW_HOURS * 3_600_000,
+      );
+      if (match) claimed.add(match.id);
+
+      out.push({
+        assetId: asset.id,
+        assetCode: asset.code,
+        registrationNo: asset.registrationNo,
+        at,
+        litresAdded: Math.round(r.litresAdded),
+        fromL: r.fromL ?? null,
+        toL: r.toL ?? null,
+        lat: r.lat ?? null,
+        lng: r.lng ?? null,
+        confidence: r.confidence,
+        estimatedValue: Math.round(r.litresAdded * dieselRate),
+        logged: match ? { id: match.id, quantity: match.quantity, amount: match.amount, date: match.date } : null,
+        varianceL: match ? Math.round((r.litresAdded - match.quantity) * 10) / 10 : null,
+      });
+    }
+  }
+
+  return out.sort((a, b) => b.at.getTime() - a.at.getTime());
+}
