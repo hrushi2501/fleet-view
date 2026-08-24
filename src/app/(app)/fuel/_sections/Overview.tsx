@@ -104,8 +104,28 @@ export async function Overview() {
 
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
-        <StatCard label="Total Diesel Spend" value={inr(fleet.totalSpend, { compact: true })} accent="brand" icon={<IndianRupee className="h-5 w-5" />} />
-        <StatCard label="Diesel Issued" value={`${num(fleet.totalLitres)} L`} accent="violet" icon={<Droplets className="h-5 w-5" />} />
+        {/* Spend stays logged-only on purpose. A sender measures litres, not
+            rupees, so folding an estimated value in here would put an assumed
+            price into a financial figure. Saying so keeps it from silently
+            contradicting the litres tile beside it, which does include them. */}
+        <StatCard
+          label="Total Diesel Spend"
+          value={inr(fleet.totalSpend, { compact: true })}
+          sub={unloggedLitres > 0 ? `logged fills only · ${num(unloggedLitres)} L unpriced` : undefined}
+          accent="brand"
+          icon={<IndianRupee className="h-5 w-5" />}
+        />
+        <StatCard
+          label="Diesel Issued"
+          value={`${num(fleet.totalLitres + unloggedLitres)} L`}
+          sub={
+            unloggedLitres > 0
+              ? `${num(fleet.totalLitres)} L logged + ${num(unloggedLitres)} L sensor-only`
+              : "all from logged entries"
+          }
+          accent="violet"
+          icon={<Droplets className="h-5 w-5" />}
+        />
         <StatCard label="Avg Fleet Mileage" value={measuredKmpl != null ? `${measuredKmpl.toFixed(2)} km/L` : "—"} sub={usingTelemetry ? "measured from vehicle data" : "road vehicles"} accent={telemetry.perAsset.some((a) => a.belowNorm) ? "rose" : "emerald"} icon={<Gauge className="h-5 w-5" />} />
         <StatCard label="Distance Covered" value={`${num(measuredKm)} km`} sub={usingTelemetry ? "odometer delta" : undefined} accent="brand" icon={<TrendingUp className="h-5 w-5" />} />
         <StatCard label="Theft Alerts" value={num(highFlagCount)} sub={`${allFlagCount} total flags`} accent="rose" icon={<ShieldAlert className="h-5 w-5" />} />

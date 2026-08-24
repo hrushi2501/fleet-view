@@ -37,6 +37,11 @@ export async function FuelRecords() {
   const detected = await detectFills(visible, dieselRate, 7);
   const unlogged = detected.filter((f) => !f.logged);
   const unloggedValue = unlogged.reduce((s, f) => s + f.estimatedValue, 0);
+  // Litres the tanks received with no entry behind them. Added to the headline
+  // rather than left out of it: "how much diesel went into the trucks" is
+  // answered by what the tanks actually took, and a total that silently omits a
+  // 235 L fill is wrong in the direction that matters.
+  const unloggedLitres = unlogged.reduce((s, f) => s + f.litresAdded, 0);
 
   const totalSpend = issues.reduce((s, i) => s + i.amount, 0);
   const totalLitres = issues.reduce((s, i) => s + i.quantity, 0);
@@ -53,8 +58,24 @@ export async function FuelRecords() {
       </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Recent Fuel Spend" value={inr(totalSpend, { compact: true })} accent="brand" icon={<IndianRupee className="h-5 w-5" />} />
-        <StatCard label="Total Diesel Issued" value={`${num(totalLitres)} L`} accent="violet" icon={<Fuel className="h-5 w-5" />} />
+        <StatCard
+          label="Recent Fuel Spend"
+          value={inr(totalSpend, { compact: true })}
+          sub={unloggedLitres > 0 ? `logged fills only · ${num(unloggedLitres)} L unpriced` : undefined}
+          accent="brand"
+          icon={<IndianRupee className="h-5 w-5" />}
+        />
+        <StatCard
+          label="Total Diesel Issued"
+          value={`${num(totalLitres + unloggedLitres)} L`}
+          sub={
+            unloggedLitres > 0
+              ? `${num(totalLitres)} L logged + ${num(unloggedLitres)} L sensor-only`
+              : "all from logged entries"
+          }
+          accent="violet"
+          icon={<Fuel className="h-5 w-5" />}
+        />
         <StatCard label="Active Fleet Vehicles" value={num(assets.length)} accent="emerald" icon={<Truck className="h-5 w-5" />} />
         <StatCard label="Site Diesel Tanks" value={num(tanks.length)} accent="amber" icon={<MapPin className="h-5 w-5" />} />
       </div>
