@@ -11,6 +11,7 @@ import Link from "next/link";
 
 import { businessMonth } from "@/lib/business-time";
 import { requirePage, assetScope } from "@/lib/access";
+import { detectFills } from "@/lib/fuel-fill-reconcile";
 
 /**
  * Diesel in, diesel out, and what it bought — the module's front page.
@@ -66,6 +67,17 @@ export async function Overview() {
   const telWorst = [...rankable].sort((a, b) => a.usage.avgKmPerL! - b.usage.avgKmPerL!).slice(0, 5);
 
   const dieselRate = await getDieselRate();
+
+  // Fuel the tank saw arrive with no entry behind it. Kept separate from the
+  // theft figures on purpose: an unlogged fill is usually a receipt not yet
+  // entered, and folding it into "at risk" would call ordinary paperwork lag a
+  // loss. But it cannot sit only on the other tab either — this page reported
+  // "Theft Alerts 0 · ₹0 at risk" while ₹21.7 K of diesel stood unaccounted one
+  // click away, which reads as all-clear.
+  const detectedFills = await detectFills(visible, dieselRate, 7);
+  const unloggedFills = detectedFills.filter((f) => !f.logged);
+  const unloggedLitres = unloggedFills.reduce((s, f) => s + f.litresAdded, 0);
+  const unloggedValue = unloggedFills.reduce((s, f) => s + f.estimatedValue, 0);
   const assetById = new Map(assets.map((a) => [a.id, a]));
   const recentFills = [...issues].reverse().slice(0, 25);
 
@@ -98,6 +110,13 @@ export async function Overview() {
         <StatCard label="Distance Covered" value={`${num(measuredKm)} km`} sub={usingTelemetry ? "odometer delta" : undefined} accent="brand" icon={<TrendingUp className="h-5 w-5" />} />
         <StatCard label="Theft Alerts" value={num(highFlagCount)} sub={`${allFlagCount} total flags`} accent="rose" icon={<ShieldAlert className="h-5 w-5" />} />
         <StatCard label="₹ at Risk" value={inr(atRisk + anomalyValue, { compact: true })} sub={`${num(Math.round((flaggedLitres + anomalyLitres) * 10) / 10)} L flagged`} accent="rose" icon={<TriangleAlert className="h-5 w-5" />} />
+        <StatCard
+          label="Unlogged Fills"
+          value={unloggedFills.length === 0 ? "0" : inr(unloggedValue, { compact: true })}
+          sub={unloggedFills.length === 0 ? "all fills have an entry" : `${num(unloggedLitres)} L · ${unloggedFills.length} fill${unloggedFills.length === 1 ? "" : "s"}, last 7 days`}
+          accent={unloggedFills.length === 0 ? "emerald" : "amber"}
+          icon={<Fuel className="h-5 w-5" />}
+        />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
