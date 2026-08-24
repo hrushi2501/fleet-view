@@ -6,8 +6,9 @@ import { put } from "@vercel/blob";
 import crypto from "crypto";
 import { getSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
-import { decideGaugeReading, makeQrToken, staleSessions, reconstructPath, detectFuelEvents, PROVIDERS, type GaugeExtraction, type SessionLite, type ReadingLite } from "@/lib/telematics";
+import { decideGaugeReading, sensorGaugeDecision, makeQrToken, staleSessions, reconstructPath, detectFuelEvents, PROVIDERS, type GaugeExtraction, type SessionLite, type ReadingLite } from "@/lib/telematics";
 import { requireAction, ActionError, safe } from "@/lib/guard";
+import { fuelSensorState } from "@/lib/fuel-sensor";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -112,11 +113,19 @@ async function saveGaugeReading__impl(fd: FormData) {
     reasoning: s(fd, "reasoning") || null,
   };
 
-  const decision = decideGaugeReading(
-    extraction, asset.fuelCapacity,
-    previous ? (previous.correctedPct ?? previous.levelPct) : null,
-    hoursSince
-  );
+  // A vehicle whose tank sender is reporting does not need a person to confirm
+  // a model's reading of a photographed needle — the instrument already gave
+  // the number, in litres, unprompted. Review is for vehicles with no sender,
+  // which is the only place a human eye adds anything.
+  const sensor = await fuelSensorState(assetId);
+
+  const decision = sensor.hasSensor
+    ? sensorGaugeDecision(sensor, asset.fuelCapacity)
+    : decideGaugeReading(
+        extraction, asset.fuelCapacity,
+        previous ? (previous.correctedPct ?? previous.levelPct) : null,
+        hoursSince
+      );
 
   const activeSession = person
     ? await db.tripSession.findFirst({ where: { driverId: person.id, assetId, status: "ACTIVE" } })
@@ -131,7 +140,12 @@ async function saveGaugeReading__impl(fd: FormData) {
       lat: s(fd, "lat") ? n(fd, "lat") : null, lng: s(fd, "lng") ? n(fd, "lng") : null,
       status: decision.status,
       note: decision.reasons.join(" ") || null,
-      verifiedBy: decision.status === "VERIFIED" ? "Auto (high confidence)" : null,
+      verifiedBy:
+        decision.status !== "VERIFIED"
+          ? null
+          : sensor.hasSensor
+            ? "Auto (tank sender)"
+            : "Auto (high confidence)",
       verifiedAt: decision.status === "VERIFIED" ? new Date() : null,
     },
   });

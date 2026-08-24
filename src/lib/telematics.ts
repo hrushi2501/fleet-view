@@ -192,6 +192,39 @@ export type GaugeDecision = {
 };
 
 /**
+ * The decision for a vehicle whose tank sender is reporting.
+ *
+ * There is nothing to weigh. The sender gave litres directly, so the reading is
+ * accepted and the photo — if one was taken — becomes a supporting document
+ * rather than the measurement. Nothing is queued, because a person confirming
+ * an instrument can only make it worse.
+ *
+ * The sender's own noise is not re-litigated here: `fleet-analytics` already
+ * treats movement inside the noise band as no movement, and that is where the
+ * judgement about sender precision belongs.
+ */
+export function sensorGaugeDecision(
+  sensor: { levelL: number | null; levelPct: number | null; at: Date | null },
+  tankCapacityL = 0,
+): GaugeDecision {
+  const litres = sensor.levelL;
+  const pct =
+    sensor.levelPct ??
+    (litres != null && tankCapacityL > 0 ? Math.round((litres / tankCapacityL) * 1000) / 10 : null);
+
+  return {
+    status: "VERIFIED",
+    levelPct: pct,
+    litres,
+    needsReview: false,
+    reasons: [
+      `Taken from the tank sender${sensor.at ? ` at ${sensor.at.toISOString()}` : ""}` +
+        `${litres != null ? `, ${litres.toFixed(1)} L` : ""}. No review needed — the vehicle reports its own level.`,
+    ],
+  };
+}
+
+/**
  * Decide whether a gauge photo can be trusted on its own.
  *
  * Auto-verifying everything would put model guesses into the fuel ledger as

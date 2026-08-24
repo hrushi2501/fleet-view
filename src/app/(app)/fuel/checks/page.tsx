@@ -6,6 +6,7 @@ import { num, fmtDate, timeAgo } from "@/lib/utils";
 import { Camera, CheckCircle2, TriangleAlert, Gauge, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { requirePage } from "@/lib/access";
+import { assetsWithFuelSensor } from "@/lib/fuel-sensor";
 
 export const dynamic = "force-dynamic";
 
@@ -31,9 +32,21 @@ export default async function FuelChecksPage() {
     take: 200,
   });
 
-  const pending = readings.filter((r) => r.status === "PENDING");
+  // A vehicle whose tank sender reports never belongs in this queue: the
+  // instrument already gave litres, and asking somebody to confirm a model's
+  // reading of a photographed needle against it can only make the number worse.
+  // Decided from live telemetry rather than a flag, so a sender that dies puts
+  // its vehicle back on the photo path by itself.
+  const sensorEquipped = await assetsWithFuelSensor([...new Set(readings.map((r) => r.assetId))]);
+
+  const pending = readings.filter((r) => r.status === "PENDING" && !sensorEquipped.has(r.assetId));
+  // Held rows that no longer need a person, because the vehicle gained a sender
+  // after the photo was taken. Surfaced rather than hidden — they would
+  // otherwise sit in the table forever with nobody able to explain why.
+  const supersededBySensor = readings.filter((r) => r.status === "PENDING" && sensorEquipped.has(r.assetId));
   const corrected = readings.filter((r) => r.status === "CORRECTED");
   const auto = readings.filter((r) => r.verifiedBy === "Auto (high confidence)");
+  const autoSensor = readings.filter((r) => r.verifiedBy === "Auto (tank sender)");
   // How often the machine was wrong when a human actually checked.
   const humanChecked = readings.filter((r) => r.status === "CORRECTED" || (r.status === "VERIFIED" && r.verifiedBy !== "Auto (high confidence)"));
   const accuracy = humanChecked.length ? ((humanChecked.length - corrected.length) / humanChecked.length) * 100 : null;
@@ -49,11 +62,17 @@ export default async function FuelChecksPage() {
         <p className="text-sm text-slate-500">
           Fuel levels read from a photo of the gauge, for vehicles with no fuel sensor. Anything unclear waits here for a person.
         </p>
+        {supersededBySensor.length > 0 && (
+          <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 ring-1 ring-emerald-200">
+            {num(supersededBySensor.length)} held reading{supersededBySensor.length === 1 ? "" : "s"} no longer need review — those
+            vehicles now report their own fuel level, and the sender is taken as correct.
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Awaiting Review" value={num(pending.length)} sub="held, not in the ledger" accent={pending.length ? "amber" : "emerald"} icon={<TriangleAlert className="h-5 w-5" />} />
-        <StatCard label="Auto-Accepted" value={num(auto.length)} sub={`${AUTO_VERIFY_CONFIDENCE * 100}%+ clear reading`} accent="emerald" icon={<CheckCircle2 className="h-5 w-5" />} />
+        <StatCard label="Auto-Accepted" value={num(auto.length + autoSensor.length)} sub={autoSensor.length ? `${num(autoSensor.length)} from tank senders, ${num(auto.length)} from photos` : `${AUTO_VERIFY_CONFIDENCE * 100}%+ clear reading`} accent="emerald" icon={<CheckCircle2 className="h-5 w-5" />} />
         <StatCard label="Corrected by Staff" value={num(corrected.length)} sub="model was wrong" accent="brand" icon={<Gauge className="h-5 w-5" />} />
         <StatCard label="Photo Reading Accuracy" value={accuracy != null ? `${accuracy.toFixed(0)}%` : "—"} sub={accuracy != null ? `of ${humanChecked.length} checked by staff` : "koi review nahi hua abhi"} accent="violet" icon={<Camera className="h-5 w-5" />} />
       </div>
