@@ -20,6 +20,9 @@
 :root {
   --background: #f6f8fc;
   --foreground: #0b1220;
+  /* One hairline value, so a card, a table rule and a divider are the same
+     weight everywhere instead of three shades that nearly match. */
+  --hairline: #e6ebf4;
 }
 
 html,
@@ -60,14 +63,46 @@ a,
 .pulse-dot { animation: pulse-ring 2s infinite; }
 
 @keyframes fadeUp {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.animate-fade-up { animation: fadeUp 0.4s ease both; }
+.animate-fade-up { animation: fadeUp 0.3s ease both; }
 
+/* The one surface everything sits on.
+   A hairline plus a barely-there shadow: the border does the separating and
+   the shadow only lifts the card off the page plane. Two heavy edges stacked
+   on top of each other is what makes a dashboard look busy before a single
+   number is drawn. */
 .card {
   background: #fff;
-  border: 1px solid #e6ebf4;
-  border-radius: 16px;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+/* Numbers that sit in a column and must line up. Deliberately NOT applied to
+   standalone figures — equal-width digits make a display-size number look
+   loose, because every glyph takes the width of a zero. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Focus that is visible on every surface without being visible when the
+   pointer is doing the work. */
+:where(a, button, input, select, textarea, [role="button"]):focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* Someone who has asked their system to stop moving things means it. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
