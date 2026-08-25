@@ -30,20 +30,27 @@ export default function LoginPage() {
             Telematics-native fleet & equipment ERP for road construction — live tracking, leak-proof
             fuel, predictive maintenance, compliance, and asset-level P&amp;L.
           </p>
-          <div className="grid max-w-md grid-cols-3 gap-4 pt-4">
+          {/* These were three invented figures — "−32% Fuel loss", "+14%
+              Utilization", "₹0 Penalties" — sitting in the exact place a real
+              result would sit, on the front door of a system holding a real
+              fleet's records. Nobody can be signed in on this page, so they
+              could never have been this fleet's numbers; and a made-up number
+              beside a real one teaches the reader to trust neither. What the
+              product does is a claim it can actually stand behind. */}
+          <div className="grid max-w-md grid-cols-3 gap-3 pt-4">
             {[
-              ["−32%", "Fuel loss"],
-              ["+14%", "Utilization"],
-              ["₹0", "Penalties"],
+              ["Live", "Vehicle telemetry, straight from the OEM"],
+              ["Tank-level", "Fuel measured, not just recorded"],
+              ["Per-asset", "Cost and utilisation on every machine"],
             ].map(([v, l]) => (
-              <div key={l} className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
-                <p className="text-xl font-bold text-brand-400">{v}</p>
-                <p className="text-xs text-slate-400">{l}</p>
+              <div key={v} className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
+                <p className="text-sm font-bold text-brand-400">{v}</p>
+                <p className="mt-1 text-[11px] leading-snug text-slate-400">{l}</p>
               </div>
             ))}
           </div>
         </div>
-        <p className="relative text-xs text-slate-500">Trial environment · demo data · v1.0</p>
+        <p className="relative text-xs text-slate-500">Mahadev Constructions · authorised users only</p>
       </div>
 
       {/* Right login form */}
