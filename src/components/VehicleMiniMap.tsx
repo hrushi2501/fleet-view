@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import dynamic from "next/dynamic";
 import { Loader2, MapPinOff } from "lucide-react";
 import type { MapMarker } from "@/components/RajasthanMap";
@@ -26,6 +27,10 @@ const RajasthanMap = dynamic(() => import("./RajasthanMap"), {
  * as a location.
  */
 export function VehicleMiniMap({ marker }: { marker: MapMarker | null }) {
+  // A fresh array literal every render made the map's fit effect re-run on each
+  // pass, which is what kept re-zooming it mid-tile-load.
+  const markers = useMemo(() => (marker ? [marker] : []), [marker]);
+
   if (!marker) {
     return (
       <div className="flex h-[170px] flex-col items-center justify-center rounded-xl bg-slate-50 text-center">
@@ -38,7 +43,9 @@ export function VehicleMiniMap({ marker }: { marker: MapMarker | null }) {
 
   return (
     <div className="h-[170px] overflow-hidden rounded-xl">
-      <RajasthanMap markers={[marker]} selectedId={marker.id} onSelect={() => {}} />
+      <RajasthanMap markers={markers} selectedId={marker.id} onSelect={noop} />
     </div>
   );
 }
+
+const noop = () => {};

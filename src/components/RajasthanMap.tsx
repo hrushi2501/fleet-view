@@ -33,10 +33,37 @@ const RAJASTHAN_BOUNDS: L.LatLngBoundsExpression = [
   [30.2, 78.3], // NE
 ];
 
+/**
+ * Leaflet measures its container once, at initialisation. In a card that is
+ * still being laid out — a grid column, a lazily imported map — that read is
+ * too early and the map keeps the stale size, so tiles stop short of the right
+ * edge and leave a grey band that reads as a failed load.
+ *
+ * Invalidating once after layout settles is the documented fix. It belongs
+ * here, next to the map instance, rather than in a parent faking window
+ * resizes, which is what made the tiles scale instead of reload.
+ */
+function InvalidateOnResize() {
+  const map = useMap();
+  useEffect(() => {
+    const el = map.getContainer();
+    const ro = new ResizeObserver(() => map.invalidateSize({ animate: false }));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [map]);
+  return null;
+}
+
 function FitToState({ markers }: { markers: MapMarker[] }) {
   const map = useMap();
   useEffect(() => {
-    if (markers.length > 0) {
+    if (markers.length === 1) {
+      // A single marker has zero-area bounds, and padding zero area leaves it
+      // zero. fitBounds then zooms as far in as it is allowed, which renders a
+      // blurred crop of one street with no context. One vehicle wants a fixed,
+      // sensible zoom around its own position instead.
+      map.setView([markers[0].lat, markers[0].lng], 12);
+    } else if (markers.length > 1) {
       // show the cluster but keep state context
       const b = L.latLngBounds(markers.map((m) => [m.lat, m.lng] as [number, number]));
       map.fitBounds(b.pad(0.6), { maxZoom: 11 });
@@ -82,6 +109,7 @@ export default function RajasthanMap({
         </>
       )}
       <FitToState markers={markers} />
+      <InvalidateOnResize />
       {markers.map((m) => (
         <Marker
           key={m.id}

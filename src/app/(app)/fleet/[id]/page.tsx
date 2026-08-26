@@ -1,65 +1,33 @@
 import { db } from "@/lib/db";
-import { Card, Badge, SectionTitle, Progress } from "@/components/ui";
-import { inr, num, fmtDate, timeAgo, ASSET_CLASS_LABEL, STATUS_COLOR, healthColor } from "@/lib/utils";
+import { Badge, Progress } from "@/components/ui";
+import {
+  inr, num, fmtDate, timeAgo, calendarDaysUntil,
+  ASSET_CLASS_LABEL, STATUS_COLOR, healthColor,
+} from "@/lib/utils";
 import { AssetEntry, DeleteButton } from "@/components/EntryForms";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import {
-  ArrowLeft, Fuel, Wrench, ShieldCheck, Activity, Cog, Settings2,
-  Package, MapPin, ClipboardCheck,
+  ArrowLeft, Fuel, Wrench, Activity, Cog, Settings2, Package, MapPin,
+  ClipboardCheck, ShieldCheck, IdCard, Banknote, Radio, Route, UserRound,
 } from "lucide-react";
 import { requirePage, canSeeAsset } from "@/lib/access";
 import { VehicleHero, type HeroSpec } from "@/components/VehicleHero";
 import { VehicleMiniMap } from "@/components/VehicleMiniMap";
+import { Panel, PanelTitle, DetailList, AttentionItem, Chip, type Row } from "@/components/VehicleDetail";
 import { analyseUsage, type AnalyticsReading } from "@/lib/fleet-analytics";
 import { specCards, estimatedRangeKm } from "@/lib/vehicle-spec";
+import { depreciation } from "@/lib/costing";
 
 export const dynamic = "force-dynamic";
 
-/** The design's card shell: 13px radius, hairline, 20/24 padding. */
-function Panel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return (
-    <div
-      className={`rounded-[13px] border border-[#e9eef5] bg-white px-6 py-5 shadow-[0_2px_8px_rgba(16,24,40,.035)] ${className}`}
-    >
-      {children}
-    </div>
-  );
-}
+/** Classes the stock photograph is honestly a picture of. */
+const PHOTO_CLASSES = ["DUMPER", "TIPPER", "TRUCK", "TRANSIT_MIXER", "WATER_TANKER", "PICKUP"];
 
-/** The blue all-caps card heading, with an optional link on the right. */
-function PanelTitle({
-  icon: Icon,
-  children,
-  href,
-  linkLabel,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  children: React.ReactNode;
-  href?: string;
-  linkLabel?: string;
-}) {
-  return (
-    <div className="mb-5 flex items-center gap-2.5 text-[12px] font-extrabold tracking-[.4px] text-[#155eef]">
-      <Icon className="h-4 w-4" />
-      {children}
-      {href && linkLabel && (
-        <Link href={href} className="ml-auto text-[12px] font-bold text-[#155eef] hover:underline">
-          {linkLabel}
-        </Link>
-      )}
-    </div>
-  );
-}
+const SPEC_ICON = { engine: Cog, transmission: Settings2, payload: Package, fuel: Fuel } as const;
 
 /** A row in the LIVE TELEMETRY card — 52px tall, hairline between. */
-function Metric({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function Metric({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex h-[52px] items-center justify-between gap-3 border-b border-[#edf0f4] text-[13px] last:border-b-0">
       <span className="shrink-0 text-[#17233b]">{label}</span>
@@ -67,21 +35,6 @@ function Metric({
     </div>
   );
 }
-
-/**
- * Classes the supplied photograph is honestly a picture of.
- *
- * Everything else — excavators, rollers, graders, cranes, backhoes — gets the
- * plain navy band rather than a tipper wearing its name.
- */
-const PHOTO_CLASSES = ["DUMPER", "TIPPER", "TRUCK", "TRANSIT_MIXER", "WATER_TANKER", "PICKUP"];
-
-const SPEC_ICON = {
-  engine: Cog,
-  transmission: Settings2,
-  payload: Package,
-  fuel: Fuel,
-} as const;
 
 export default async function AssetDetail({ params }: { params: Promise<{ id: string }> }) {
   const access = await requirePage("fleet.view");
@@ -91,39 +44,54 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
   // whose id you can type. Not-found rather than forbidden: telling a scoped
   // supervisor that a record exists is how you enumerate the rest of the fleet.
   if (!(await canSeeAsset(access, id))) notFound();
+
   const asset = await db.asset.findUnique({
     where: { id },
     include: {
       project: true,
       driver: true,
+      telematicsProvider: true,
       trips: { orderBy: { startTime: "desc" }, take: 5 },
-      fuelTxns: { where: { type: "ISSUE" }, orderBy: { date: "desc" }, take: 5 },
-      workOrders: { orderBy: { reportedAt: "desc" }, take: 5 },
+      fuelTxns: { where: { type: "ISSUE" }, orderBy: { date: "desc" }, take: 8 },
+      workOrders: { orderBy: { reportedAt: "desc" }, take: 6 },
       compliance: { orderBy: { expiryDate: "asc" } },
       costs: true,
+      tyres: true,
+      components: true,
     },
   });
   if (!asset) notFound();
 
-  // Efficiency for this one vehicle, measured rather than assumed. Same routine
-  // the fleet screens use, so the range shown here cannot drift from them.
   // eslint-disable-next-line react-hooks/purity
-  const since = new Date(Date.now() - 30 * 86_400_000);
-  const readings = await db.telemetryReading.findMany({
-    where: { assetId: asset.id, recordedAt: { gte: since } },
-    orderBy: { recordedAt: "asc" },
-    select: {
-      recordedAt: true, lat: true, lng: true, speedKph: true,
-      odometerKm: true, fuelLevelL: true, fuelLevelPct: true, ignitionOn: true,
-    },
-  });
+  const now = new Date();
+  const since = new Date(now.getTime() - 30 * 86_400_000);
+
+  const [readings, telemetryAgg, projects] = await Promise.all([
+    db.telemetryReading.findMany({
+      where: { assetId: asset.id, recordedAt: { gte: since } },
+      orderBy: { recordedAt: "asc" },
+      select: {
+        recordedAt: true, lat: true, lng: true, speedKph: true,
+        odometerKm: true, fuelLevelL: true, fuelLevelPct: true, ignitionOn: true,
+      },
+    }),
+    db.telemetryReading.aggregate({
+      where: { assetId: asset.id },
+      _count: { _all: true },
+      _min: { recordedAt: true },
+      _max: { recordedAt: true },
+    }),
+    db.project.findMany({ orderBy: { code: "asc" } }),
+  ]);
+
+  // Efficiency and distance for this one vehicle, measured rather than assumed.
+  // Same routine the fleet screens use, so the two cannot disagree.
   const measured =
     readings.length >= 2
       ? analyseUsage(readings as AnalyticsReading[], null, asset.fuelCapacity || null).usage
       : null;
   const kmPerL = measured && !measured.insufficientData ? measured.avgKmPerL : null;
 
-  const projects = await db.project.findMany({ orderBy: { code: "asc" } });
   const projOpts = projects.map((p) => ({ id: p.id, label: `${p.code} — ${p.name}` }));
   const assetData = {
     id: asset.id, code: asset.code, name: asset.name, assetClass: asset.assetClass, category: asset.category,
@@ -136,12 +104,131 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
     lat: asset.lat, lng: asset.lng,
   };
 
+  /* ── derived facts ──────────────────────────────────────────────────── */
+
+  const meterUnit = asset.primaryMeter === "SMU" ? "engine hours" : "km";
+  const hasPosition = asset.lat !== 0 || asset.lng !== 0;
+  const fuelPct = asset.fuelLevelPct;
+  const rangeKm = estimatedRangeKm(fuelPct, asset.fuelCapacity, kmPerL);
+
+  const serviceDueInDays = asset.serviceDueDate ? calendarDaysUntil(asset.serviceDueDate, now) : null;
+  const serviceOverdue = serviceDueInDays != null && serviceDueInDays < 0;
+
+  const dep = depreciation(
+    {
+      acquisitionCost: asset.acquisitionCost,
+      salvageValue: asset.salvageValue,
+      usefulLifeYears: asset.usefulLifeYears,
+      method: asset.depMethod,
+      inServiceDate: asset.inServiceDate,
+      yearMfg: asset.yearMfg,
+    },
+    now
+  );
+
   const costByHead: Record<string, number> = {};
   for (const c of asset.costs) costByHead[c.costHead] = (costByHead[c.costHead] || 0) + c.amount;
   const totalCost = Object.values(costByHead).reduce((s, v) => s + v, 0);
-  const meterUnit = asset.primaryMeter === "SMU" ? "engine hours" : "km";
 
-  // ── Hero ────────────────────────────────────────────────────────────────
+  const openWorkOrders = asset.workOrders.filter((w) => w.status === "Open" || w.status === "In-Progress");
+  const expiringDocs = asset.compliance.filter((c) => c.status === "Expiring" || c.status === "Expired");
+
+  // The sender is judged from what it is actually sending, not from the flag on
+  // the record — a flag stays true long after a sender dies.
+  const lastFuelAt = asset.fuelLevelAt;
+  const sensorFresh = lastFuelAt != null && now.getTime() - lastFuelAt.getTime() < 24 * 3_600_000;
+
+  const lastSeenMins = (now.getTime() - asset.lastSeen.getTime()) / 60_000;
+  const reportingNow = lastSeenMins < 60;
+
+  /* ── what needs somebody ────────────────────────────────────────────── */
+
+  const attention: React.ReactNode[] = [];
+  if (serviceOverdue) {
+    attention.push(
+      <AttentionItem
+        key="svc"
+        tone="bad"
+        title={`Service overdue by ${Math.abs(serviceDueInDays!)} days`}
+        detail={`Due ${fmtDate(asset.serviceDueDate!)}. Last serviced ${asset.lastServiceDate ? fmtDate(asset.lastServiceDate) : "— no record"}.`}
+        href="/maintenance/reminders"
+        action="Schedule"
+      />
+    );
+  } else if (serviceDueInDays != null && serviceDueInDays <= 15) {
+    attention.push(
+      <AttentionItem
+        key="svc"
+        tone="warn"
+        title={`Service due in ${serviceDueInDays} days`}
+        detail={`Due ${fmtDate(asset.serviceDueDate!)}.`}
+        href="/maintenance/reminders"
+        action="Schedule"
+      />
+    );
+  }
+  if (asset.compliance.length === 0) {
+    attention.push(
+      <AttentionItem
+        key="docs"
+        tone="bad"
+        title="No compliance documents on file"
+        detail="Insurance, permit, fitness and PUC are unrecorded. A vehicle running without these on record cannot be shown to be road-legal."
+        href="/compliance"
+        action="Add"
+      />
+    );
+  } else if (expiringDocs.length > 0) {
+    attention.push(
+      <AttentionItem
+        key="docs"
+        tone="warn"
+        title={`${expiringDocs.length} document${expiringDocs.length === 1 ? "" : "s"} expiring or expired`}
+        detail={expiringDocs.map((d) => d.docType).join(", ")}
+        href="/compliance"
+        action="Review"
+      />
+    );
+  }
+  if (!asset.driverId) {
+    attention.push(
+      <AttentionItem
+        key="drv"
+        tone="warn"
+        title="No operator assigned"
+        detail="Fuel issues and trips recorded against this vehicle cannot be attributed to anyone."
+        href="/drivers"
+        action="Assign"
+      />
+    );
+  }
+  if (!asset.projectId) {
+    attention.push(
+      <AttentionItem
+        key="proj"
+        tone="info"
+        title="Not allocated to a site"
+        detail="Its running costs will not appear in any project's P&L until it is."
+        href="/projects"
+        action="Allocate"
+      />
+    );
+  }
+  if (asset.acquisitionCost <= 0) {
+    attention.push(
+      <AttentionItem
+        key="cost"
+        tone="info"
+        title="No acquisition cost recorded"
+        detail="Depreciation, book value and cost-per-km cannot be calculated for this vehicle."
+        action="Edit"
+        href={`/fleet/${asset.id}`}
+      />
+    );
+  }
+
+  /* ── the design's hero ──────────────────────────────────────────────── */
+
   const statusTone =
     asset.status === "Breakdown" || asset.status === "Under-Maintenance"
       ? "down"
@@ -150,7 +237,7 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
         : "idle";
 
   const heroSpecs: HeroSpec[] = [
-    { label: "MAKE", value: asset.make || null, icon: "engine" },
+    { label: "MAKE & MODEL", value: [asset.make, asset.model].filter(Boolean).join(" ") || null, icon: "engine" },
     { label: "YEAR", value: asset.yearMfg ? String(asset.yearMfg) : null, icon: "power" },
     {
       label: asset.primaryMeter === "SMU" ? "ENGINE HOURS" : "ODOMETER",
@@ -164,28 +251,124 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
     (asset.project ? `, working ${asset.project.name}` : ", not allocated to a site") +
     (asset.driver ? `. Operator ${asset.driver.name}.` : ". No operator assigned.");
 
-  // ── Telemetry card ──────────────────────────────────────────────────────
-  const fuelPct = asset.fuelLevelPct;
-  const rangeKm = estimatedRangeKm(fuelPct, asset.fuelCapacity, kmPerL);
-  const hasPosition = asset.lat !== 0 || asset.lng !== 0;
-
   const cards = specCards({
-    fuelCapacity: asset.fuelCapacity,
-    engineNo: asset.engineNo,
-    chassisNo: asset.chassisNo,
-    make: asset.make,
-    model: asset.model,
-    yearMfg: asset.yearMfg,
+    fuelCapacity: asset.fuelCapacity, engineNo: asset.engineNo, chassisNo: asset.chassisNo,
+    make: asset.make, model: asset.model, yearMfg: asset.yearMfg,
   });
 
+  /* ── the record, grouped ────────────────────────────────────────────── */
+
+  const identityRows: Row[] = [
+    { label: "Asset code", value: asset.code },
+    { label: "Registration", value: asset.registrationNo },
+    { label: "Class", value: ASSET_CLASS_LABEL[asset.assetClass] ?? asset.assetClass },
+    { label: "Category", value: asset.category },
+    { label: "Make", value: asset.make || null },
+    { label: "Model", value: asset.model || null },
+    { label: "Year of manufacture", value: asset.yearMfg ? String(asset.yearMfg) : null, numeric: true },
+    { label: "Chassis number", value: asset.chassisNo },
+    { label: "Engine number", value: asset.engineNo },
+    { label: "Description", value: asset.name || null },
+  ];
+
+  const assignmentRows: Row[] = [
+    {
+      label: "Site / project",
+      value: asset.project ? `${asset.project.code} — ${asset.project.name}` : null,
+      href: asset.project ? `/projects` : undefined,
+    },
+    { label: "Location on site", value: asset.project?.location ?? null },
+    { label: "Operator", value: asset.driver?.name ?? null, href: asset.driver ? `/drivers` : undefined },
+    { label: "Operator licence", value: asset.driver?.licenseNo ?? null },
+    { label: "Ownership", value: asset.ownershipType },
+    { label: "Status", value: asset.status.replace(/-/g, " ") },
+  ];
+
+  const serviceRows: Row[] = [
+    {
+      label: "Next service due",
+      value: asset.serviceDueDate ? fmtDate(asset.serviceDueDate) : null,
+      hint:
+        serviceDueInDays == null
+          ? undefined
+          : serviceOverdue
+            ? `${Math.abs(serviceDueInDays)} days overdue`
+            : `in ${serviceDueInDays} days`,
+      tone: serviceOverdue ? "bad" : serviceDueInDays != null && serviceDueInDays <= 15 ? "warn" : "default",
+    },
+    {
+      label: "Last serviced",
+      value: asset.lastServiceDate ? fmtDate(asset.lastServiceDate) : null,
+      hint: asset.lastServiceDate ? timeAgo(asset.lastServiceDate) : undefined,
+    },
+    { label: "Open work orders", value: String(openWorkOrders.length), numeric: true, tone: openWorkOrders.length ? "warn" : "good" },
+    { label: "Work orders (all time)", value: String(asset.workOrders.length), numeric: true },
+    { label: "Health score", value: `${asset.healthScore}`, numeric: true },
+    { label: "Tyres on record", value: asset.tyres.length ? String(asset.tyres.length) : null, numeric: true },
+    { label: "Major components", value: asset.components.length ? String(asset.components.length) : null, numeric: true },
+    { label: "Primary meter", value: `${asset.primaryMeter} · ${num(asset.meterValue)} ${meterUnit}` },
+  ];
+
+  const financeRows: Row[] = [
+    { label: "Acquisition cost", value: asset.acquisitionCost > 0 ? inr(asset.acquisitionCost) : null, numeric: true },
+    { label: "Insured value", value: asset.insuredValue > 0 ? inr(asset.insuredValue) : null, numeric: true },
+    { label: "Depreciation method", value: asset.depMethod === "WDV" ? "Written-down value" : "Straight line" },
+    { label: "Useful life", value: `${asset.usefulLifeYears} years`, numeric: true },
+    { label: "Salvage value", value: asset.salvageValue > 0 ? inr(asset.salvageValue) : null, numeric: true },
+    // `known` is false when there is no cost or no in-service date. The zeros it
+    // returns then are the absence of a figure, not a machine that is worth
+    // nothing — printing them as money is how a fleet reports fictional profit.
+    { label: "Book value today", value: dep.known ? inr(dep.bookValue) : null, numeric: true, hint: dep.known ? `${dep.ageYears.toFixed(1)} years old` : "Needs acquisition cost and in-service date" },
+    { label: "Accumulated depreciation", value: dep.known ? inr(dep.accumulated) : null, numeric: true },
+    { label: "Cost booked (all time)", value: totalCost > 0 ? inr(totalCost) : null, numeric: true },
+    { label: "In service since", value: asset.inServiceDate ? fmtDate(asset.inServiceDate) : null },
+    { label: "Commissioned", value: asset.commissionedOn ? fmtDate(asset.commissionedOn) : null },
+  ];
+
+  const samplesPerDay =
+    telemetryAgg._min.recordedAt && telemetryAgg._max.recordedAt && telemetryAgg._count._all > 1
+      ? telemetryAgg._count._all /
+        Math.max(1, (telemetryAgg._max.recordedAt.getTime() - telemetryAgg._min.recordedAt.getTime()) / 86_400_000)
+      : null;
+
+  const telemetryRows: Row[] = [
+    { label: "Provider", value: asset.telematicsProvider?.name ?? null },
+    { label: "Device / IMEI", value: asset.deviceId },
+    { label: "Last reported", value: timeAgo(asset.lastSeen), tone: reportingNow ? "good" : "warn", hint: fmtDate(asset.lastSeen) },
+    { label: "Readings stored", value: num(telemetryAgg._count._all), numeric: true },
+    { label: "Reporting since", value: telemetryAgg._min.recordedAt ? fmtDate(telemetryAgg._min.recordedAt) : null },
+    { label: "Sampling rate", value: samplesPerDay ? `${num(samplesPerDay)} / day` : null, numeric: true },
+    { label: "Fuel sender", value: sensorFresh ? "Reporting" : asset.hasFuelSensor ? "Fitted, silent" : null, tone: sensorFresh ? "good" : "warn", hint: lastFuelAt ? `last level ${timeAgo(lastFuelAt)}` : undefined },
+    { label: "Tank capacity", value: asset.fuelCapacity > 0 ? `${num(asset.fuelCapacity)} L` : null, numeric: true },
+  ];
+
+  const usageRows: Row[] = measured
+    ? [
+        { label: "Distance (30 days)", value: `${num(measured.distanceKm)} km`, numeric: true, hint: `from ${measured.distanceSource.toLowerCase()}` },
+        { label: "Diesel burned", value: measured.insufficientData ? null : `${num(measured.litresBurned)} L`, numeric: true, hint: measured.insufficientData ? "telemetry too sparse to say" : `±${measured.litresBurnedUncertainty} L` },
+        { label: "Diesel filled", value: `${num(measured.litresFilled)} L`, numeric: true, hint: `${measured.refuelEvents} refuel event${measured.refuelEvents === 1 ? "" : "s"}` },
+        { label: "Efficiency", value: kmPerL != null ? `${kmPerL} km/L` : null, numeric: true, hint: kmPerL != null ? `${measured.confidence.toLowerCase()} confidence` : "needs denser telemetry" },
+        { label: "Unaccounted diesel", value: measured.insufficientData ? null : `${num(measured.litresUnaccounted)} L`, numeric: true, tone: measured.litresUnaccounted > 0 ? "warn" : "good" },
+        { label: "Longest data gap", value: `${measured.worstGapHours} h`, numeric: true, tone: measured.worstGapHours > 6 ? "warn" : "default" },
+        { label: "Utilisation", value: `${asset.utilization}%`, numeric: true },
+        { label: "Segments analysed", value: num(measured.segments), numeric: true },
+      ]
+    : [];
+
   return (
-    <div className="space-y-6">
-      <Link href="/fleet" className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-brand-600">
-        <ArrowLeft className="h-4 w-4" /> Back to Fleet
-      </Link>
+    <div className="space-y-6 pb-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Link href="/fleet" className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-brand-600">
+          <ArrowLeft className="h-4 w-4" /> Back to Fleet
+        </Link>
+        <div className="flex items-center gap-2">
+          <AssetEntry projects={projOpts} asset={assetData} />
+          <DeleteButton kind="asset" id={asset.id} label={asset.code} />
+        </div>
+      </div>
 
       {/* Bled to the edges of the content column, as the design has it. */}
-      <div className="-mx-4 overflow-hidden rounded-none lg:-mx-8">
+      <div className="-mx-4 overflow-hidden lg:-mx-8">
         <VehicleHero
           status={asset.status.replace(/-/g, " ").toUpperCase()}
           statusTone={statusTone}
@@ -197,7 +380,13 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
         />
       </div>
 
-      {/* ── The designed grid: telemetry down the left, four spec cards right ── */}
+      {/* Whoever opens a vehicle is usually asking "is anything wrong with this
+          one". The answer goes here, not six cards down behind reference data. */}
+      {attention.length > 0 && (
+        <div className="grid gap-2.5 sm:grid-cols-2">{attention}</div>
+      )}
+
+      {/* ── The designed grid ────────────────────────────────────────────── */}
       <div className="grid gap-3.5 lg:grid-cols-[1.05fr_1fr_1fr]">
         <Panel className="lg:row-span-2">
           <PanelTitle icon={Activity} href="/fleet/tracking" linkLabel="View Details">
@@ -210,7 +399,7 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
 
           <Metric label="Current Location">
             <strong className="truncate text-sm font-bold text-[#17233b]">
-              {hasPosition ? `${asset.lat.toFixed(3)}, ${asset.lng.toFixed(3)}` : "Not reporting"}
+              {hasPosition ? `${asset.lat.toFixed(4)}, ${asset.lng.toFixed(4)}` : "Not reporting"}
             </strong>
           </Metric>
 
@@ -221,11 +410,8 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
               <strong className="text-sm font-medium italic text-slate-400">No sensor reading</strong>
             ) : (
               <>
-                <div className="ml-auto mr-3 h-[9px] w-[145px] overflow-hidden rounded-full bg-[#e6ebf3]">
-                  <div
-                    className="h-full rounded-full bg-[#2d66ed]"
-                    style={{ width: `${Math.max(0, Math.min(100, fuelPct))}%` }}
-                  />
+                <div className="ml-auto mr-3 h-[9px] w-[120px] overflow-hidden rounded-full bg-[#e6ebf3]">
+                  <div className="h-full rounded-full bg-[#2d66ed]" style={{ width: `${Math.max(0, Math.min(100, fuelPct))}%` }} />
                 </div>
                 <strong className="text-sm font-bold text-[#17233b]">{Math.round(fuelPct)}%</strong>
               </>
@@ -238,7 +424,21 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
             </strong>
           </Metric>
 
-          <p className="mt-4 text-[11px] leading-relaxed text-[#667085]">
+          <Metric label="Speed">
+            <strong className="text-sm font-bold text-[#17233b]">
+              {reportingNow ? `${num(asset.speed)} km/h` : "—"}
+            </strong>
+          </Metric>
+
+          <div className="mt-4 flex flex-wrap gap-1.5">
+            <Chip tone={reportingNow ? "good" : "warn"}>
+              {reportingNow ? "Live" : `Last seen ${timeAgo(asset.lastSeen)}`}
+            </Chip>
+            {sensorFresh && <Chip tone="good">Tank sender</Chip>}
+            {asset.telematicsProvider && <Chip>{asset.telematicsProvider.name}</Chip>}
+          </div>
+
+          <p className="mt-3 text-[11px] leading-relaxed text-[#667085]">
             {kmPerL != null
               ? `Range from ${kmPerL} km/L measured over the last 30 days.`
               : "Range appears once this vehicle has enough telemetry to measure its own consumption — an assumed figure would be a guess someone dispatches on."}
@@ -255,11 +455,9 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
                 </div>
                 <div className="min-w-0">
                   <p className="text-[12px] font-extrabold tracking-[.4px] text-[#155eef]">{c.label}</p>
-                  {c.value ? (
-                    <p className="mt-1.5 text-[19px] font-extrabold tracking-[-.2px] text-[#17233b]">{c.value}</p>
-                  ) : (
-                    <p className="mt-1.5 text-[19px] font-extrabold tracking-[-.2px] text-slate-300">—</p>
-                  )}
+                  <p className={`mt-1.5 truncate text-[19px] font-extrabold tracking-[-.2px] ${c.value ? "text-[#17233b]" : "text-slate-300"}`}>
+                    {c.value ?? "—"}
+                  </p>
                   <p className="mt-1 text-xs text-[#667085]">{c.sub}</p>
                 </div>
               </div>
@@ -268,7 +466,7 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
         })}
       </div>
 
-      {/* ── Map and maintenance, side by side as designed ────────────────── */}
+      {/* ── Map and maintenance ──────────────────────────────────────────── */}
       <div className="grid gap-3.5 lg:grid-cols-2">
         <Panel>
           <PanelTitle icon={MapPin} href="/fleet/tracking" linkLabel="View Map">
@@ -287,7 +485,7 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
             }
           />
           <p className="mt-3 text-[11px] text-[#667085]">
-            {hasPosition ? `Last reported ${timeAgo(asset.lastSeen)}.` : "Waiting on a first position report."}
+            {hasPosition ? `Last reported ${timeAgo(asset.lastSeen)} · ${asset.lat.toFixed(4)}, ${asset.lng.toFixed(4)}` : "Waiting on a first position report."}
           </p>
         </Panel>
 
@@ -299,8 +497,14 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
             <div className="grid h-[170px] place-items-center text-center">
               <div>
                 <ClipboardCheck className="mx-auto mb-3 h-11 w-11 text-slate-200" />
-                <b className="mb-1.5 block text-[13px] font-semibold text-[#1c2a42]">No maintenance scheduled</b>
-                <span className="text-xs text-[#667085]">All systems are running smoothly</span>
+                <b className="mb-1.5 block text-[13px] font-semibold text-[#1c2a42]">
+                  {serviceOverdue ? "No work orders raised" : "No maintenance scheduled"}
+                </b>
+                <span className="text-xs text-[#667085]">
+                  {serviceOverdue
+                    ? `Service is ${Math.abs(serviceDueInDays!)} days overdue and nothing has been raised`
+                    : "All systems are running smoothly"}
+                </span>
               </div>
             </div>
           ) : (
@@ -312,7 +516,7 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
                     <p className="truncate text-xs text-[#667085]">{w.description}</p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-[13px] font-bold text-[#17233b]">{inr(w.totalCost, { compact: true })}</p>
+                    <p className="text-[13px] font-bold tabular-nums text-[#17233b]">{inr(w.totalCost, { compact: true })}</p>
                     <Badge color={STATUS_COLOR[w.status]}>{w.status}</Badge>
                   </div>
                 </div>
@@ -322,108 +526,178 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
         </Panel>
       </div>
 
-      {/* ── Everything the page already did, kept ─────────────────────────── */}
-      <div className="card flex flex-wrap items-center justify-between gap-4 p-6">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold text-ink-900">{asset.code}</h2>
-            <Badge color={STATUS_COLOR[asset.status]}>{asset.status}</Badge>
-          </div>
-          <p className="text-sm text-slate-500">
-            {asset.name} · {ASSET_CLASS_LABEL[asset.assetClass]} · {asset.ownershipType}
-            {asset.registrationNo ? ` · ${asset.registrationNo}` : ""}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <AssetEntry projects={projOpts} asset={assetData} />
-          <DeleteButton kind="asset" id={asset.id} label={asset.code} />
-        </div>
+      {/* ── The record ───────────────────────────────────────────────────── */}
+      <div className="grid gap-3.5 lg:grid-cols-2">
+        <Panel>
+          <PanelTitle icon={IdCard}>IDENTITY &amp; REGISTRATION</PanelTitle>
+          <DetailList rows={identityRows} />
+        </Panel>
+
+        <Panel>
+          <PanelTitle icon={UserRound}>ASSIGNMENT</PanelTitle>
+          <DetailList rows={assignmentRows} />
+        </Panel>
+
+        <Panel>
+          <PanelTitle icon={Wrench}>SERVICE &amp; CONDITION</PanelTitle>
+          <DetailList rows={serviceRows} />
+        </Panel>
+
+        <Panel>
+          <PanelTitle
+            icon={Banknote}
+            note={dep.known ? undefined : "Book value and depreciation stay blank until an acquisition cost and in-service date are recorded — a zero here would read as a machine worth nothing."}
+          >
+            OWNERSHIP &amp; FINANCE
+          </PanelTitle>
+          <DetailList rows={financeRows} />
+        </Panel>
+
+        <Panel>
+          <PanelTitle icon={Radio}>TELEMETRY &amp; DEVICE</PanelTitle>
+          <DetailList rows={telemetryRows} />
+        </Panel>
+
+        <Panel>
+          <PanelTitle
+            icon={Route}
+            note={
+              measured?.insufficientData
+                ? "Fuel figures are withheld for this window: the sampling is too sparse to separate consumption from sender noise."
+                : undefined
+            }
+          >
+            MEASURED USE — LAST 30 DAYS
+          </PanelTitle>
+          {usageRows.length > 0 ? (
+            <DetailList rows={usageRows} />
+          ) : (
+            <p className="py-6 text-center text-sm text-slate-400">
+              Not enough telemetry in the last 30 days to measure anything.
+            </p>
+          )}
+        </Panel>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <SectionTitle title="Specifications" />
-          <dl className="grid grid-cols-2 gap-y-3 text-sm">
-            {[
-              ["Make / Model", `${asset.make} ${asset.model}`],
-              ["Year", String(asset.yearMfg)],
-              ["Category", asset.category],
-              ["Primary Meter", asset.primaryMeter],
-              ["Fuel Capacity", asset.fuelCapacity > 0 ? `${asset.fuelCapacity} L` : "—"],
-              ["Assigned Operator", asset.driver?.name ?? "—"],
-              ["Last Seen", timeAgo(asset.lastSeen)],
-              ["Acquisition Cost", inr(asset.acquisitionCost)],
-            ].map(([k, v]) => (
-              <div key={k}>
-                <dt className="text-xs text-slate-400">{k}</dt>
-                <dd className="font-medium text-ink-900">{v}</dd>
-              </div>
-            ))}
-          </dl>
-        </Card>
-
-        <Card>
-          <SectionTitle title="Cost Breakdown (6 months)" />
-          <div className="space-y-2.5">
-            {Object.entries(costByHead).sort((a, b) => b[1] - a[1]).map(([head, val]) => (
-              <div key={head}>
-                <div className="mb-1 flex justify-between text-sm">
-                  <span className="text-slate-600">{head}</span>
-                  <span className="font-medium tabular-nums text-ink-900">{inr(val, { compact: true })}</span>
-                </div>
-                <Progress value={totalCost ? (val / totalCost) * 100 : 0} />
-              </div>
-            ))}
-            {Object.keys(costByHead).length === 0 && <p className="text-sm text-slate-400">No costs booked.</p>}
+      {/* ── Compliance ───────────────────────────────────────────────────── */}
+      <Panel>
+        <PanelTitle icon={ShieldCheck} href="/compliance" linkLabel="Manage">
+          COMPLIANCE DOCUMENTS
+        </PanelTitle>
+        {asset.compliance.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-4 py-8 text-center">
+            <p className="text-[13px] font-semibold text-[#1c2a42]">No documents on file</p>
+            <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-[#667085]">
+              Insurance, permit, fitness and PUC are unrecorded for this vehicle. Nothing here proves it is not
+              covered — only that this system cannot show that it is.
+            </p>
           </div>
-        </Card>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <SectionTitle title="Compliance" action={<ShieldCheck className="h-4 w-4 text-slate-400" />} />
-          <div className="space-y-2">
-            {asset.compliance.length === 0 && <p className="text-sm text-slate-400">No documents on file.</p>}
-            {asset.compliance.map((c) => (
-              <div key={c.id} className="flex items-center justify-between border-b border-slate-50 py-1.5 last:border-0">
-                <div>
-                  <p className="text-sm font-medium text-ink-900">{c.docType}</p>
-                  <p className="text-xs text-slate-400">{c.number} · exp {fmtDate(c.expiryDate)}</p>
-                </div>
-                <Badge color={STATUS_COLOR[c.status]}>{c.status}</Badge>
-              </div>
-            ))}
-          </div>
-        </Card>
-
-        <Card>
-          <SectionTitle title="Recent Fuel Issues" action={<Fuel className="h-4 w-4 text-slate-400" />} />
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-xs uppercase tracking-wider text-slate-400">
-                <tr>
-                  <th className="py-2 font-medium">Date</th>
-                  <th className="py-2 font-medium">Issued (L)</th>
-                  <th className="py-2 font-medium">Sensor Rise (L)</th>
-                  <th className="py-2 font-medium">Variance</th>
-                  <th className="py-2 font-medium">Flag</th>
+        ) : (
+          <div className="-mx-6 overflow-x-auto px-6">
+            <table className="w-full min-w-[36rem] text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  <th className="pb-2">Document</th>
+                  <th className="pb-2">Number</th>
+                  <th className="pb-2">Issued</th>
+                  <th className="pb-2">Expires</th>
+                  <th className="pb-2 text-right">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {asset.fuelTxns.map((f) => (
-                  <tr key={f.id} className="border-t border-slate-50">
-                    <td className="py-2 text-slate-600">{fmtDate(f.date)}</td>
-                    <td className="py-2 font-medium tabular-nums text-ink-900">{num(f.quantity)}</td>
-                    <td className="py-2 tabular-nums text-slate-600">{num(f.sensorRise)}</td>
-                    <td className={`py-2 font-medium tabular-nums ${f.variancePct > 10 ? "text-rose-600" : "text-slate-600"}`}>{f.variancePct.toFixed(1)}%</td>
-                    <td className="py-2">{f.anomaly ? <Badge color="bg-rose-100 text-rose-700 ring-rose-600/20">Check</Badge> : <Badge color="bg-emerald-100 text-emerald-700 ring-emerald-600/20">OK</Badge>}</td>
+                {asset.compliance.map((c) => (
+                  <tr key={c.id} className="border-b border-slate-50 last:border-0">
+                    <td className="py-2.5 font-medium text-ink-900">{c.docType}</td>
+                    <td className="py-2.5 tabular-nums text-slate-600">{c.number}</td>
+                    <td className="py-2.5 text-slate-600">{c.issueDate ? fmtDate(c.issueDate) : "—"}</td>
+                    <td className="py-2.5 text-slate-600">
+                      {fmtDate(c.expiryDate)}
+                      <span className="ml-2 text-[11px] text-slate-400">{timeAgo(c.expiryDate)}</span>
+                    </td>
+                    <td className="py-2.5 text-right"><Badge color={STATUS_COLOR[c.status]}>{c.status}</Badge></td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {asset.fuelTxns.length === 0 && <p className="py-3 text-sm text-slate-400">No fuel issues recorded.</p>}
           </div>
-        </Card>
+        )}
+      </Panel>
+
+      {/* ── Fuel ─────────────────────────────────────────────────────────── */}
+      <div className="grid gap-3.5 lg:grid-cols-3">
+        <Panel className="lg:col-span-2">
+          <PanelTitle
+            icon={Fuel}
+            href="/fuel"
+            linkLabel="All fuel"
+            note="Issued is what somebody keyed in; sensor rise is what the tank actually gained. The gap between them is the question worth asking."
+          >
+            RECENT FUEL ISSUES
+          </PanelTitle>
+          {asset.fuelTxns.length === 0 ? (
+            <p className="py-8 text-center text-sm text-slate-400">No fuel issues recorded against this vehicle.</p>
+          ) : (
+            <div className="-mx-6 overflow-x-auto px-6">
+              <table className="w-full min-w-[34rem] text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    <th className="pb-2">Date</th>
+                    <th className="pb-2 text-right">Issued</th>
+                    <th className="pb-2 text-right">Sensor rise</th>
+                    <th className="pb-2 text-right">Variance</th>
+                    <th className="pb-2 text-right">Amount</th>
+                    <th className="pb-2 text-right">Flag</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {asset.fuelTxns.map((f) => (
+                    <tr key={f.id} className="border-b border-slate-50 last:border-0">
+                      <td className="py-2.5 text-slate-600">{fmtDate(f.date)}</td>
+                      <td className="py-2.5 text-right font-medium tabular-nums text-ink-900">{num(f.quantity)} L</td>
+                      <td className="py-2.5 text-right tabular-nums text-slate-600">{num(f.sensorRise)} L</td>
+                      <td className={`py-2.5 text-right font-medium tabular-nums ${f.variancePct > 10 ? "text-rose-600" : "text-slate-600"}`}>
+                        {f.variancePct.toFixed(1)}%
+                      </td>
+                      <td className="py-2.5 text-right tabular-nums text-slate-600">{inr(f.amount)}</td>
+                      <td className="py-2.5 text-right">
+                        {f.anomaly
+                          ? <Badge color="bg-rose-100 text-rose-700 ring-rose-600/20">Check</Badge>
+                          : <Badge color="bg-emerald-100 text-emerald-700 ring-emerald-600/20">OK</Badge>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Panel>
+
+        <Panel>
+          <PanelTitle icon={Banknote} href="/costs" linkLabel="Costs">
+            COST BY HEAD
+          </PanelTitle>
+          {totalCost > 0 ? (
+            <div className="space-y-3">
+              {Object.entries(costByHead).sort((a, b) => b[1] - a[1]).map(([head, val]) => (
+                <div key={head}>
+                  <div className="mb-1.5 flex items-baseline justify-between gap-3 text-xs">
+                    <span className="truncate font-medium text-slate-700">{head}</span>
+                    <span className="shrink-0 tabular-nums text-slate-500">{inr(val, { compact: true })}</span>
+                  </div>
+                  <Progress value={(val / totalCost) * 100} />
+                </div>
+              ))}
+              <div className="border-t border-slate-100 pt-3 text-sm">
+                <span className="text-slate-500">Total</span>
+                <span className="float-right font-bold tabular-nums text-ink-900">{inr(totalCost)}</span>
+              </div>
+            </div>
+          ) : (
+            <p className="py-8 text-center text-sm text-slate-400">
+              No costs booked against this vehicle.
+            </p>
+          )}
+        </Panel>
       </div>
     </div>
   );
