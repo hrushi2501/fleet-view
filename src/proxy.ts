@@ -26,5 +26,11 @@ export const config = {
   // Machine and API endpoints are excluded because a redirect to /login is a useless
   // answer to a device, an API client, or a cron runner. Each of them authenticates with a
   // session or shared secret in its own handler.
-  matcher: ["/((?!api/|api|.well-known|manifest.webmanifest|sw.js|icon.svg|icon-192.png|icon-512.png|_next/static|_next/image|favicon.ico).*)"],
+  //
+  // `vehicles/` is excluded for a subtler reason. Next's image optimiser fetches
+  // the underlying file over HTTP itself, and that internal request carries no
+  // session cookie — so guarding the folder does not protect anything, it just
+  // makes every optimised image 307 to /login for signed-in users too. The files
+  // there are generic vehicle photography with nothing customer-specific in them.
+  matcher: ["/((?!api/|api|.well-known|manifest.webmanifest|sw.js|icon.svg|icon-192.png|icon-512.png|_next/static|_next/image|favicon.ico|vehicles/).*)"],
 };
