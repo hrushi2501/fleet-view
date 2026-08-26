@@ -44,7 +44,7 @@ export default async function ComplianceChecksPage() {
 
   const results = assets.map((a) => ({
     asset: a,
-    compliance: assetCompliance(a.id, a.category, docsByAsset.get(a.id) ?? []),
+    compliance: assetCompliance(a.id, a.category, docsByAsset.get(a.id) ?? [], new Date(), a.assetClass),
   }));
 
   const grounded = results.filter((r) => !r.compliance.operable);

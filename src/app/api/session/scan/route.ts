@@ -81,7 +81,7 @@ export async function POST(req: Request) {
   const comp = assetCompliance(asset.id, asset.category, asset.compliance.map((d): DocLite => ({
     id: d.id, docType: d.docType, number: d.number, issueDate: d.issueDate,
     expiryDate: d.expiryDate, reminderDays: d.reminderDays, documentUrl: d.documentUrl,
-  })));
+  })), new Date(), asset.assetClass);
   for (const f of comp.findings.filter((x) => x.blocking && (x.state === "expired" || x.state === "missing"))) {
     warnings.push(`${DOC_LABEL[f.docType] ?? f.docType}: ${f.state === "missing" ? "not on record" : "expired"}`);
   }

@@ -88,7 +88,7 @@ export default async function ManagementSummaryPage() {
     arr.push({ id: d.id, docType: d.docType, number: d.number, issueDate: d.issueDate, expiryDate: d.expiryDate, reminderDays: d.reminderDays, documentUrl: d.documentUrl });
     docsByAsset.set(d.assetId, arr);
   }
-  const notOperable = assets.filter((a) => !assetCompliance(a.id, a.category, docsByAsset.get(a.id) ?? []).operable).length;
+  const notOperable = assets.filter((a) => !assetCompliance(a.id, a.category, docsByAsset.get(a.id) ?? [], new Date(), a.assetClass).operable).length;
 
   // Weighbridge
   const pairs = reconcilePairs(tickets.map((x): TicketLite => ({

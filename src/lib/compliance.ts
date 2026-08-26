@@ -31,6 +31,40 @@ export const REQUIRED_DOCS: Record<string, string[]> = {
   EQUIPMENT: ["Insurance"],
 };
 
+/**
+ * Per-class overrides, because "VEHICLE" covers a tipper and a staff scooter and
+ * the law does not ask the same of both.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * A permit is a commercial-carriage document. Demanding one from a motorbike
+ * produces a "missing mandatory document" that can never be satisfied, and a
+ * machine permanently marked not-operable is one people learn to ignore — which
+ * costs exactly the signal this module exists to give. The same goes for asking
+ * a stationary asphalt plant for a pollution certificate: it has no engine, no
+ * registration and no tailpipe.
+ *
+ * Anything not listed here falls back to its category, so the strict commercial
+ * set stays the default for trucks.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+export const REQUIRED_DOCS_BY_CLASS: Record<string, string[]> = {
+  // Fixed and towed plant. Insured, but never registered or driven.
+  PLANT: ["Insurance"],
+  CRUSHER: ["Insurance"],
+  // Private and staff vehicles: registered and insured, pollution tested. No
+  // commercial permit; fitness is not required for a private vehicle until it
+  // is fifteen years old.
+  BIKE: ["RC", "Insurance", "PUC"],
+  CAR: ["RC", "Insurance", "PUC"],
+  PICKUP: ["RC", "Insurance", "PUC"],
+};
+
+/** The documents this particular machine has to hold. */
+export function requiredDocsFor(category: string, assetClass?: string | null): string[] {
+  if (assetClass && REQUIRED_DOCS_BY_CLASS[assetClass]) return REQUIRED_DOCS_BY_CLASS[assetClass];
+  return REQUIRED_DOCS[category] ?? REQUIRED_DOCS.VEHICLE;
+}
+
 /** Documents whose absence stops the machine, versus those that are advisory. */
 export const BLOCKING_DOCS = new Set(["RC", "Insurance", "Fitness", "Permit", "PUC"]);
 
@@ -82,9 +116,11 @@ export function assetCompliance(
   assetId: string,
   category: string,
   docs: DocLite[],
-  now = new Date()
+  now = new Date(),
+  /** Optional, and it should be passed: it narrows the requirement to the class. */
+  assetClass?: string | null
 ): AssetCompliance {
-  const required = REQUIRED_DOCS[category] ?? REQUIRED_DOCS.VEHICLE;
+  const required = requiredDocsFor(category, assetClass);
 
   // Latest expiry per type wins; an old renewed copy shouldn't mark the asset expired.
   const latest = new Map<string, DocLite>();

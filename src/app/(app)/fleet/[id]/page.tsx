@@ -12,6 +12,7 @@ import {
   ClipboardCheck, ShieldCheck, IdCard, Banknote, Radio, Route, UserRound,
 } from "lucide-react";
 import { requirePage, canSeeAsset } from "@/lib/access";
+import { requiredDocsFor, DOC_LABEL } from "@/lib/compliance";
 import { VehicleHero, type HeroSpec } from "@/components/VehicleHero";
 import { VehicleMiniMap } from "@/components/VehicleMiniMap";
 import { Panel, PanelTitle, DetailList, AttentionItem, Chip, type Row } from "@/components/VehicleDetail";
@@ -130,6 +131,15 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
   for (const c of asset.costs) costByHead[c.costHead] = (costByHead[c.costHead] || 0) + c.amount;
   const totalCost = Object.values(costByHead).reduce((s, v) => s + v, 0);
 
+  // What this machine is actually required to hold. A stationary batch plant
+  // has no pollution certificate and no permit; asking for them, and then
+  // reporting them missing forever, is how a warning stops being read.
+  const requiredDocs = requiredDocsFor(asset.category, asset.assetClass);
+  const requiredLabel = requiredDocs.map((d) => DOC_LABEL[d] ?? d).join(", ");
+  const missingDocs = requiredDocs.filter(
+    (t) => !asset.compliance.some((c) => c.docType === t)
+  );
+
   const openWorkOrders = asset.workOrders.filter((w) => w.status === "Open" || w.status === "In-Progress");
   const expiringDocs = asset.compliance.filter((c) => c.status === "Expiring" || c.status === "Expired");
 
@@ -167,18 +177,23 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
       />
     );
   }
-  if (asset.compliance.length === 0) {
+  if (missingDocs.length > 0) {
     attention.push(
       <AttentionItem
         key="docs"
         tone="bad"
-        title="No compliance documents on file"
-        detail="Insurance, permit, fitness and PUC are unrecorded. A vehicle running without these on record cannot be shown to be road-legal."
+        title={
+          asset.compliance.length === 0
+            ? "No compliance documents on file"
+            : `${missingDocs.length} required document${missingDocs.length === 1 ? "" : "s"} missing`
+        }
+        detail={`${missingDocs.map((d) => DOC_LABEL[d] ?? d).join(", ")} not recorded. Nothing here proves this machine is uncovered — only that the system cannot show that it is.`}
         href="/compliance"
         action="Add"
       />
     );
-  } else if (expiringDocs.length > 0) {
+  }
+  if (expiringDocs.length > 0) {
     attention.push(
       <AttentionItem
         key="docs"
@@ -581,15 +596,20 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
 
       {/* ── Compliance ───────────────────────────────────────────────────── */}
       <Panel>
-        <PanelTitle icon={ShieldCheck} href="/compliance" linkLabel="Manage">
+        <PanelTitle
+          icon={ShieldCheck}
+          href="/compliance"
+          linkLabel="Manage"
+          note={`Required for a ${(ASSET_CLASS_LABEL[asset.assetClass] ?? asset.assetClass).toLowerCase()}: ${requiredLabel}. Anything else is recorded but not demanded.`}
+        >
           COMPLIANCE DOCUMENTS
         </PanelTitle>
         {asset.compliance.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-4 py-8 text-center">
             <p className="text-[13px] font-semibold text-[#1c2a42]">No documents on file</p>
             <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-[#667085]">
-              Insurance, permit, fitness and PUC are unrecorded for this vehicle. Nothing here proves it is not
-              covered — only that this system cannot show that it is.
+              This {(ASSET_CLASS_LABEL[asset.assetClass] ?? asset.assetClass).toLowerCase()} is required to hold{" "}
+              {requiredLabel}. Nothing here proves it is uncovered — only that this system cannot show that it is.
             </p>
           </div>
         ) : (
