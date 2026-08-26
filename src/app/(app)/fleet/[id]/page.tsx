@@ -22,8 +22,19 @@ import { depreciation } from "@/lib/costing";
 
 export const dynamic = "force-dynamic";
 
-/** Classes the stock photograph is honestly a picture of. */
-const PHOTO_CLASSES = ["DUMPER", "TIPPER", "TRUCK", "TRANSIT_MIXER", "WATER_TANKER", "PICKUP"];
+/**
+ * Classes each stock photograph is honestly a picture of.
+ *
+ * Keyed by class rather than by a single list, because one photo covering
+ * "anything with wheels" is how a Fortuner ended up illustrated with a tipper.
+ * A class with no entry gets the plain navy band — which says nothing, and is
+ * therefore better than saying something false.
+ */
+const CLASS_PHOTO: Record<string, string> = {
+  TRUCK: "/vehicles/hero-truck.jpg",
+  TIPPER: "/vehicles/hero-truck.jpg",
+  DUMPER: "/vehicles/hero-truck.jpg",
+};
 
 const SPEC_ICON = { engine: Cog, transmission: Settings2, payload: Package, fuel: Fuel } as const;
 
@@ -391,7 +402,7 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
           titleBottom={asset.registrationNo ?? asset.model ?? asset.name}
           description={heroDescription}
           specs={heroSpecs}
-          image={PHOTO_CLASSES.includes(asset.assetClass) ? "/vehicles/hero-truck.jpg" : null}
+          image={CLASS_PHOTO[asset.assetClass] ?? null}
         />
       </div>
 
