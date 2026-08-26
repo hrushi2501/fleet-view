@@ -608,8 +608,15 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
                 {asset.compliance.map((c) => (
                   <tr key={c.id} className="border-b border-slate-50 last:border-0">
                     <td className="py-2.5 font-medium text-ink-900">{c.docType}</td>
-                    <td className="py-2.5 tabular-nums text-slate-600">{c.number}</td>
-                    <td className="py-2.5 text-slate-600">{c.issueDate ? fmtDate(c.issueDate) : "—"}</td>
+                    {/* The compliance register this fleet keeps records expiry
+                        dates only, so most rows have neither a number nor an
+                        issue date. Saying so is the honest rendering. */}
+                    <td className="py-2.5 tabular-nums text-slate-600">
+                      {c.number ? c.number : <span className="italic text-slate-400">Not recorded</span>}
+                    </td>
+                    <td className="py-2.5 text-slate-600">
+                      {c.issueDate ? fmtDate(c.issueDate) : <span className="italic text-slate-400">Not recorded</span>}
+                    </td>
                     <td className="py-2.5 text-slate-600">
                       {fmtDate(c.expiryDate)}
                       <span className="ml-2 text-[11px] text-slate-400">{timeAgo(c.expiryDate)}</span>

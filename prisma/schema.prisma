@@ -1278,8 +1278,12 @@ model ComplianceDoc {
   assetId     String
   asset       Asset    @relation(fields: [assetId], references: [id])
   docType     String   // RC, Insurance, Fitness, Permit, PUC, RoadTax
-  number      String
-  issueDate   DateTime
+  /// Optional: the register the company keeps records expiry dates only. A
+  /// required field here forces an importer to invent a document number, and an
+  /// invented number is one that gets read back as fact at a checkpoint.
+  number      String?
+  /// Optional for the same reason — most sources carry expiry, not issue.
+  issueDate   DateTime?
   expiryDate  DateTime
   status      String   @default("Valid") // Valid, Expiring, Expired
   // ---- M13 ----

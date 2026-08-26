@@ -12,8 +12,11 @@ import { calendarDaysUntil } from "./utils";
 export type DocLite = {
   id: string;
   docType: string;
-  number: string;
-  issueDate: Date;
+  /// Null where the source register records expiry only — which is the common
+  /// case. Neither field is read by the rules below; both are carried so a
+  /// caller can render the document without a second query.
+  number: string | null;
+  issueDate: Date | null;
   expiryDate: Date;
   reminderDays: number;
   documentUrl: string | null;
