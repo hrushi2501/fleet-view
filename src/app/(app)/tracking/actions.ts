@@ -8,6 +8,7 @@ import { getSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { decideGaugeReading, sensorGaugeDecision, makeQrToken, staleSessions, reconstructPath, detectFuelEvents, PROVIDERS, type GaugeExtraction, type SessionLite, type ReadingLite } from "@/lib/telematics";
 import { requireAction, ActionError, safe } from "@/lib/guard";
+import { getDieselRate } from "@/lib/settings";
 import { fuelSensorState } from "@/lib/fuel-sensor";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
@@ -259,17 +260,32 @@ async function scanFuelEvents__impl(assetId: string) {
     odometerKm: r.odometerKm, fuelLevelPct: r.fuelLevelPct, ignitionOn: r.ignitionOn, source: r.source,
   })), asset.fuelCapacity);
 
-  const rate = 92.5;
+  // The rate an administrator actually set. This was hardcoded to 92.5, so
+  // every value-at-risk raised here was priced at a number nobody had updated
+  // since it was typed — while every other screen used the setting.
+  const rate = await getDieselRate();
   let raised = 0;
   for (const e of events.filter((x) => x.suspicious)) {
     const key = `FUEL_TELEMETRY:${assetId}:${e.at.toISOString()}`;
     const exists = await db.fuelAnomaly.findUnique({ where: { source_refId: { source: "ASSET_EFFICIENCY", refId: key } } });
     if (exists) continue;
+
+    // An event the detector flagged but could not size is still worth raising —
+    // it is a real observation. What it must not do is arrive as a HIGH-severity
+    // case worth ₹0, which is what `litres ?? 0` produced: the column is
+    // non-nullable so zero is forced, and a loss-prevention list padded with
+    // zero-value "HIGH" cases is one people stop working through.
+    const quantified = e.litres != null && e.litres > 0;
     await db.fuelAnomaly.create({
       data: {
         source: "ASSET_EFFICIENCY", refId: key, assetId,
-        severity: "HIGH", score: 80, litres: e.litres ?? 0,
-        valueAtRisk: (e.litres ?? 0) * rate, reasons: e.reason,
+        severity: quantified ? "HIGH" : "MEDIUM",
+        score: quantified ? 80 : 45,
+        litres: e.litres ?? 0,
+        valueAtRisk: quantified ? e.litres! * rate : 0,
+        reasons: quantified
+          ? e.reason
+          : `${e.reason}\nVolume could not be measured from this telemetry, so no value at risk is claimed.`,
       },
     });
     raised++;

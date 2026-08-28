@@ -87,26 +87,66 @@ export async function detectFills(
   });
   if (assets.length === 0) return [];
 
+  const assetIds = assets.map((a) => a.id);
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Three queries for the whole fleet, not two per vehicle.
+  //
+  // This used to loop over the assets and query inside the loop. With the two
+  // telematics vehicles that was four round trips and nobody noticed. Importing
+  // the real register took it to fifty-three assets — a hundred and six round
+  // trips — and the Fuel screen calls this twice per render, once for the
+  // overview and once for the records tab. Two hundred and twelve sequential
+  // queries to draw one page.
+  //
+  // The work per vehicle is unchanged; only the fetching moved. `fleetUsage`
+  // already had this shape, which is why it stayed fast as the fleet grew.
+  // ───────────────────────────────────────────────────────────────────────────
+  const [readings, entries] = await Promise.all([
+    db.telemetryReading.findMany({
+      where: { assetId: { in: assetIds }, recordedAt: { gte: since } },
+      orderBy: { recordedAt: "asc" },
+      select: {
+        assetId: true, recordedAt: true, lat: true, lng: true, speedKph: true,
+        odometerKm: true, fuelLevelL: true, fuelLevelPct: true, ignitionOn: true,
+      },
+    }),
+    db.fuelTransaction.findMany({
+      where: {
+        assetId: { in: assetIds },
+        type: "ISSUE",
+        date: { gte: new Date(since.getTime() - 86_400_000) },
+      },
+      select: { id: true, assetId: true, quantity: true, amount: true, date: true },
+      orderBy: { date: "asc" },
+    }),
+  ]);
+
+  const readingsBy = new Map<string, typeof readings>();
+  for (const r of readings) {
+    if (!r.assetId) continue;
+    const list = readingsBy.get(r.assetId) ?? [];
+    list.push(r);
+    readingsBy.set(r.assetId, list);
+  }
+
+  const entriesBy = new Map<string, typeof entries>();
+  for (const e of entries) {
+    if (!e.assetId) continue;
+    const list = entriesBy.get(e.assetId) ?? [];
+    list.push(e);
+    entriesBy.set(e.assetId, list);
+  }
+
   const out: DetectedFill[] = [];
 
   for (const asset of assets) {
-    const rows = await db.telemetryReading.findMany({
-      where: { assetId: asset.id, recordedAt: { gte: since } },
-      orderBy: { recordedAt: "asc" },
-      select: {
-        recordedAt: true, lat: true, lng: true, speedKph: true,
-        odometerKm: true, fuelLevelL: true, fuelLevelPct: true, ignitionOn: true,
-      },
-    });
+    const rows = readingsBy.get(asset.id) ?? [];
     if (rows.length < 2) continue;
 
     const { usage } = analyseUsage(rows as AnalyticsReading[], null, asset.fuelCapacity ?? null);
+    const assetEntries = entriesBy.get(asset.id) ?? [];
 
-    const entries = await db.fuelTransaction.findMany({
-      where: { assetId: asset.id, type: "ISSUE", date: { gte: new Date(since.getTime() - 86_400_000) } },
-      select: { id: true, quantity: true, amount: true, date: true },
-      orderBy: { date: "asc" },
-    });
     // An entry may only be claimed once, so two sensor fills on one day cannot
     // both point at the same receipt and each look accounted for.
     const claimed = new Set<string>();
@@ -115,7 +155,7 @@ export async function detectFills(
       if (r.litresAdded < MIN_FILL_LITRES) continue;
 
       const at = new Date(r.at);
-      const match = entries.find(
+      const match = assetEntries.find(
         (e) =>
           !claimed.has(e.id) &&
           Math.abs(e.date.getTime() - at.getTime()) <= MATCH_WINDOW_HOURS * 3_600_000,
