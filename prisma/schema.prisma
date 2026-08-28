@@ -27,6 +27,12 @@ model User {
   /// match only for accounts created before the link existed.
   driverId  String?  @unique
   driverRef Driver?  @relation(fields: [driverId], references: [id])
+
+  // Postgres does not index a foreign key on its own, so every filter and join
+  // on these columns was a sequential scan. Declared here as well as in the
+  // database, because `prisma db push` makes the database match this file and
+  // would otherwise drop them as drift.
+  @@index([roleId])
 }
 
 model Project {
@@ -136,6 +142,14 @@ model Asset {
   salvageValue    Float    @default(0)
   inServiceDate   DateTime?
   createdAt       DateTime @default(now())
+
+  // Postgres does not index a foreign key on its own, so every filter and join
+  // on these columns was a sequential scan. Declared here as well as in the
+  // database, because `prisma db push` makes the database match this file and
+  // would otherwise drop them as drift.
+  @@index([projectId])
+  @@index([driverId])
+  @@index([telematicsProviderId])
 }
 
 model Driver {
@@ -188,6 +202,14 @@ model Trip {
   tonnage      Float    @default(0)
   gpsVerified  Boolean  @default(true)
   status       String   @default("Completed")
+
+  // Postgres does not index a foreign key on its own, so every filter and join
+  // on these columns was a sequential scan. Declared here as well as in the
+  // database, because `prisma db push` makes the database match this file and
+  // would otherwise drop them as drift.
+  @@index([assetId])
+  @@index([driverId])
+  @@index([projectId])
 }
 
 model FuelTank {
@@ -208,6 +230,12 @@ model FuelTank {
   issues       FuelTransaction[]
   recons       FuelReconciliation[]
   createdAt    DateTime @default(now())
+
+  // Postgres does not index a foreign key on its own, so every filter and join
+  // on these columns was a sequential scan. Declared here as well as in the
+  // database, because `prisma db push` makes the database match this file and
+  // would otherwise drop them as drift.
+  @@index([projectId])
 }
 
 /// Bulk diesel delivered into a site tank (the "source" end of the closed loop).
@@ -414,6 +442,12 @@ model TelemetryReading {
   @@unique([assetId, recordedAt, source])
   @@index([assetId, recordedAt])
   @@index([sessionId, recordedAt])
+
+  // Postgres does not index a foreign key on its own, so every filter and join
+  // on these columns was a sequential scan. Declared here as well as in the
+  // database, because `prisma db push` makes the database match this file and
+  // would otherwise drop them as drift.
+  @@index([providerId])
 }
 
 /// A fuel level read from a photograph of the gauge, for vehicles with no fuel
@@ -450,6 +484,13 @@ model FuelLevelReading {
 
   @@index([assetId, capturedAt])
   @@index([status])
+
+  // Postgres does not index a foreign key on its own, so every filter and join
+  // on these columns was a sequential scan. Declared here as well as in the
+  // database, because `prisma db push` makes the database match this file and
+  // would otherwise drop them as drift.
+  @@index([driverId])
+  @@index([sessionId])
 }
 
 /// A driver bound to a vehicle by scanning its cabin QR code. This is the live
@@ -491,6 +532,12 @@ model TripSession {
   @@index([assetId, status])
   @@index([driverId, startedAt])
   @@index([status, startedAt])
+
+  // Postgres does not index a foreign key on its own, so every filter and join
+  // on these columns was a sequential scan. Declared here as well as in the
+  // database, because `prisma db push` makes the database match this file and
+  // would otherwise drop them as drift.
+  @@index([projectId])
 }
 
 /* ============ M4 — Project & Site Master ============ */
@@ -559,6 +606,12 @@ model Allocation {
 
   @@index([assetId, fromDate])
   @@index([projectId, status])
+
+  // Postgres does not index a foreign key on its own, so every filter and join
+  // on these columns was a sequential scan. Declared here as well as in the
+  // database, because `prisma db push` makes the database match this file and
+  // would otherwise drop them as drift.
+  @@index([siteId])
 }
 
 /// Moving a machine between sites. Low-bed transport is expensive and slow, so
@@ -584,6 +637,12 @@ model MobilizationOrder {
 
   @@index([assetId, requestedDate])
   @@index([status])
+
+  // Postgres does not index a foreign key on its own, so every filter and join
+  // on these columns was a sequential scan. Declared here as well as in the
+  // database, because `prisma db push` makes the database match this file and
+  // would otherwise drop them as drift.
+  @@index([toProjectId])
 }
 
 /* ==================== M1 — Asset Master ==================== */
@@ -744,6 +803,14 @@ model WeighbridgeTicket {
   @@index([kind, date])
   @@index([material, date])
   @@index([pairedTicketNo])
+
+  // Postgres does not index a foreign key on its own, so every filter and join
+  // on these columns was a sequential scan. Declared here as well as in the
+  // database, because `prisma db push` makes the database match this file and
+  // would otherwise drop them as drift.
+  @@index([assetId])
+  @@index([driverId])
+  @@index([projectId])
 }
 
 /* ============ M12 — Driver / Operator Management & Safety ============ */
@@ -787,6 +854,12 @@ model Violation {
 
   @@index([driverId, date])
   @@index([status])
+
+  // Postgres does not index a foreign key on its own, so every filter and join
+  // on these columns was a sequential scan. Declared here as well as in the
+  // database, because `prisma db push` makes the database match this file and
+  // would otherwise drop them as drift.
+  @@index([assetId])
 }
 
 /* ==================== M14 — Preventive & Breakdown Maintenance ==================== */
@@ -832,6 +905,12 @@ model WorkOrderLine {
   inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id])
 
   @@index([workOrderId])
+
+  // Postgres does not index a foreign key on its own, so every filter and join
+  // on these columns was a sequential scan. Declared here as well as in the
+  // database, because `prisma db push` makes the database match this file and
+  // would otherwise drop them as drift.
+  @@index([inventoryItemId])
 }
 
 
@@ -880,6 +959,12 @@ model Tyre {
 
   @@index([assetId, status])
   @@index([status])
+
+  // Postgres does not index a foreign key on its own, so every filter and join
+  // on these columns was a sequential scan. Declared here as well as in the
+  // database, because `prisma db push` makes the database match this file and
+  // would otherwise drop them as drift.
+  @@index([warehouseId])
 }
 
 model TyreEvent {
@@ -922,6 +1007,12 @@ model MajorComponent {
   createdAt         DateTime            @default(now())
 
   @@index([assetId, status])
+
+  // Postgres does not index a foreign key on its own, so every filter and join
+  // on these columns was a sequential scan. Declared here as well as in the
+  // database, because `prisma db push` makes the database match this file and
+  // would otherwise drop them as drift.
+  @@index([warehouseId])
 }
 
 /* ================= M23 — Production & Productivity (construction core) ================= */
@@ -956,6 +1047,12 @@ model ProductionLog {
   @@unique([assetId, date, shift])
   @@index([projectId, date])
   @@index([assetId, date])
+
+  // Postgres does not index a foreign key on its own, so every filter and join
+  // on these columns was a sequential scan. Declared here as well as in the
+  // database, because `prisma db push` makes the database match this file and
+  // would otherwise drop them as drift.
+  @@index([driverId])
 }
 
 /// Expected output band per asset class, so under-performance is measurable
@@ -1047,6 +1144,14 @@ model FraudCase {
 
   @@index([status, severity])
   @@index([domain, openedAt])
+
+  // Postgres does not index a foreign key on its own, so every filter and join
+  // on these columns was a sequential scan. Declared here as well as in the
+  // database, because `prisma db push` makes the database match this file and
+  // would otherwise drop them as drift.
+  @@index([assetId])
+  @@index([driverId])
+  @@index([projectId])
 }
 
 /// Evidence bundle attached to a case — the pack you hand to the person deciding.
@@ -1241,6 +1346,13 @@ model FuelTransaction {
 
   @@index([assetId, date])
   @@index([tankId, date])
+
+  // Postgres does not index a foreign key on its own, so every filter and join
+  // on these columns was a sequential scan. Declared here as well as in the
+  // database, because `prisma db push` makes the database match this file and
+  // would otherwise drop them as drift.
+  @@index([projectId])
+  @@index([sessionId])
 }
 
 model WorkOrder {
@@ -1271,6 +1383,12 @@ model WorkOrder {
 
   @@index([assetId, reportedAt])
   @@index([status])
+
+  // Postgres does not index a foreign key on its own, so every filter and join
+  // on these columns was a sequential scan. Declared here as well as in the
+  // database, because `prisma db push` makes the database match this file and
+  // would otherwise drop them as drift.
+  @@index([projectId])
 }
 
 model ComplianceDoc {
@@ -1326,6 +1444,13 @@ model Alert {
 
   @@index([status, severity])
   @@index([category, createdAt])
+
+  // Postgres does not index a foreign key on its own, so every filter and join
+  // on these columns was a sequential scan. Declared here as well as in the
+  // database, because `prisma db push` makes the database match this file and
+  // would otherwise drop them as drift.
+  @@index([assetId])
+  @@index([driverId])
 }
 
 /* ==================== M18 — Alert & Notification Engine ==================== */
@@ -1395,6 +1520,13 @@ model CostTransaction {
   amount     Float
   period     String   // YYYY-MM
   date       DateTime @default(now())
+
+  // Postgres does not index a foreign key on its own, so every filter and join
+  // on these columns was a sequential scan. Declared here as well as in the
+  // database, because `prisma db push` makes the database match this file and
+  // would otherwise drop them as drift.
+  @@index([assetId])
+  @@index([projectId])
 }
 
 model InventoryWarehouse {
@@ -1411,6 +1543,12 @@ model InventoryWarehouse {
   tyres           Tyre[]
   components      MajorComponent[]
   createdAt       DateTime               @default(now())
+
+  // Postgres does not index a foreign key on its own, so every filter and join
+  // on these columns was a sequential scan. Declared here as well as in the
+  // database, because `prisma db push` makes the database match this file and
+  // would otherwise drop them as drift.
+  @@index([projectId])
 }
 
 model InventoryItem {
@@ -1437,6 +1575,12 @@ model InventoryStock {
   quantity    Float              @default(0)
 
   @@unique([itemId, warehouseId])
+
+  // Postgres does not index a foreign key on its own, so every filter and join
+  // on these columns was a sequential scan. Declared here as well as in the
+  // database, because `prisma db push` makes the database match this file and
+  // would otherwise drop them as drift.
+  @@index([warehouseId])
 }
 
 model InventoryTransaction {
@@ -1460,5 +1604,11 @@ model InventoryTransaction {
   @@index([itemId])
   @@index([warehouseId])
   @@index([date])
+
+  // Postgres does not index a foreign key on its own, so every filter and join
+  // on these columns was a sequential scan. Declared here as well as in the
+  // database, because `prisma db push` makes the database match this file and
+  // would otherwise drop them as drift.
+  @@index([toWarehouseId])
 }
 
