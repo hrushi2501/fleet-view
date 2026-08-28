@@ -153,3 +153,52 @@ export function fmtCompact(v: number): string {
   if (a >= 1e3) return `${(v / 1e3).toFixed(a >= 1e4 ? 0 : 1)}K`;
   return String(Math.round(v));
 }
+
+/* ────────────────────────────── value formats ───────────────────────────── */
+
+/**
+ * How a chart should render a number, named rather than supplied.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * WHY A STRING AND NOT A FUNCTION
+ *
+ * The charts are client components and most of the pages that use them are
+ * server components. A function prop cannot cross that boundary: React has to
+ * serialise the props, a closure has nothing to serialise, and the request
+ * fails at render time with "Functions cannot be passed directly to Client
+ * Components".
+ *
+ * That failure is invisible to `tsc`, to eslint and to `next build` — a
+ * function is a perfectly good value for `(v: number) => string`, and the build
+ * compiles happily. It only appears when somebody loads the page. It took the
+ * dashboard down in production, having passed every check.
+ *
+ * Naming the format instead makes the mistake unrepresentable: a closure is no
+ * longer assignable to the prop, so the compiler catches on the line that
+ * writes it rather than the user catching it on the screen.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+export type ValueFormat = "number" | "inr" | "inrCompact" | "litres" | "km" | "hours" | "percent";
+
+const INR = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
+
+function inrCompact(v: number): string {
+  const a = Math.abs(v);
+  if (a >= 1e7) return `₹${(v / 1e7).toFixed(2)} Cr`;
+  if (a >= 1e5) return `₹${(v / 1e5).toFixed(2)} L`;
+  if (a >= 1e3) return `₹${(v / 1e3).toFixed(1)} K`;
+  return INR.format(v);
+}
+
+/** Resolves a named format to the function that applies it. */
+export function formatValue(format: ValueFormat = "number"): (v: number) => string {
+  switch (format) {
+    case "inr":        return (v) => (Number.isFinite(v) ? INR.format(v) : "—");
+    case "inrCompact": return (v) => (Number.isFinite(v) ? inrCompact(v) : "—");
+    case "litres":     return (v) => (Number.isFinite(v) ? `${fmtNum(v)} L` : "—");
+    case "km":         return (v) => (Number.isFinite(v) ? `${fmtNum(v)} km` : "—");
+    case "hours":      return (v) => (Number.isFinite(v) ? `${fmtNum(v)} h` : "—");
+    case "percent":    return (v) => (Number.isFinite(v) ? `${Math.round(v)}%` : "—");
+    default:           return fmtNum;
+  }
+}

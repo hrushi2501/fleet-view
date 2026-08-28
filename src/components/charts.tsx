@@ -44,7 +44,7 @@ import {
 } from "recharts";
 import type { LegendProps } from "recharts";
 
-import { SERIES, INK, foldToOther, fmtNum, fmtCompact } from "@/lib/viz";
+import { SERIES, INK, foldToOther, fmtNum, fmtCompact, formatValue, type ValueFormat } from "@/lib/viz";
 
 export type ChartDataPoint = Record<string, unknown>;
 
@@ -149,14 +149,14 @@ export function TrendArea({
   xKey = "label",
   color = SERIES[0],
   height = 260,
-  format = fmtNum,
+  format,
 }: {
   data: ChartDataPoint[];
   dataKey: string;
   xKey?: string;
   color?: string;
   height?: number;
-  format?: (v: number) => string;
+  format?: ValueFormat;
 }) {
   const id = `fill-${dataKey.replace(/\W/g, "")}`;
   return (
@@ -172,7 +172,7 @@ export function TrendArea({
         <CartesianGrid {...gridProps} />
         <XAxis dataKey={xKey} {...axisProps} />
         <YAxis {...axisProps} tickFormatter={fmtCompact} width={48} />
-        <Tooltip content={<Tip format={format} />} cursor={{ stroke: INK.axis, strokeWidth: 1 }} />
+        <Tooltip content={<Tip format={formatValue(format)} />} cursor={{ stroke: INK.axis, strokeWidth: 1 }} />
         <Area
           type="monotone"
           dataKey={dataKey}
@@ -205,13 +205,13 @@ export function MultiBar({
   keys,
   xKey = "label",
   height = 300,
-  format = fmtNum,
+  format,
 }: {
   data: ChartDataPoint[];
   keys: string[];
   xKey?: string;
   height?: number;
-  format?: (v: number) => string;
+  format?: ValueFormat;
 }) {
   const folded = foldToOther(data, keys);
   const rows = folded.rows;
@@ -223,7 +223,7 @@ export function MultiBar({
         <CartesianGrid {...gridProps} />
         <XAxis dataKey={xKey} {...axisProps} />
         <YAxis {...axisProps} tickFormatter={fmtCompact} width={48} />
-        <Tooltip content={<Tip format={format} />} cursor={{ fill: INK.grid, fillOpacity: 0.6 }} />
+        <Tooltip content={<Tip format={formatValue(format)} />} cursor={{ fill: INK.grid, fillOpacity: 0.6 }} />
         {shown.length > 1 && <Legend {...legendProps} />}
         {shown.map((k, i) => (
           <Bar
@@ -260,7 +260,7 @@ export function SimpleBar({
   bars,
   height = 280,
   highlight,
-  format = fmtNum,
+  format,
 }: {
   data: ChartDataPoint[];
   dataKey?: string;
@@ -269,7 +269,7 @@ export function SimpleBar({
   bars?: { key: string; color?: string; name?: string }[];
   height?: number;
   highlight?: string;
-  format?: (v: number) => string;
+  format?: ValueFormat;
 }) {
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -277,7 +277,7 @@ export function SimpleBar({
         <CartesianGrid {...gridProps} />
         <XAxis dataKey={xKey} {...axisProps} />
         <YAxis {...axisProps} tickFormatter={fmtCompact} width={48} />
-        <Tooltip content={<Tip format={format} />} cursor={{ fill: INK.grid, fillOpacity: 0.6 }} />
+        <Tooltip content={<Tip format={formatValue(format)} />} cursor={{ fill: INK.grid, fillOpacity: 0.6 }} />
         {bars && bars.length > 1 && <Legend {...legendProps} />}
         {bars ? (
           bars.map((b, i) => (
@@ -330,12 +330,12 @@ export function Donut({
   data,
   height = 260,
   centerLabel,
-  format = fmtNum,
+  format,
 }: {
   data: { name: string; value: number; color?: string }[];
   height?: number;
   centerLabel?: string;
-  format?: (v: number) => string;
+  format?: ValueFormat;
 }) {
   const ranked = [...data].sort((a, b) => b.value - a.value);
   const shown =
@@ -368,7 +368,7 @@ export function Donut({
               <Cell key={i} fill={entry.color ?? slot(i)} />
             ))}
           </Pie>
-          <Tooltip content={<Tip format={format} />} />
+          <Tooltip content={<Tip format={formatValue(format)} />} />
           {shown.length > 1 && <Legend {...legendProps} />}
         </PieChart>
       </ResponsiveContainer>
@@ -379,7 +379,7 @@ export function Donut({
         className="pointer-events-none absolute inset-x-0 flex flex-col items-center justify-center"
         style={{ top: 0, height: height - 36 }}
       >
-        <p className="text-2xl font-bold tracking-tight text-ink-900">{format(total)}</p>
+        <p className="text-2xl font-bold tracking-tight text-ink-900">{formatValue(format)(total)}</p>
         {centerLabel && (
           <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{centerLabel}</p>
         )}
@@ -399,13 +399,13 @@ export function DualLine({
   xKey = "label",
   lines,
   height = 280,
-  format = fmtNum,
+  format,
 }: {
   data: ChartDataPoint[];
   xKey?: string;
   lines: { key: string; color?: string; name?: string }[];
   height?: number;
-  format?: (v: number) => string;
+  format?: ValueFormat;
 }) {
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -413,7 +413,7 @@ export function DualLine({
         <CartesianGrid {...gridProps} />
         <XAxis dataKey={xKey} {...axisProps} />
         <YAxis {...axisProps} tickFormatter={fmtCompact} width={48} />
-        <Tooltip content={<Tip format={format} />} cursor={{ stroke: INK.axis, strokeWidth: 1 }} />
+        <Tooltip content={<Tip format={formatValue(format)} />} cursor={{ stroke: INK.axis, strokeWidth: 1 }} />
         {lines.length > 1 && <Legend {...legendProps} />}
         {lines.map((l, i) => (
           <Line

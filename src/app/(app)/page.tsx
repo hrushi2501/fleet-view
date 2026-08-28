@@ -312,7 +312,7 @@ export default async function Dashboard() {
               title="Monthly operating cost"
               subtitle="The five largest heads · the rest are grouped, because a ninth colour is indistinguishable from one of the first eight"
             />
-            <MultiBar data={costByMonth} keys={heads} xKey="month" format={(v) => inr(v, { compact: true })} />
+            <MultiBar data={costByMonth} keys={heads} xKey="month" format="inrCompact" />
           </Card>
           <Card>
             <SectionTitle
@@ -342,7 +342,7 @@ export default async function Dashboard() {
         <div className="grid gap-4 lg:grid-cols-3">
           <Card className="lg:col-span-2">
             <SectionTitle title="Diesel issued — last 14 days" subtitle="Litres per day across all sites" />
-            <TrendArea data={fuelTrend} dataKey="litres" xKey="day" format={(v) => `${num(v)} L`} />
+            <TrendArea data={fuelTrend} dataKey="litres" xKey="day" format="litres" />
           </Card>
           <Card>
             <SectionTitle title="Utilisation by class" subtitle="Average across each class" />
