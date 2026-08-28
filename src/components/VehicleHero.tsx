@@ -31,6 +31,7 @@ export function VehicleHero({
   description,
   specs,
   image,
+  compact = false,
 }: {
   status: string;
   statusTone: "live" | "down" | "idle";
@@ -40,12 +41,19 @@ export function VehicleHero({
   specs: HeroSpec[];
   /** Null when we have no photograph that is honestly this machine. */
   image: string | null;
+  /** The floating card's version: same band, less of it. */
+  compact?: boolean;
 }) {
   const dot =
     statusTone === "live" ? "#23d17d" : statusTone === "down" ? "#f97066" : "#fdb022";
 
   return (
-    <section className="relative min-h-[425px] overflow-hidden bg-[#081b3a] text-white">
+    <section
+      className={
+        "relative overflow-hidden bg-[#081b3a] text-white " +
+        (compact ? "min-h-[196px]" : "min-h-[425px]")
+      }
+    >
       {/* A photograph only when it is actually this kind of machine. A stock
           tipper behind an excavator's name is a small lie that makes every
           other number on the page look decorative. Without one, the band keeps
@@ -70,7 +78,14 @@ export function VehicleHero({
         }}
       />
 
-      <div className="relative z-[2] w-full px-7 pb-11 pt-14 sm:w-[60%] sm:min-w-[420px] lg:w-[47%] lg:min-w-[480px] lg:py-14 lg:pl-[58px] lg:pr-0">
+      <div
+        className={
+          "relative z-[2] w-full sm:w-[60%] sm:min-w-[420px] lg:w-[47%] lg:min-w-[480px] " +
+          (compact
+            ? "px-6 py-6 lg:pl-8 lg:pr-0"
+            : "px-7 pb-11 pt-14 lg:py-14 lg:pl-[58px] lg:pr-0")
+        }
+      >
         <div
           className="inline-flex items-center gap-[7px] rounded-lg border px-[13px] py-2 text-xs font-bold tracking-[.2px]"
           style={{ background: "rgba(9,43,91,.88)", borderColor: "rgba(83,142,255,.25)" }}
@@ -79,20 +94,29 @@ export function VehicleHero({
           {status}
         </div>
 
-        <h1 className="mb-5 mt-[26px] text-[38px] font-extrabold leading-[.98] tracking-[-2px] lg:text-[54px]">
+        <h1
+          className={
+            "font-extrabold leading-[.98] tracking-[-1.5px] " +
+            (compact
+              ? "mb-2 mt-3 text-[28px]"
+              : "mb-5 mt-[26px] text-[38px] tracking-[-2px] lg:text-[54px]")
+          }
+        >
           {titleTop}
-          <br />
+          {compact ? " " : <br />}
           <span className="text-[#4c8dff]">{titleBottom}</span>
         </h1>
 
         {/* The short rule under the title, as in the design. */}
-        <div className="mb-6 h-[3px] w-[62px] rounded-full bg-[#2f6df6]" />
+        <div className={"h-[3px] w-[62px] rounded-full bg-[#2f6df6] " + (compact ? "mb-4" : "mb-6")} />
 
-        <p className="mb-[30px] max-w-[480px] text-[15px] leading-[1.6] text-[#f0f4fb] lg:text-base">
-          {description}
-        </p>
+        {!compact && (
+          <p className="mb-[30px] max-w-[480px] text-[15px] leading-[1.6] text-[#f0f4fb] lg:text-base">
+            {description}
+          </p>
+        )}
 
-        <div className="flex flex-wrap gap-x-10 gap-y-5">
+        <div className={"flex flex-wrap " + (compact ? "gap-x-7 gap-y-3" : "gap-x-10 gap-y-5")}>
           {specs.map((s) => {
             const Icon = SPEC_ICON[s.icon];
             return (
@@ -114,7 +138,10 @@ export function VehicleHero({
 
       {/* The blue angle notched into the bottom-right corner. */}
       <div
-        className="absolute -bottom-px -right-px z-[3] hidden h-[76px] w-[170px] opacity-[.98] sm:block"
+        className={
+          "absolute -bottom-px -right-px z-[3] hidden opacity-[.98] sm:block " +
+          (compact ? "h-[48px] w-[110px]" : "h-[76px] w-[170px]")
+        }
         style={{ background: "#2468ed", clipPath: "polygon(100% 0, 100% 100%, 0 100%, 35% 45%)" }}
         aria-hidden
       />

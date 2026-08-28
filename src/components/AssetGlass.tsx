@@ -2,8 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { X, Gauge, MapPin, Fuel, Wrench, ShieldCheck, Loader2, ExternalLink, User, Activity } from "lucide-react";
+import { X, Gauge, Fuel, Wrench, ShieldCheck, Loader2, ExternalLink, Activity, Radio, IdCard } from "lucide-react";
 import { inr, num, fmtDate, timeAgo, ASSET_CLASS_LABEL, STATUS_COLOR, healthColor } from "@/lib/utils";
+import { Panel, PanelTitle, DetailList, type Row } from "@/components/VehicleDetail";
+import { VehicleHero, type HeroSpec } from "@/components/VehicleHero";
+import { vehiclePhoto } from "@/lib/vehicle-photo";
 
 type Detail = {
   id: string; code: string; name: string; registrationNo: string | null; assetClass: string; category: string;
@@ -59,12 +62,19 @@ function renderValue(v: unknown) {
   return String(v);
 }
 
-function Chip({ label, value, sub }: { label: string; value: string; sub?: string }) {
+/**
+ * The small figure tile, drawn to the same specification as the full vehicle
+ * page rather than the translucent one this card used to have. A dash means the
+ * figure is not available, and it is deliberately grey so it never reads as a
+ * measured zero.
+ */
+function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  const blank = value === "—";
   return (
-    <div className="rounded-xl border border-white/50 bg-white/40 px-3 py-2 backdrop-blur-sm">
-      <p className="text-[10px] uppercase tracking-wider text-slate-500">{label}</p>
-      <p className="text-sm font-semibold text-ink-900">{value}</p>
-      {sub && <p className="text-[10px] text-slate-500">{sub}</p>}
+    <div className="rounded-[10px] border border-[#e9eef5] bg-white px-3 py-2.5">
+      <p className="text-[10px] font-medium uppercase tracking-wider text-[#8b93a5]">{label}</p>
+      <p className={"text-sm font-bold tabular-nums " + (blank ? "text-slate-300" : "text-[#17233b]")}>{value}</p>
+      {sub && <p className="mt-0.5 text-[10px] leading-snug text-[#8b93a5]">{sub}</p>}
     </div>
   );
 }
@@ -111,90 +121,143 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
     return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = ""; };
   }, [assetId, onClose]);
 
+  const meterUnit = data?.primaryMeter === "SMU" ? "h" : "km";
+
+  const heroSpecs: HeroSpec[] = data
+    ? [
+        { label: "MAKE & MODEL", value: [data.make, data.model].filter(Boolean).join(" ") || null, icon: "engine" },
+        { label: "CLASS", value: ASSET_CLASS_LABEL[data.assetClass] ?? data.assetClass, icon: "power" },
+        {
+          label: data.primaryMeter === "SMU" ? "ENGINE HOURS" : "ODOMETER",
+          value: data.meterValue > 0 ? `${num(data.meterValue)} ${meterUnit}` : null,
+          icon: "torque",
+        },
+      ]
+    : [];
+
+  // Every one of these renders "Not recorded" rather than a dash or a zero when
+  // the column is empty, exactly as the full page does. Half this fleet's
+  // records are part-filled, and a blank that reads as zero is the specific
+  // mistake this product exists to stop making.
+  const identityRows: Row[] = data
+    ? [
+        { label: "Registration", value: data.registrationNo },
+        { label: "Category", value: data.category },
+        { label: "Ownership", value: data.ownershipType },
+        { label: "Year", value: data.yearMfg ? String(data.yearMfg) : null, numeric: true },
+        { label: "Tank capacity", value: data.fuelCapacity > 0 ? `${num(data.fuelCapacity)} L` : null, numeric: true },
+        { label: "Operator", value: data.driver?.name ?? null },
+        { label: "Site", value: data.project ? `${data.project.code} — ${data.project.name}` : null },
+        { label: "Acquisition cost", value: data.acquisitionCost > 0 ? inr(data.acquisitionCost) : null, numeric: true },
+      ]
+    : [];
+
+  const fuelPct = data?.telemetry?.fuelLevelPct;
+  const liveRows: Row[] = data
+    ? [
+        { label: "Last reported", value: timeAgo(data.lastSeen), tone: "good" },
+        { label: "Coordinates", value: data.lat || data.lng ? `${data.lat.toFixed(4)}, ${data.lng.toFixed(4)}` : null },
+        {
+          label: "Fuel level",
+          // Never a zero here. A tank with no reading is unknown, and a 0 has
+          // been read as an empty tank before.
+          value: fuelPct != null
+            ? `${fuelPct.toFixed(1)}%${data.telemetry?.fuelLevelL != null ? ` · ${data.telemetry.fuelLevelL} L` : ""}`
+            : null,
+          numeric: true,
+        },
+        { label: "Speed", value: data.telemetry?.speedKph != null ? `${num(data.telemetry.speedKph)} km/h` : null, numeric: true },
+        { label: "Odometer (reported)", value: data.telemetry?.odometerKm != null ? `${num(data.telemetry.odometerKm)} km` : null, numeric: true },
+        { label: "Ignition", value: data.telemetry?.ignitionOn == null ? null : data.telemetry.ignitionOn ? "On" : "Off" },
+        { label: "Source", value: data.telemetry?.source ?? null },
+        { label: "Last polled", value: data.telemetry?.lastSyncAt ? timeAgo(data.telemetry.lastSyncAt) : null },
+      ]
+    : [];
+
   return (
     <div
-      className="fixed inset-0 z-[2000] flex items-center justify-center overflow-y-auto bg-gradient-to-br from-brand-900/40 via-slate-900/50 to-violet-900/40 p-4 backdrop-blur-md"
+      // A neutral scrim. The old one was a brand-to-violet gradient blur, which
+      // tinted the card's own whites and made two views of the same vehicle
+      // look like two different products.
+      className="fixed inset-0 z-[2000] flex items-start justify-center overflow-y-auto bg-slate-900/55 p-4 backdrop-blur-sm sm:p-8"
       onClick={onClose}
     >
       <div
-        className="relative my-8 w-full max-w-3xl overflow-hidden rounded-3xl border border-white/50 bg-white/60 shadow-[0_20px_70px_rgba(15,23,42,0.35)] backdrop-blur-2xl animate-fade-up"
+        className="relative my-4 w-full max-w-4xl overflow-hidden rounded-2xl bg-[#f6f8fc] shadow-[0_24px_70px_rgba(15,23,42,0.35)] animate-fade-up"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* decorative glass blobs */}
-        <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-brand-400/30 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-20 -left-10 h-56 w-56 rounded-full bg-violet-400/25 blur-3xl" />
-
-        <button onClick={onClose} className="absolute right-4 top-4 z-10 rounded-full bg-white/60 p-2 text-slate-600 ring-1 ring-white/60 backdrop-blur transition-colors hover:bg-white">
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute right-4 top-4 z-[5] rounded-full bg-white/90 p-2 text-slate-700 shadow-sm ring-1 ring-black/5 transition-colors hover:bg-white"
+        >
           <X className="h-5 w-5" />
         </button>
 
         {!data && !err && (
-          <div className="flex h-72 items-center justify-center text-slate-500">
+          <div className="flex h-72 items-center justify-center bg-white text-slate-500">
             <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading asset details…
           </div>
         )}
-        {err && <div className="flex h-48 items-center justify-center text-rose-600">{err}</div>}
+        {err && <div className="flex h-48 items-center justify-center bg-white text-rose-600">{err}</div>}
 
         {data && (
-          <div className="relative max-h-[84vh] overflow-y-auto p-6 sm:p-8">
-            {/* header */}
-            <div className="flex flex-wrap items-start justify-between gap-4 pr-10">
-              <div className="flex items-center gap-4">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 text-lg font-bold text-white shadow-lg shadow-brand-500/30">
-                  {data.code.split("-")[0]}
-                </div>
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-2xl font-bold text-ink-900">{data.code}</h2>
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${STATUS_COLOR[data.status] ?? "bg-slate-100 text-slate-600 ring-slate-500/20"}`}>{data.status}</span>
-                  </div>
-                  <p className="text-sm text-slate-600">{data.name}</p>
-                  <p className="text-xs text-slate-500">{ASSET_CLASS_LABEL[data.assetClass] ?? data.assetClass} · {data.ownershipType}{data.registrationNo ? ` · ${data.registrationNo}` : ""}</p>
-                </div>
-              </div>
-              <div className="rounded-2xl border border-white/50 bg-white/50 px-4 py-2 text-center backdrop-blur-sm">
-                <p className="text-[10px] uppercase tracking-wider text-slate-500">Health</p>
-                <p className={`text-3xl font-bold ${healthColor(data.healthScore)}`}>{data.healthScore}</p>
-              </div>
-            </div>
+          <div className="relative max-h-[86vh] overflow-y-auto">
+            {/* The same band the full vehicle page opens with, at the height a
+                floating card can afford. Two views of one vehicle should not
+                look like two products. */}
+            <VehicleHero
+              compact
+              status={data.status.replace(/-/g, " ").toUpperCase()}
+              statusTone={
+                data.status === "Breakdown" || data.status === "Under-Maintenance"
+                  ? "down"
+                  : data.status === "Active" || data.status === "In-Transit"
+                    ? "live"
+                    : "idle"
+              }
+              titleTop={data.code}
+              titleBottom={data.registrationNo ?? data.model ?? ""}
+              description=""
+              specs={heroSpecs}
+              image={vehiclePhoto(data.assetClass, data.model)}
+            />
 
-            {/* quick chips */}
-            <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Chip label={data.primaryMeter === "SMU" ? "Engine Hours" : "Odometer"} value={`${num(data.meterValue)} ${data.primaryMeter === "SMU" ? "h" : "km"}`} />
-              <Chip label="Utilization" value={`${data.utilization}%`} />
-              <Chip label="Year" value={data.yearMfg ? String(data.yearMfg) : "—"} />
-              <Chip label="Project" value={data.project?.code ?? "—"} />
-            </div>
+            <div className="space-y-3.5 p-5 sm:p-6">
+              {/* headline figures */}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+                <Stat
+                  label={data.primaryMeter === "SMU" ? "Engine hours" : "Odometer"}
+                  value={data.meterValue > 0 ? `${num(data.meterValue)} ${data.primaryMeter === "SMU" ? "h" : "km"}` : "—"}
+                />
+                <Stat label="Health" value={`${data.healthScore}`} sub={data.healthScore >= 75 ? "good" : data.healthScore >= 55 ? "watch" : "poor"} />
+                <Stat label="Utilisation" value={`${data.utilization}%`} />
+                <Stat label="Year" value={data.yearMfg ? String(data.yearMfg) : "—"} />
+                <Stat label="Project" value={data.project?.code ?? "—"} sub={data.project?.name} />
+              </div>
 
-            {/* details grid */}
-            <div className="mt-5 grid gap-5 lg:grid-cols-2">
-              {/* specs */}
-              <div className="rounded-2xl border border-white/50 bg-white/45 p-4 backdrop-blur-sm">
-                <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-ink-900"><Activity className="h-4 w-4 text-brand-600" /> Specifications</h3>
-                <dl className="grid grid-cols-2 gap-y-2.5 text-sm">
-                  {[
-                    ["Make / Model", `${data.make} ${data.model}`.trim()],
-                    ["Category", data.category],
-                    ["Fuel Capacity", data.fuelCapacity ? `${data.fuelCapacity} L` : "—"],
-                    ["Operator", data.driver?.name ?? "—"],
-                    ["Location", data.project?.location ?? "—"],
-                    ["Last reported", timeAgo(data.lastSeen)],
-                    ["Fuel level", data.telemetry?.fuelLevelPct != null
-                      ? `${data.telemetry.fuelLevelPct.toFixed(1)}%${data.telemetry.fuelLevelL != null ? ` · ${data.telemetry.fuelLevelL} L` : ""}`
-                      : "—"],
-                    ["Acq. Cost", data.acquisitionCost ? inr(data.acquisitionCost, { compact: true }) : "—"],
-                    ["Coordinates", `${data.lat.toFixed(3)}, ${data.lng.toFixed(3)}`],
-                  ].map(([k, v]) => (
-                    <div key={k}><dt className="text-[11px] text-slate-500">{k}</dt><dd className="font-medium text-ink-900">{v}</dd></div>
-                  ))}
-                </dl>
+              <div className="grid gap-3.5 lg:grid-cols-2">
+                <Panel>
+                  <PanelTitle icon={IdCard}>IDENTITY &amp; SPECIFICATION</PanelTitle>
+                  <DetailList rows={identityRows} />
+                </Panel>
+
+                <Panel>
+                  <PanelTitle icon={Activity} note={data.telemetry?.provider ? `Reporting through ${data.telemetry.provider}.` : undefined}>
+                    POSITION &amp; TANK
+                  </PanelTitle>
+                  <DetailList rows={liveRows} />
+                </Panel>
+              </div>
+
+              <div className="grid gap-3.5 lg:grid-cols-2">
               </div>
 
               {/* usage & fuel analysis — derived from consecutive samples */}
               {data.usage && data.usage.segments > 0 && (
-                <div className="rounded-2xl border border-white/50 bg-white/45 p-4 backdrop-blur-sm lg:col-span-2">
-                  <h3 className="mb-3 flex flex-wrap items-center gap-2 text-sm font-semibold text-ink-900">
-                    <Gauge className="h-4 w-4 text-violet-600" /> Usage &amp; Fuel Analysis
+                <Panel>
+                  <div className="mb-4 flex flex-wrap items-center gap-2.5 text-[12px] font-extrabold tracking-[.4px] text-[#155eef]">
+                    <Gauge className="h-4 w-4" /> USAGE &amp; FUEL ANALYSIS
                     <span
                       className={`rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${
                         CONFIDENCE_STYLE[data.usage.confidence] ?? CONFIDENCE_STYLE.LOW
@@ -202,7 +265,7 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                     >
                       {data.usage.confidence.toLowerCase()} confidence
                     </span>
-                  </h3>
+                  </div>
 
                   {data.usage.insufficientData && (
                     <p className="mb-3 rounded-xl bg-slate-100 px-3 py-2 text-[12px] text-slate-700 ring-1 ring-inset ring-slate-300">
@@ -214,26 +277,26 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                   )}
 
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                    <Chip
+                    <Stat
                       label="Distance"
                       value={`${data.usage.distanceKm.toLocaleString("en-IN")} km`}
                       sub={data.usage.distanceSource === "ODOMETER" ? "from odometer" : data.usage.distanceSource === "GPS" ? "from GPS track" : "no source"}
                     />
-                    <Chip
+                    <Stat
                       label="Diesel burned"
                       value={data.usage.insufficientData ? "—" : `${data.usage.litresBurned} L`}
                       sub={data.usage.insufficientData ? "not measurable" : `±${data.usage.litresBurnedUncertainty} L sender tolerance`}
                     />
-                    <Chip
+                    <Stat
                       label="Efficiency"
                       value={data.usage.avgKmPerL != null && !data.usage.insufficientData ? `${data.usage.avgKmPerL} km/L` : "—"}
                       sub={data.usage.avgKmPerL != null && !data.usage.insufficientData ? "distance ÷ measured burn" : undefined}
                     />
-                    <Chip
+                    <Stat
                       label="Norm"
                       value={data.usage.norm ? `${data.usage.norm.low}–${data.usage.norm.high} km/L` : "—"}
                     />
-                    <Chip
+                    <Stat
                       label="Refuelled"
                       value={`${data.usage.litresFilled} L`}
                       sub={`${data.usage.refuelEvents} confirmed fill${data.usage.refuelEvents === 1 ? "" : "s"}`}
@@ -243,7 +306,7 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                   <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
                     {/* Unaccounted fuel is an accusation in waiting, so it is
                         only stated when the data can carry it. */}
-                    <Chip
+                    <Stat
                       label="Unaccounted"
                       value={data.usage.insufficientData ? "—" : `${data.usage.litresUnaccounted} L`}
                       sub={
@@ -254,8 +317,8 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                             : "journey explains the fuel"
                       }
                     />
-                    <Chip label="Window" value={`${data.usage.windowHours} h`} sub={`${data.usage.segments + 1} samples`} />
-                    <Chip label="Longest gap" value={`${data.usage.worstGapHours} h`} sub="between samples" />
+                    <Stat label="Window" value={`${data.usage.windowHours} h`} sub={`${data.usage.segments + 1} samples`} />
+                    <Stat label="Longest gap" value={`${data.usage.worstGapHours} h`} sub="between samples" />
                   </div>
 
                   {data.usage.norm &&
@@ -352,21 +415,16 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                       </p>
                     </div>
                   )}
-                </div>
+                </Panel>
               )}
 
               {/* live telemetry — every field the OEM reports */}
               {data.telemetry && (
-                <div className="rounded-2xl border border-white/50 bg-white/45 p-4 backdrop-blur-sm lg:col-span-2">
-                  <h3 className="mb-1 flex flex-wrap items-center gap-2 text-sm font-semibold text-ink-900">
-                    <Activity className="h-4 w-4 text-emerald-600" /> Live Telemetry
-                    {data.telemetry.provider && (
-                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200">
-                        {data.telemetry.provider}
-                      </span>
-                    )}
-                  </h3>
-                  <p className="mb-3 text-[11px] text-slate-500">
+                <Panel>
+                  <PanelTitle icon={Radio}>
+                    EVERY FIELD THE VEHICLE REPORTS
+                  </PanelTitle>
+                  <p className="-mt-3 mb-3 text-[11px] text-[#667085]">
                     Vehicle reported {timeAgo(data.telemetry.recordedAt)}
                     {data.telemetry.lastSyncAt && <> · last polled {timeAgo(data.telemetry.lastSyncAt)}</>}
                     {data.telemetry.lastSyncStatus && <> · sync {data.telemetry.lastSyncStatus}</>}
@@ -393,12 +451,12 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                       Full payload not stored for this reading — it predates raw capture.
                     </p>
                   )}
-                </div>
+                </Panel>
               )}
 
               {/* compliance */}
-              <div className="rounded-2xl border border-white/50 bg-white/45 p-4 backdrop-blur-sm">
-                <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-ink-900"><ShieldCheck className="h-4 w-4 text-emerald-600" /> Compliance</h3>
+              <Panel>
+                <PanelTitle icon={ShieldCheck}>COMPLIANCE</PanelTitle>
                 <div className="space-y-1.5">
                   {data.compliance.length === 0 && <p className="text-sm text-slate-400">No documents on record.</p>}
                   {data.compliance.map((c) => (
@@ -408,11 +466,11 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                     </div>
                   ))}
                 </div>
-              </div>
+              </Panel>
 
               {/* work orders */}
-              <div className="rounded-2xl border border-white/50 bg-white/45 p-4 backdrop-blur-sm">
-                <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-ink-900"><Wrench className="h-4 w-4 text-blue-600" /> Recent Work Orders</h3>
+              <Panel>
+                <PanelTitle icon={Wrench}>RECENT WORK ORDERS</PanelTitle>
                 {data.workOrders.length === 0 && <p className="text-sm text-slate-400">No work orders yet.</p>}
                 <div className="space-y-2">
                   {data.workOrders.map((w) => (
@@ -422,11 +480,11 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                     </div>
                   ))}
                 </div>
-              </div>
+              </Panel>
 
               {/* fuel */}
-              <div className="rounded-2xl border border-white/50 bg-white/45 p-4 backdrop-blur-sm">
-                <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-ink-900"><Fuel className="h-4 w-4 text-amber-600" /> Recent Fuel Issues</h3>
+              <Panel>
+                <PanelTitle icon={Fuel}>RECENT FUEL ISSUES</PanelTitle>
                 {data.fuel.length === 0 && <p className="text-sm text-slate-400">No fuel entries yet.</p>}
                 <div className="space-y-1.5">
                   {data.fuel.map((f, i) => (
@@ -437,15 +495,23 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                     </div>
                   ))}
                 </div>
-              </div>
-            </div>
+              </Panel>
 
-            {/* footer */}
-            <div className="mt-6 flex items-center justify-between">
-              <p className="text-xs text-slate-500">Total cost (6 mo): <span className="font-semibold text-ink-900">{data.totalCost ? inr(data.totalCost, { compact: true }) : "—"}</span></p>
-              <Link href={`/fleet/${data.id}`} className="inline-flex items-center gap-1.5 rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-brand-500/30 hover:bg-brand-600">
-                Open full page <ExternalLink className="h-4 w-4" />
-              </Link>
+              {/* footer */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                <p className="text-xs text-[#667085]">
+                  Total cost (6 mo):{" "}
+                  <span className="font-semibold text-[#17233b]">
+                    {data.totalCost ? inr(data.totalCost, { compact: true }) : "not booked"}
+                  </span>
+                </p>
+                <Link
+                  href={`/fleet/${data.id}`}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#155eef] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1250cc]"
+                >
+                  Open full page <ExternalLink className="h-4 w-4" />
+                </Link>
+              </div>
             </div>
           </div>
         )}
