@@ -26,7 +26,11 @@ export const maxDuration = 120;
  *   - `PrimaryFuelLevel` and `SecondaryFuelLevel1` are documented with leading
  *     capitals while the live pull sends them lowercase. Both spellings are
  *     read; see `interpretFleetEdgeFuel`.
- *   - Documented responses are 200 and 404 "No vehicle registered".
+ *   - Documented responses are 200 and 404 "No vehicle registered". This route
+ *     answers 200 even when nothing matched — see the note at the end of POST.
+ *     Fleet Edge's CHECK probe posts a sample vehicle before any vehicle has
+ *     been subscribed, so 404 there fails verification and no feed is ever
+ *     started.
  *   - **The spec defines no authentication.** No key, no token, no header, no
  *     signature. The only access control it names is the source address:
  *     "if the endpoint has restricted access please make sure you allow access
@@ -369,18 +373,40 @@ export async function POST(req: Request) {
     });
   }
 
-  // The spec documents 404 as "No vehicle registered". Honour it: when nothing
-  // in the payload matched a vehicle in this fleet, that is the answer Fleet
-  // Edge is written to expect, and a 200 would tell it the readings landed.
+  // ───────────────────────────────────────────────────────────────────────────
+  // Nothing in the payload matched a vehicle in this fleet.
   //
-  // Only when *nothing* matched. A batch where one vehicle is unknown and the
-  // rest stored fine is a success with a note, not a failure — answering 404
-  // there could make the sender retry or disable a feed that is mostly working.
+  // The spec documents 404 "No vehicle registered" for this, and that is what
+  // this route used to answer. It is the wrong answer, and it cost a
+  // subscription: Fleet Edge's own CHECK button posts a *sample* payload before
+  // step 2 has chosen any vehicles, so the vehicle it names is by definition not
+  // in the fleet yet. The endpoint replied 404, exactly as documented, and the
+  // console reported "Not Verified" — the documented response and the
+  // verification flow contradict each other, and verification wins, because
+  // until it passes no telemetry is sent at all.
+  //
+  // So: a request this endpoint *understood* gets 200, and what happened to it
+  // is described in the body. Non-2xx is reserved for requests it could not
+  // handle — 403 from the wrong address, 422 for a payload it cannot read.
+  //
+  // The signal is not lost. Unmatched identifiers are returned in the body and
+  // logged at error level with the payload, which is also how we find out what
+  // the CHECK probe actually sends.
+  // ───────────────────────────────────────────────────────────────────────────
   if (accepted === 0 && duplicates === 0 && unmatched.length > 0) {
-    return NextResponse.json(
-      { error: "No vehicle registered", unmatched, accepted: 0 },
-      { status: 404 },
+    console.error(
+      "[tata-push] no vehicle matched:",
+      JSON.stringify({ unmatched, body }).slice(0, 4000),
     );
+    return NextResponse.json({
+      ok: true,
+      accepted: 0,
+      unmatched,
+      note:
+        "Endpoint reachable and payload understood, but no vehicle in this fleet " +
+        "matched the identifiers sent. Registration, chassis number, IMEI and " +
+        "asset code are all matched, case- and separator-insensitive.",
+    });
   }
 
   return NextResponse.json({ ok: true, accepted, duplicates, unmatched });
