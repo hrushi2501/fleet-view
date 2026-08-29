@@ -25,7 +25,7 @@ export async function Overview() {
   const access = await requirePage("fuel.view");
   // Rows, not just the page: a scoped supervisor sees their own sites.
   const visible = assetScope(access);
-  const [issues, receipts, tanks, assets, projects] = await Promise.all([
+  const [issues, _receipts, tanks, assets, projects] = await Promise.all([
     db.fuelTransaction.findMany({ where: { type: "ISSUE", asset: visible }, include: { asset: true }, orderBy: { date: "asc" } }),
     db.fuelTransaction.findMany({ where: { type: "RECEIPT" } }),
     db.fuelTank.findMany(),

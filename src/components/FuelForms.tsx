@@ -2,7 +2,7 @@
 
 import { useState, useTransition, ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { X, Plus, Loader2, Play, Trash2, Fuel, AlertTriangle, CheckCircle2, Calculator } from "lucide-react";
+import { X, Plus, Loader2, Play, Trash2, Fuel, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { cn, inr, num } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -408,7 +408,7 @@ export function AnomalyTriage({ anomaly }: { anomaly: { id: string; status: stri
             setOpen(false);
             toast.success("✓ Anomaly investigation outcome saved");
             router.refresh();
-          } catch (err) {
+          } catch (_err) {
             toast.error("Failed to update outcome");
           }
         })} className="grid gap-4 sm:grid-cols-2">
@@ -460,7 +460,7 @@ export function NormForm({ classes }: { classes: { value: string; label: string 
             setOpen(false);
             toast.success("✓ Consumption norm configured successfully");
             router.refresh();
-          } catch (err) {
+          } catch (_err) {
             toast.error("Failed to save norm");
           }
         })} className="grid gap-4 sm:grid-cols-2">

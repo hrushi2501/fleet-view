@@ -13,7 +13,7 @@ import { TERMS } from "@/lib/navigation";
 import { ASSET_CLASS_LABEL, num, timeAgo } from "@/lib/utils";
 import { db } from "@/lib/db";
 import { myBasics, latestIgnition, vehicleState, whereIsIt, PROBLEM_KINDS } from "../_data";
-import { MyHeader, NotLinked, NoVehicle, Screen, Hero, Fact, Notice } from "../_ui";
+import { MyHeader, Screen, Hero, Fact, Notice } from "../_ui";
 import { reportProblem } from "../actions";
 import { DriverQrScanner } from "@/components/DriverQrScanner";
 

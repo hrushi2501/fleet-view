@@ -27,8 +27,6 @@ export default async function RolesPage() {
   const roleOpts = roles.map((r) => ({ id: r.id, label: r.label }));
   const unassigned = users.filter((u) => !u.roleId).length;
 
-  const permLabel = new Map(PERMISSIONS.map((p) => [p.code, p.label]));
-
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">

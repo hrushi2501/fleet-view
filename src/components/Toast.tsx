@@ -69,11 +69,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 
 const noopToast = {
-  success: (title: string, message?: string, duration?: number) => "",
-  error: (title: string, message?: string, duration?: number) => "",
-  info: (title: string, message?: string, duration?: number) => "",
-  loading: (title: string, message?: string) => "",
-  dismiss: (id: string) => {},
+  success: (_title: string, _message?: string, _duration?: number) => "",
+  error: (_title: string, _message?: string, _duration?: number) => "",
+  info: (_title: string, _message?: string, _duration?: number) => "",
+  loading: (_title: string, _message?: string) => "",
+  dismiss: (_id: string) => {},
 };
 
 export function useToast() {

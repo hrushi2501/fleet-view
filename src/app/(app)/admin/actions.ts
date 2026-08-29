@@ -2,7 +2,6 @@
 
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { getSession } from "@/lib/auth";
 import { DEFAULT_ROLES } from "@/lib/rbac";
 import { requireAction, ActionError, safe } from "@/lib/guard";
 import { audit } from "@/lib/audit";

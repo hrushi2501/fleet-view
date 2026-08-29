@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { Card, SectionTitle, Badge, Progress } from "@/components/ui";
+import { Card, SectionTitle, Badge } from "@/components/ui";
 import { buildKpis, kpiBand, REPORT_CATALOGUE, type KpiInput } from "@/lib/reporting";
 import { assetCompleteness } from "@/lib/master";
 import { reliability, pmDue, type WoLite, type ScheduleLite } from "@/lib/maintenance";

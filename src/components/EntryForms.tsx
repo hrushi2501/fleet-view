@@ -1,14 +1,20 @@
 "use client";
 
-import { useState, useTransition, ReactNode, useEffect } from "react";
+import { useState, useTransition, ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { X, Plus, Pencil, Trash2, Loader2, Camera, Calculator, RotateCcw } from "lucide-react";
 import { cn, ASSET_CLASS_LABEL, inr } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  invalidateAllQueries,
+  invalidateFuelQueries,
+  invalidateComplianceQueries,
+} from "@/lib/query-invalidation";
 import {
   saveAsset, deleteAsset, saveDriver, deleteDriver, saveFuel,
-  saveWorkOrder, updateWorkOrderStatus, saveCompliance, renewComplianceDoc, saveProject,
+  saveWorkOrder, updateWorkOrderStatus, saveCompliance, saveProject,
   updateProject, deleteProject,
   saveUser, deleteUser, updateFuel, deleteFuel, setDieselRate,
 } from "@/app/(app)/entry-actions";
@@ -164,6 +170,7 @@ function Modal({ triggerLabel, triggerIcon, triggerClass, title, action, success
   const [err, setErr] = useState("");
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -182,6 +189,7 @@ function Modal({ triggerLabel, triggerIcon, triggerClass, title, action, success
 
         setOpen(false);
         toast.success(successMessage || `${title} saved successfully`);
+        await invalidateAllQueries(queryClient);
         router.refresh();
         onDone?.();
       } catch (e: unknown) {
@@ -315,6 +323,7 @@ export function DeleteButton({ kind, id, label }: { kind: "asset" | "driver" | "
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   async function handleDelete() {
     if (kind === "asset") await deleteAsset(id);
@@ -322,6 +331,7 @@ export function DeleteButton({ kind, id, label }: { kind: "asset" | "driver" | "
     else await deleteUser(id);
     
     toast.success(kind === "asset" ? `✓ ${label} decommissioned; history retained` : `✓ ${label} deleted successfully`);
+    await invalidateAllQueries(queryClient);
     router.refresh();
     if (kind === "asset") router.push("/fleet");
   }
@@ -488,6 +498,7 @@ export function FuelEntry({ assets, projects, defaultRate = 92.5 }: { assets: Op
   const toast = useToast();
 
   const totalAmount = (parseFloat(qty) || 0) * (parseFloat(rate) || 0);
+  const queryClient = useQueryClient();
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -500,6 +511,7 @@ export function FuelEntry({ assets, projects, defaultRate = 92.5 }: { assets: Op
         await saveFuel(fd);
         setOpen(false); setOdo(null); setPump(null);
         toast.success(`✓ Diesel issue of ${qty} L recorded successfully`, `Total: ${inr(totalAmount)}`);
+        await invalidateFuelQueries(queryClient);
         router.refresh();
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Could not save. Try again.";
@@ -593,6 +605,7 @@ export function FuelEdit({ txn }: { txn: { id: string; label: string; quantity: 
   const [rate, setRate] = useState(String(txn.rate));
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
   const cls = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
 
   const totalAmount = (parseFloat(qty) || 0) * (parseFloat(rate) || 0);
@@ -606,6 +619,7 @@ export function FuelEdit({ txn }: { txn: { id: string; label: string; quantity: 
         await updateFuel(txn.id, fd);
         setOpen(false);
         toast.success("✓ Fuel entry updated");
+        await invalidateFuelQueries(queryClient);
         router.refresh();
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Could not save.";
@@ -619,6 +633,7 @@ export function FuelEdit({ txn }: { txn: { id: string; label: string; quantity: 
     await deleteFuel(txn.id);
     setOpen(false);
     toast.success("✓ Fuel entry deleted");
+    await invalidateFuelQueries(queryClient);
     router.refresh();
   }
 
@@ -717,6 +732,7 @@ export function WorkOrderStatus({ id, status }: { id: string; status: string }) 
   const [pending, start] = useTransition();
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   return (
     <select
@@ -727,6 +743,7 @@ export function WorkOrderStatus({ id, status }: { id: string; status: string }) 
         start(async () => {
           await updateWorkOrderStatus(id, newStatus);
           toast.success(`✓ Status changed to ${newStatus}`);
+          await invalidateAllQueries(queryClient);
           router.refresh();
         });
       }}
@@ -789,6 +806,7 @@ export function DocumentRenewModal({
   const [issueDate, setIssueDate] = useState(defaultIssueDateStr);
   const [expiryDate, setExpiryDate] = useState(defaultNextExpiryStr);
   const [docNumber, setDocNumber] = useState(doc.number || "");
+  const queryClient = useQueryClient();
 
   const handleRenew = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -804,6 +822,7 @@ export function DocumentRenewModal({
         await saveCompliance(fd);
         setOpen(false);
         toast.success(`✓ ${doc.docType} for ${doc.assetCode} renewed until ${expiryDate}`);
+        await invalidateComplianceQueries(queryClient, doc.assetId);
         router.refresh();
       } catch (e) {
         setErr(e instanceof Error ? e.message : "Renewal failed");
@@ -1040,10 +1059,12 @@ export function ProjectDeleteButton({ id, code }: { id: string; code: string }) 
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   async function handleDelete() {
     await deleteProject(id);
     toast.success(`✓ Project ${code} deleted successfully`);
+    await invalidateAllQueries(queryClient);
     router.refresh();
   }
 

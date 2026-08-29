@@ -1,19 +1,15 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useTransition } from "react";
+import React, { useState, useRef, useEffect, useCallback, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   QrCode,
   Camera,
   Search,
   X,
-  CheckCircle2,
   AlertTriangle,
   Loader2,
   Truck,
-  Sparkles,
-  RefreshCw,
-  Flashlight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
@@ -34,6 +30,7 @@ type BarcodeDetectorInstance = {
 type BarcodeDetectorConstructor = new (options: { formats: string[] }) => BarcodeDetectorInstance;
 
 function barcodeDetector(): BarcodeDetectorConstructor | null {
+  if (typeof window === "undefined") return null;
   return (window as Window & { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector ?? null;
 }
 
@@ -49,10 +46,7 @@ export function DriverQrScanner({
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"camera" | "search">("camera");
   const [query, setQuery] = useState("");
-  const [odometer, setOdometer] = useState("");
-  const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [scannedCode, setScannedCode] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -62,39 +56,7 @@ export function DriverQrScanner({
   const router = useRouter();
   const toast = useToast();
 
-  // Start / Stop Camera stream
-  const startCamera = async () => {
-    setCameraError(null);
-    try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error("Camera not supported on this browser.");
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
-      });
-
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        setCameraActive(true);
-      }
-
-      // Barcode detection loop
-      startScanningLoop();
-    } catch (err: unknown) {
-      setCameraActive(false);
-      setCameraError(
-        err instanceof Error
-          ? err.message
-          : "Camera access denied. You can still pick your vehicle from the list below."
-      );
-      setTab("search");
-    }
-  };
-
-  const stopCamera = () => {
+  const stopCamera = useCallback(() => {
     if (scanIntervalRef.current) {
       clearInterval(scanIntervalRef.current);
       scanIntervalRef.current = null;
@@ -103,10 +65,30 @@ export function DriverQrScanner({
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
-    setCameraActive(false);
-  };
+  }, []);
 
-  const startScanningLoop = () => {
+  const executeAssignment = useCallback((codeToAssign: string) => {
+    startTransition(async () => {
+      try {
+        const res = await selfAssignVehicle(codeToAssign);
+        toast.success(`✓ Gaadi assign ho gayi: ${res.assetCode} (${res.assetName})`);
+        setOpen(false);
+        router.refresh();
+      } catch (err: unknown) {
+        toast.error("Assignment Failed", err instanceof Error ? err.message : "Could not link vehicle");
+      }
+    });
+  }, [router, toast]);
+
+  const handleDetectedCode = useCallback((code: string) => {
+    stopCamera();
+    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+      navigator.vibrate([100, 50, 100]);
+    }
+    executeAssignment(code);
+  }, [executeAssignment, stopCamera]);
+
+  const startScanningLoop = useCallback(() => {
     const BarcodeDetector = barcodeDetector();
     if (!BarcodeDetector) {
       return; // Fallback to manual selection or capture
@@ -132,42 +114,46 @@ export function DriverQrScanner({
     } catch {
       // BarcodeDetector initialization error
     }
-  };
+  }, [handleDetectedCode]);
 
-  const handleDetectedCode = (code: string) => {
-    stopCamera();
-    if ("vibrate" in navigator) {
-      navigator.vibrate([100, 50, 100]);
-    }
-    setScannedCode(code);
-    executeAssignment(code);
-  };
-
-  const executeAssignment = (codeToAssign: string) => {
-    const meter = parseFloat(odometer) || undefined;
-    startTransition(async () => {
-      try {
-        const res = await selfAssignVehicle(codeToAssign, meter);
-        toast.success(`✓ Gaadi assign ho gayi: ${res.assetCode} (${res.assetName})`);
-        setOpen(false);
-        router.refresh();
-      } catch (err: unknown) {
-        toast.error("Assignment Failed", err instanceof Error ? err.message : "Could not link vehicle");
+  const startCamera = useCallback(async () => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Camera not supported on this browser.");
       }
-    });
-  };
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+      });
+
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+
+      startScanningLoop();
+    } catch (err: unknown) {
+      setCameraError(
+        err instanceof Error
+          ? err.message
+          : "Camera access denied. You can still pick your vehicle from the list below."
+      );
+      setTab("search");
+    }
+  }, [startScanningLoop]);
 
   useEffect(() => {
     if (open && tab === "camera") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- camera state changes after the media request resolves.
-      startCamera();
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Camera initialization is an async effect with fallback
+      void startCamera();
     } else {
       stopCamera();
     }
     return () => {
       stopCamera();
     };
-  }, [open, tab]);
+  }, [open, tab, startCamera, stopCamera]);
 
   const filteredVehicles = vehicles.filter((v) => {
     const q = query.toLowerCase();

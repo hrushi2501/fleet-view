@@ -180,7 +180,7 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
       setMode("fuel");
       setStep("vehicle");
     } else if (a === "repair") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+       
       setMode("repair");
       setStep("vehicle");
     }

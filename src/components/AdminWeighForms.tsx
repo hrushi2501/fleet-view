@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useTransition, ReactNode, useEffect } from "react";
+import { useState, useTransition, ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { X, Plus, Loader2, Trash2, Calculator, Scale, CheckCircle2, AlertTriangle } from "lucide-react";
+import { X, Plus, Loader2, Trash2, Scale, AlertTriangle } from "lucide-react";
 import { cn, inr, num } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { useQueryClient } from "@tanstack/react-query";
+import { invalidateAllQueries, invalidateProductionQueries } from "@/lib/query-invalidation";
 import { seedRoles, saveRole, deleteRole, assignRole, linkUserToDriver } from "@/app/(app)/admin/actions";
 import { saveTicket, deleteTicket } from "@/app/(app)/weighbridge/actions";
-import { permissionsByModule, PERMISSIONS } from "@/lib/rbac";
+import { permissionsByModule } from "@/lib/rbac";
 import { MATERIALS } from "@/lib/weighbridge";
 import { isActionError } from "@/lib/action-result";
 
@@ -110,7 +112,7 @@ export function SeedRolesButton() {
             setMsg(`${r.roles} roles · ${r.linked} users linked`);
             toast.success("✓ Installed standard roles successfully", `${r.roles} roles configured`);
             router.refresh();
-          } catch (err) {
+          } catch (_err) {
             toast.error("Role installation failed");
           }
         })}
@@ -129,6 +131,7 @@ export function RoleForm({ role }: { role?: { id: string; name: string; label: s
   const [pending, start] = useTransition();
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
   const held = new Set(role?.permissions ?? []);
   const all = held.has("*");
   const groups = permissionsByModule();
@@ -146,6 +149,7 @@ export function RoleForm({ role }: { role?: { id: string; name: string; label: s
             await saveRole(role?.id ?? null, fd);
             setOpen(false);
             toast.success(role ? `✓ Permissions updated for ${role.label}` : "✓ Role created successfully");
+            await invalidateAllQueries(queryClient);
             router.refresh();
           } catch (e) {
             toast.error("Failed to save role", e instanceof Error ? e.message : "Error");
@@ -198,6 +202,7 @@ export function AssignRoleSelect({ userId, roleId, roles }: { userId: string; ro
   const [pending, start] = useTransition();
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   return (
     <select
@@ -206,6 +211,7 @@ export function AssignRoleSelect({ userId, roleId, roles }: { userId: string; ro
       onChange={(e) => start(async () => {
         await assignRole(userId, e.target.value);
         toast.success("✓ Role assignment updated");
+        await invalidateAllQueries(queryClient);
         router.refresh();
       })}
       className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium outline-none focus:border-brand-400 shadow-2xs"
@@ -220,6 +226,7 @@ export function LinkDriverSelect({ userId, driverId, drivers }: { userId: string
   const [pending, start] = useTransition();
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   return (
     <select
@@ -228,6 +235,7 @@ export function LinkDriverSelect({ userId, driverId, drivers }: { userId: string
       onChange={(e) => start(async () => {
         await linkUserToDriver(userId, e.target.value);
         toast.success("✓ Driver person record linked");
+        await invalidateAllQueries(queryClient);
         router.refresh();
       })}
       className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium outline-none focus:border-brand-400 shadow-2xs"
@@ -242,12 +250,14 @@ export function DeleteRoleButton({ id, isSystem }: { id: string; isSystem: boole
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   if (isSystem) return <span className="text-xs text-slate-300">system</span>;
 
   async function handleDelete() {
     await deleteRole(id);
     toast.success("✓ Role deleted successfully");
+    await invalidateAllQueries(queryClient);
     router.refresh();
   }
 
@@ -290,6 +300,7 @@ export function TicketForm({ assets, drivers, projects, dispatchNos }: { assets:
 
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   const gVal = parseFloat(gross) || 0;
   const tVal = parseFloat(tare) || 0;
@@ -325,6 +336,8 @@ export function TicketForm({ assets, drivers, projects, dispatchNos }: { assets:
               await saveTicket(fd);
               setOpen(false);
               toast.success(`✓ Weighbridge ${kind.toLowerCase()} ticket saved`, `Net: ${num(activeNetKg)} kg (${netTonnes.toFixed(2)} t)`);
+              await invalidateProductionQueries(queryClient);
+              await invalidateAllQueries(queryClient);
               router.refresh();
             } catch (err) {
               toast.error("Failed to save ticket", err instanceof Error ? err.message : "Error");
@@ -468,10 +481,13 @@ export function DeleteTicketButton({ id, ticketNo }: { id: string; ticketNo?: st
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   async function handleDelete() {
     await deleteTicket(id);
     toast.success(`✓ Ticket ${ticketNo || ""} deleted successfully`);
+    await invalidateProductionQueries(queryClient);
+    await invalidateAllQueries(queryClient);
     router.refresh();
   }
 

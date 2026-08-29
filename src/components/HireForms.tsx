@@ -2,7 +2,7 @@
 
 import { useState, useTransition, ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { X, Plus, Loader2, RefreshCw, Trash2 } from "lucide-react";
+import { X, Plus, Loader2, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { saveContract, saveLog, deleteLog, deleteContract, saveHireInspection, saveContractAmendment, saveHirePayment, deleteInspection, deleteAmendment, deletePayment, approveHireLog } from "@/app/(app)/hire/actions";
 

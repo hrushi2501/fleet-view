@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { ROLE_LABEL } from "@/lib/utils";
-import { LogOut, Search, Bell, Command } from "lucide-react";
+import { LogOut, Search, Bell } from "lucide-react";
 import Link from "next/link";
 import { CommandPalette } from "@/components/CommandPalette";
 import { QuickActionMenu } from "@/components/QuickActionMenu";

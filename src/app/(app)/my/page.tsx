@@ -17,7 +17,7 @@ import {
   myBasics, latestIgnition, vehicleState, whereIsIt, myTrips, todaysTrips,
   myShift, myServiceDue, myPersonDocs, myVehicleDocs, type DocRow,
 } from "./_data";
-import { MyHeader, NotLinked, NoVehicle, Screen, Hero, Notice, Fact, Tile } from "./_ui";
+import { MyHeader, Screen, Hero, Notice, Fact, Tile } from "./_ui";
 import { DriverQrScanner } from "@/components/DriverQrScanner";
 import { DriverQuickHub } from "@/components/DriverQuickHub";
 

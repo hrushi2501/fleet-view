@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   Plus,
   Fuel,
@@ -13,7 +12,6 @@ import {
   Sparkles,
   X,
   ChevronRight,
-  ArrowRight,
   QrCode,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -86,7 +84,6 @@ const QUICK_ACTIONS: QuickActionItem[] = [
 
 export function QuickActionMenu({ isDriver = false }: { isDriver?: boolean }) {
   const [open, setOpen] = useState(false);
-  const router = useRouter();
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Close on Escape or outside click

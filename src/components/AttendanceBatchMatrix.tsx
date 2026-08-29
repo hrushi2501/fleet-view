@@ -3,16 +3,10 @@
 import React, { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Check,
   X,
-  Clock,
-  Calendar,
-  Sparkles,
   Loader2,
-  Users,
   CheckCheck,
   ShieldCheck,
-  ChevronDown,
 } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { batchSaveAttendance } from "@/app/(app)/master/actions";

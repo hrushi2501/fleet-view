@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { requireApi } from "@/lib/access";
 import { sendPushToAll } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const session = await getSession();
-  if (session?.role !== "Admin") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireApi("admin.settings");
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
   const body = await req.json().catch(() => ({}));
   const result = await sendPushToAll({
     title: body.title || "FleetView Alert",

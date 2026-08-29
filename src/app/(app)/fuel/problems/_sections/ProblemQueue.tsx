@@ -37,7 +37,7 @@ export async function ProblemQueue() {
   const access = await requirePage("fuel.view");
   // Rows, not just the page: a scoped supervisor sees their own sites.
   const visible = assetScope(access);
-  const visibleProjects = projectScope(access);
+  const _visibleProjects = projectScope(access);
   // `FuelAnomaly` carries a bare `assetId` with no relation to filter through,
   // so the vehicles this caller may see are resolved first and the queue is
   // limited to them. A finding names a vehicle and a driver; it must not appear

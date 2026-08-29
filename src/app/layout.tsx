@@ -7,6 +7,7 @@ import type { Metadata, Viewport } from "next";
 import "leaflet/dist/leaflet.css";
 import "./globals.css";
 import { PWARegister } from "@/components/PWARegister";
+import { QueryProvider } from "@/components/QueryProvider";
 
 export const metadata: Metadata = {
   title: "FleetView ERP — Mahadev Constructions",
@@ -25,9 +26,11 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
-      <body>
-        {children}
+    <html lang="en" suppressHydrationWarning>
+      <body suppressHydrationWarning>
+        <QueryProvider>
+          {children}
+        </QueryProvider>
         <PWARegister />
       </body>
     </html>

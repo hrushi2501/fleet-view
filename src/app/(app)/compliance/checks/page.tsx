@@ -1,9 +1,9 @@
 import { db } from "@/lib/db";
 import { Card, SectionTitle, Badge, StatCard, Progress } from "@/components/ui";
-import { DocumentForm, RefreshStatusButton, DeleteRow } from "@/components/PeopleDocForms";
+import { DocumentForm, RefreshStatusButton } from "@/components/PeopleDocForms";
 import { assetCompliance, renewalForecast, REQUIRED_DOCS, DOC_LABEL, type DocLite } from "@/lib/compliance";
-import { inr, num, fmtDate, ASSET_CLASS_LABEL } from "@/lib/utils";
-import { ShieldCheck, Ban, FileWarning, CalendarClock, IndianRupee, ArrowLeft, FileX2 } from "lucide-react";
+import { inr, num, ASSET_CLASS_LABEL } from "@/lib/utils";
+import { ShieldCheck, Ban, FileWarning, IndianRupee, ArrowLeft, FileX2 } from "lucide-react";
 import Link from "next/link";
 import { requirePage, assetScope } from "@/lib/access";
 

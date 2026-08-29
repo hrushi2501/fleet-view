@@ -236,9 +236,9 @@ export async function logDriverTrip(fd: FormData) {
   if (!driverId) redirect("/my");
 
   const assetId = String(fd.get("assetId") ?? "").trim();
-  const origin = String(fd.get("origin") ?? "").trim() || "Site Loading Point";
-  const destination = String(fd.get("destination") ?? "").trim() || "Unloading / Dumping Area";
-  const material = String(fd.get("material") ?? "").trim() || "Aggregate";
+  const _origin = String(fd.get("origin") ?? "").trim() || "Site Loading Point";
+  const _destination = String(fd.get("destination") ?? "").trim() || "Unloading / Dumping Area";
+  const _material = String(fd.get("material") ?? "").trim() || "Aggregate";
   const tonnage = parseFloat(String(fd.get("tonnage") ?? "0")) || 0;
   const distanceKm = parseFloat(String(fd.get("distanceKm") ?? "0")) || 12;
   const endMeter = parseFloat(String(fd.get("endMeter") ?? "0")) || 0;

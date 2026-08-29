@@ -4,7 +4,6 @@ import { AttendanceForm, PersonDocForm, PersonMasterForm, DeleteRow } from "@/co
 import { attendanceSummary, personDocStatus, PERSON_DOC_LABEL, REQUIRED_PERSON_DOCS, type AttendanceLite, type PersonDocLite } from "@/lib/master";
 import { num, fmtDate } from "@/lib/utils";
 import { Users, CalendarCheck, FileX2, TriangleAlert, UserCheck } from "lucide-react";
-import Link from "next/link";
 import { requirePage } from "@/lib/access";
 
 const STATE_DOT: Record<string, string> = {

@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { StatCard, Card, SectionTitle, Badge } from "@/components/ui";
-import { num, fmtDate, ASSET_CLASS_LABEL, inr } from "@/lib/utils";
-import { Wrench, TriangleAlert, CalendarClock, ShieldAlert, BellRing, Filter, Clock, CheckCircle2, AlertOctagon, Fuel, FileText } from "lucide-react";
+import { num, fmtDate, inr } from "@/lib/utils";
+import { Wrench, TriangleAlert, CalendarClock, ShieldAlert, BellRing, AlertOctagon, FileText } from "lucide-react";
 import { PushButton, SendTestPush } from "@/components/PushButton";
 import { SnoozeModal, AlertActionButtons, RaiseWoFromReminderButton } from "@/components/ReminderForms";
 import { pmDue, type ScheduleLite } from "@/lib/maintenance";
@@ -65,7 +65,7 @@ export default async function RemindersPage({ searchParams }: { searchParams: Pr
 
   const overdue = withDays.filter((x) => x.days < 0);
   const dueSoon = withDays.filter((x) => x.days >= 0 && x.days <= 15);
-  const upcoming = withDays.filter((x) => x.days > 15 && x.days <= 45);
+  const _upcoming = withDays.filter((x) => x.days > 15 && x.days <= 45);
 
   const tabClass = (t: string) => `px-4 py-2 text-sm font-semibold border-b-2 transition-all whitespace-nowrap flex items-center gap-1.5 ${
     tab === t

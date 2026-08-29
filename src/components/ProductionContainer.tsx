@@ -4,7 +4,22 @@ import React, { useState } from "react";
 import { ProductionEntryForm } from "@/components/ProductionEntryForm";
 import { ScrollText, LayoutDashboard } from "lucide-react";
 
-export function ProductionContainer({ children }: { children: React.ReactNode }) {
+interface Option {
+  id: string;
+  label: string;
+}
+
+export function ProductionContainer({
+  children,
+  assets = [],
+  projects = [],
+  drivers = [],
+}: {
+  children: React.ReactNode;
+  assets?: Option[];
+  projects?: Option[];
+  drivers?: Option[];
+}) {
   const [activeTab, setActiveTab] = useState<"OVERVIEW" | "ENTRY">("OVERVIEW");
 
   return (
@@ -47,7 +62,7 @@ export function ProductionContainer({ children }: { children: React.ReactNode })
       {activeTab === "OVERVIEW" && children}
       {activeTab === "ENTRY" && (
         <div className="py-2">
-          <ProductionEntryForm />
+          <ProductionEntryForm assets={assets} projects={projects} drivers={drivers} />
         </div>
       )}
     </div>

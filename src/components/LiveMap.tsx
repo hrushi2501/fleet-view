@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { ASSET_CLASS_LABEL, timeAgo, num, cn } from "@/lib/utils";
+import { ASSET_CLASS_LABEL, num, cn } from "@/lib/utils";
 import { AssetGlass } from "@/components/AssetGlass";
 import { Navigation, Gauge, Loader2 } from "lucide-react";
 

@@ -66,7 +66,7 @@ export async function Workforce({ tab }: { tab: string }) {
   const access = await requirePage("people.view");
   // Rows, not just the page: a scoped supervisor sees their own sites.
   const visible = assetScope(access);
-  const visibleProjects = projectScope(access);
+  const _visibleProjects = projectScope(access);
   const activeTab = tab === "safety" ? "safety" : "overview";
 
   // Single data fetch for both tabs — avoids redundant DB round-trips on tab switch

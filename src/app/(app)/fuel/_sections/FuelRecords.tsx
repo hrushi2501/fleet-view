@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { Card, SectionTitle, StatCard, Badge } from "@/components/ui";
-import { inr, num, fmtDate, distanceKm } from "@/lib/utils";
+import { inr, num, fmtDate } from "@/lib/utils";
 import { getDieselRate } from "@/lib/settings";
 import { Fuel, Truck, MapPin, IndianRupee, Clock, ShieldAlert } from "lucide-react";
 import Link from "next/link";

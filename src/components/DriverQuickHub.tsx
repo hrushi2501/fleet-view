@@ -7,24 +7,16 @@ import {
   Fuel,
   Route,
   Wrench,
-  CheckCircle2,
-  Clock,
   LogOut,
-  Plus,
   Loader2,
   X,
-  Sparkles,
-  Truck,
-  ArrowRight,
-  ShieldCheck,
-  AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
 import { logDriverTrip, endDriverShift } from "@/app/(app)/my/actions";
 
 interface DriverQuickHubProps {
-  driverName: string;
+  driverName?: string;
   vehicle: {
     id: string;
     code: string;
@@ -37,17 +29,17 @@ interface DriverQuickHubProps {
   };
   todayTripsCount: number;
   todayKm: number;
-  expiredDocsCount: number;
-  overdueServiceCount: number;
+  expiredDocsCount?: number;
+  overdueServiceCount?: number;
 }
 
 export function DriverQuickHub({
-  driverName,
+  driverName: _driverName,
   vehicle,
   todayTripsCount,
   todayKm,
-  expiredDocsCount,
-  overdueServiceCount,
+  expiredDocsCount: _expiredDocsCount,
+  overdueServiceCount: _overdueServiceCount,
 }: DriverQuickHubProps) {
   const [tripModalOpen, setTripModalOpen] = useState(false);
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);

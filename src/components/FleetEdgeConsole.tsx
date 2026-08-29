@@ -27,6 +27,7 @@ import { AssetGlass } from "@/components/AssetGlass";
 import type { LiveFleet, LiveStatus, LiveVehicle } from "@/lib/fleet-edge-live";
 import type { FleetEdgeMapMarker, MapView } from "@/components/FleetEdgeMap";
 import { PlaybackBar, useTrack } from "@/components/FleetEdgePlayback";
+import { useLiveFleet } from "@/lib/query-hooks";
 
 const FleetEdgeMap = dynamic(() => import("./FleetEdgeMap"), {
   ssr: false,
@@ -36,6 +37,8 @@ const FleetEdgeMap = dynamic(() => import("./FleetEdgeMap"), {
     </div>
   ),
 });
+
+const POLL_MS = 8000;
 
 // ---------------------------------------------------------------------------
 // Presentation vocabulary
@@ -122,12 +125,10 @@ function fmtClock(iso: string | null): string {
 // ---------------------------------------------------------------------------
 
 /** How often the console re-reads the fleet. The sync itself runs every 2 min. */
-const POLL_MS = 30_000;
-
 export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
-  const [fleet, setFleet] = useState<LiveFleet>(initial);
-  const [refreshing, setRefreshing] = useState(false);
-  const [staleError, setStaleError] = useState<string | null>(null);
+  const { data: liveData, isFetching: refreshing, error: liveError, refetch } = useLiveFleet(initial);
+  const fleet = liveData ?? initial;
+  const staleError = liveError instanceof Error ? liveError.message : liveError ? "Refresh failed" : null;
 
   const [status, setStatus] = useState<LiveStatus | "ALL">("ALL");
   const [listTab, setListTab] = useState<"ALL" | "ON_TRIP">("ALL");
@@ -149,26 +150,8 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
   }, []);
 
   const refresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      const res = await fetch("/api/telematics/live", { cache: "no-store" });
-      if (!res.ok) throw new Error(`Refresh failed (${res.status})`);
-      setFleet((await res.json()) as LiveFleet);
-      setStaleError(null);
-    } catch (e) {
-      // The screen keeps the last good fleet and says the refresh failed. It
-      // must never blank out — a dispatcher losing the map because one poll
-      // timed out is worse than a map with a warning on it.
-      setStaleError(e instanceof Error ? e.message : "Refresh failed");
-    } finally {
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    const t = setInterval(refresh, POLL_MS);
-    return () => clearInterval(t);
-  }, [refresh]);
+    await refetch();
+  }, [refetch]);
 
   const selected = useMemo(
     () => fleet.vehicles.find((v) => v.id === selectedId) ?? null,
