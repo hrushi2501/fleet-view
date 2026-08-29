@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { checkSharedSecret } from "@/lib/auth";
 import { normaliseReading, assetCacheUpdate } from "@/lib/telemetry-normalization";
 import { TataFleetEdgeAdapter } from "@/lib/telematics-adapters";
+import { cachedFuelFor } from "@/lib/fuel-cache";
 import type { TelemetryPing } from "@/lib/telematics-adapters";
 
 export const dynamic = "force-dynamic";
@@ -367,10 +368,19 @@ export async function POST(req: Request) {
       continue;
     }
 
+    // The level a person reads off the screen comes from the median of the
+    // recent samples, not from whichever one arrived last — one sender in this
+    // fleet flickers 200 L on a 300 L tank and the page was showing the spike.
+    // The readings themselves are untouched; this governs the cached figure.
+    const cachedFuel = await cachedFuelFor(asset.id, asset.fuelCapacity);
+
     await db.asset.update({
       where: { id: asset.id },
       data: {
         ...assetCacheUpdate(r, asset),
+        ...(cachedFuel.pct != null
+          ? { fuelLevelPct: cachedFuel.pct, fuelLevelAt: cachedFuel.at }
+          : {}),
         // The IMEI identifies the physical tracker, and Fleet Edge sends it on
         // every single reading — yet it was stored on one asset out of twelve,
         // because nothing ever wrote it. It is worth holding for its own sake
