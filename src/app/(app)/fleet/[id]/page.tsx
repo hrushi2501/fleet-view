@@ -25,6 +25,34 @@ export const dynamic = "force-dynamic";
 
 const SPEC_ICON = { engine: Cog, transmission: Settings2, payload: Package, fuel: Fuel } as const;
 
+/** "primaryFuelTankCapacity" -> "Primary Fuel Tank Capacity" */
+const humanise = (k: string) =>
+  k.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());
+
+const showValue = (v: unknown) => {
+  if (v === null || v === undefined || v === "") return "—";
+  if (typeof v === "boolean") return v ? "Yes" : "No";
+  if (typeof v === "number") return Number.isInteger(v) ? v.toLocaleString("en-IN") : String(v);
+  return String(v);
+};
+
+/**
+ * Fields the vehicle sends that this system deliberately does not use.
+ *
+ * Showing them unannotated under a heading like "what the vehicle reports"
+ * invites somebody to read 1,500 L of diesel off a truck with a 300 L tank.
+ * They are struck through and given the reason, because the honest thing is to
+ * show what arrived *and* say which parts are not believed.
+ */
+const UNTRUSTED_FIELDS: Record<string, string> = {
+  secondaryFuelLevel1: "no second tank fitted — constant 1,500 L sentinel",
+  secondaryFuelTankCapacity1: "placeholder 55,555 L, not a real tank",
+  engineRunHour: "carries the odometer, not engine hours",
+  defLevel: "constant 65,000 — unscaled sensor value",
+  defQuality: "unscaled sensor value",
+  gpsAltitude: "unscaled; not used for anything",
+};
+
 /** A row in the LIVE TELEMETRY card — 52px tall, hairline between. */
 function Metric({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -65,7 +93,7 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
   const now = new Date();
   const since = new Date(now.getTime() - 30 * 86_400_000);
 
-  const [readings, telemetryAgg, projects] = await Promise.all([
+  const [readings, telemetryAgg, projects, latestRaw] = await Promise.all([
     db.telemetryReading.findMany({
       where: { assetId: asset.id, recordedAt: { gte: since } },
       orderBy: { recordedAt: "asc" },
@@ -81,6 +109,14 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
       _max: { recordedAt: true },
     }),
     db.project.findMany({ orderBy: { code: "asc" } }),
+    // The newest reading in full. The floating card has always shown every
+    // field the vehicle reports; the page it links to showed a curated nine,
+    // so the richer view was the one you had to close to read the record.
+    db.telemetryReading.findFirst({
+      where: { assetId: id },
+      orderBy: { recordedAt: "desc" },
+      select: { recordedAt: true, source: true, raw: true },
+    }),
   ]);
 
   // Efficiency and distance for this one vehicle, measured rather than assumed.
@@ -591,6 +627,42 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
           )}
         </Panel>
       </div>
+
+      {/* ── Everything the vehicle reports ───────────────────────────────── */}
+      {latestRaw?.raw && typeof latestRaw.raw === "object" && (
+        <Panel>
+          <PanelTitle
+            icon={Radio}
+            note={`Newest reading, ${timeAgo(latestRaw.recordedAt)} via ${latestRaw.source}. Struck-through fields are sent by the vehicle but not trusted by this system, with the reason given.`}
+          >
+            EVERY FIELD THIS VEHICLE REPORTS
+          </PanelTitle>
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
+            {Object.entries(latestRaw.raw as Record<string, unknown>)
+              .filter(([, v]) => typeof v !== "object")
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([k, v]) => (
+                <div key={k} className="min-w-0">
+                  <dt className="truncate text-[11px] font-medium uppercase tracking-wide text-[#8b93a5]">
+                    {humanise(k)}
+                  </dt>
+                  <dd
+                    className={
+                      "mt-1 truncate text-[13px] font-semibold tabular-nums " +
+                      (UNTRUSTED_FIELDS[k] ? "text-slate-400 line-through" : "text-[#17233b]")
+                    }
+                    title={showValue(v)}
+                  >
+                    {showValue(v)}
+                  </dd>
+                  {UNTRUSTED_FIELDS[k] && (
+                    <p className="mt-0.5 text-[11px] leading-snug text-slate-400">{UNTRUSTED_FIELDS[k]}</p>
+                  )}
+                </div>
+              ))}
+          </dl>
+        </Panel>
+      )}
 
       {/* ── Compliance ───────────────────────────────────────────────────── */}
       <Panel>

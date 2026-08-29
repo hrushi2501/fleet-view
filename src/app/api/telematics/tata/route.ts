@@ -369,7 +369,21 @@ export async function POST(req: Request) {
 
     await db.asset.update({
       where: { id: asset.id },
-      data: assetCacheUpdate(r, asset),
+      data: {
+        ...assetCacheUpdate(r, asset),
+        // The IMEI identifies the physical tracker, and Fleet Edge sends it on
+        // every single reading — yet it was stored on one asset out of twelve,
+        // because nothing ever wrote it. It is worth holding for its own sake
+        // (a unit that is swapped or moved between vehicles is visible) and it
+        // is one of the four keys `resolveAsset` matches on, so recording it
+        // makes the next push resolvable even if the registration is absent.
+        //
+        // Only fills a blank: a device id someone set deliberately is not
+        // overwritten by whatever the vehicle last reported.
+        ...(!asset.deviceId && ping.identifiers?.imei
+          ? { deviceId: String(ping.identifiers.imei).trim() }
+          : {}),
+      },
     });
   }
 
