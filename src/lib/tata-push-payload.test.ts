@@ -62,6 +62,41 @@ describe("a Fleet Edge push body is understood", () => {
     assert.equal(p!.identifiers?.imei, "864636050279999");
   });
 
+  test("a vehicle identified only by chassis number is still resolvable", async () => {
+    // `vehicleId` is the spec's FIRST field and it is documented as "Chassis
+    // Number of the vehicle" — registrationNumber sits near the bottom and is
+    // not marked required. A push that carries only the chassis must still
+    // produce something the route can match on, or that vehicle silently
+    // reports nothing.
+    //
+    // This is not theoretical: of the thirteen vehicles subscribed to push,
+    // twelve had no chassis number stored until it was taken from Tata's own
+    // subscription report. The parser was always right; the register was not.
+    const chassisOnly = { ...PUSH_BODY, registrationNumber: undefined, imei: undefined };
+    const [p] = await new TataFleetEdgeAdapter().parsePayload(chassisOnly);
+    assert.equal(p!.identifiers?.chassisNo, "MAT567005R3C08725");
+    assert.equal(p!.identifiers?.registrationNo, null);
+  });
+
+  test("the timestamp format the spec actually prints is parsed", async () => {
+    // The spec's own example is `2023-09-14T12:11:38.0000009` — seven
+    // fractional digits and no zone. Date's tolerance for that is not
+    // something to assume: a timestamp that came back Invalid would either
+    // throw or silently become "now", and every reading would carry the moment
+    // it arrived instead of the moment it was measured. Every distance and
+    // fuel figure is derived from the interval between readings.
+    const [p] = await new TataFleetEdgeAdapter().parsePayload({
+      ...PUSH_BODY,
+      eventDateTime: "2023-09-14T12:11:38.0000009",
+    });
+    assert.ok(p!.timestamp instanceof Date);
+    assert.ok(!Number.isNaN(p!.timestamp.getTime()), "timestamp must not be Invalid Date");
+    // Truncated to milliseconds and read as UTC — which the live feed confirms:
+    // were it read as local time, the measured push lag would be hours, not the
+    // three seconds observed in production.
+    assert.equal(p!.timestamp.toISOString(), "2023-09-14T12:11:38.000Z");
+  });
+
   test("the capitalised fuel field in the spec is read", async () => {
     // Documented as `PrimaryFuelLevel`, sent by the live pull as
     // `primaryFuelLevel`. Reading only one spelling loses the tank entirely,
