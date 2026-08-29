@@ -108,6 +108,30 @@ describe("a Fleet Edge push body is understood", () => {
     assert.equal(p!.fuelCapacityLitres, 300);
   });
 
+  test("a zero tank with the ignition off is withheld, not recorded as empty", async () => {
+    // RJ21GD0598 reported 133.0 L running at 11:28:47 and 0.0 L stopped at
+    // 11:29:47. Thirty-six seconds. Across the fleet the correlation is total:
+    // every zero-litre reading has the ignition off and not one has it on —
+    // these senders are unpowered with the key out and send 0 rather than
+    // nothing.
+    //
+    // Recorded, it shows an empty tank on a truck that is three-quarters full,
+    // and the step back to 133 when the engine restarts reads as a 133-litre
+    // refuel. One such phantom fill was already in the data.
+    const asleep = { ...PUSH_BODY, ignitionOn: false, PrimaryFuelLevel: 0, primaryFuelLevel: 0, fuelLevelPercent: 0 };
+    const [p] = await new TataFleetEdgeAdapter().parsePayload(asleep);
+    assert.equal(p!.fuelLevelLitres, null, "litres must be withheld, not zero");
+    assert.equal(p!.fuelLevelPct, null, "percent arrives separately and must be withheld too");
+  });
+
+  test("a zero tank with the ignition ON is still reported", async () => {
+    // A dry tank on a running engine is a real and reportable state. Only the
+    // unpowered case is ambiguous, so only that one is withheld.
+    const dry = { ...PUSH_BODY, ignitionOn: true, PrimaryFuelLevel: 0, primaryFuelLevel: 0, fuelLevelPercent: 0 };
+    const [p] = await new TataFleetEdgeAdapter().parsePayload(dry);
+    assert.equal(p!.fuelLevelLitres, 0);
+  });
+
   test("the capitalised fuel field in the spec is read", async () => {
     // Documented as `PrimaryFuelLevel`, sent by the live pull as
     // `primaryFuelLevel`. Reading only one spelling loses the tank entirely,

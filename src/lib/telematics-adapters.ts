@@ -215,7 +215,7 @@ const MAX_CREDIBLE_TANK_L = 2000;
 export function interpretFleetEdgeFuel(e: RawPingItem): FuelInterpretation {
   const notes: string[] = [];
 
-  const primaryLitres = toNum(e.primaryFuelLevel ?? e.PrimaryFuelLevel);
+  let primaryLitres = toNum(e.primaryFuelLevel ?? e.PrimaryFuelLevel);
   const primaryCapacityL = toNum(e.primaryFuelTankCapacity);
   const tanksReported = toNum(e.noOfFuelTanks);
   const secondaryLitres = toNum(e.secondaryFuelLevel1 ?? e.SecondaryFuelLevel1);
@@ -252,6 +252,39 @@ export function interpretFleetEdgeFuel(e: RawPingItem): FuelInterpretation {
 
   if (primaryLitres != null && primaryCapacityL != null && primaryLitres > primaryCapacityL * 1.05) {
     notes.push(`Primary level ${primaryLitres} L exceeds the ${primaryCapacityL} L tank — treated as unusable.`);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // A level of exactly zero with the ignition off is a sleeping sender, not an
+  // empty tank.
+  //
+  // RJ21GD0598 reported 133.0 L at 11:28:47 with the engine running, and 0.0 L
+  // at 11:29:47 with it switched off. A truck does not lose a hundred and
+  // thirty-three litres in thirty-six seconds. Across the fleet the correlation
+  // is total: every zero-litre reading has the ignition off, and not one has it
+  // on. These senders are unpowered with the key out and report 0 rather than
+  // nothing.
+  //
+  // Stored as a measurement it does two kinds of damage. The vehicle page shows
+  // an empty tank on a truck that is three-quarters full — the fabricated zero
+  // this codebase exists to avoid. Worse, the next reading after the key turns
+  // is a step from 0 back up to 133, which the refuel detector reads as a
+  // 133-litre fill; one such phantom has already been recorded. Phantom fills
+  // become phantom variances, and phantom variances become accusations.
+  //
+  // Zero WITH the ignition on is left alone: a genuinely dry tank on a running
+  // engine is a real and reportable state. Only the unpowered case is withheld,
+  // and withholding is the conservative direction — it yields "unknown", never
+  // a wrong number.
+  // ───────────────────────────────────────────────────────────────────────────
+  if (primaryLitres === 0 && e.ignitionOn === false) {
+    notes.push(
+      "Primary level reported as 0 L with the ignition off — treated as no reading rather than " +
+        "an empty tank. This sender is unpowered when the key is out; a level of 0 in that state " +
+        "is indistinguishable from silence, and recording it produces both an empty tank on screen " +
+        "and a phantom refuel when the engine restarts.",
+    );
+    primaryLitres = null;
   }
 
   return {
@@ -318,8 +351,14 @@ export class TataFleetEdgeAdapter implements ITelemetryProviderAdapter {
             ? fuel.primaryLitres + fuel.secondaryLitres
             : fuel.primaryLitres;
 
+        // The percentage arrives as its own field, so suppressing the litres of
+        // an unpowered sender is not enough — a reported 0% would sail straight
+        // past it and still cache an empty tank against the vehicle. Same
+        // sender, same power state, same reasoning: withheld, not zeroed.
+        const reportedPct = toNum(e.fuelLevelPercent);
+        const pctIsAsleep = reportedPct === 0 && e.ignitionOn === false;
         const fuelLevelPct =
-          toNum(e.fuelLevelPercent) ??
+          (pctIsAsleep ? null : reportedPct) ??
           (litres != null && capacity != null && capacity > 0
             ? Math.round((litres / capacity) * 1000) / 10
             : null);
