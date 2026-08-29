@@ -104,6 +104,8 @@ export type NormalisedReading = {
   engineHours: number | null;
   fuelLevelPct: number | null;
   fuelLevelL: number | null;
+  /** Tank size the vehicle reports, litres. Null when it does not say. */
+  fuelCapacityL?: number | null;
   ignitionOn: boolean | null;
 };
 
@@ -302,6 +304,10 @@ export function normaliseReading(
     reading: {
       recordedAt, lat, lng, speedKph, headingDeg,
       odometerKm, engineHours, fuelLevelPct, fuelLevelL, ignitionOn,
+      // Passed straight through from the provider, not from `ctx` — `ctx` holds
+      // what the register believes, and the whole point here is to record what
+      // the vehicle says when the register has nothing.
+      fuelCapacityL: ping.fuelCapacityLitres ?? null,
     },
   };
 }
@@ -321,7 +327,13 @@ export function normaliseReading(
  */
 export function assetCacheUpdate(
   reading: NormalisedReading,
-  asset: { meterValue: number; hourMeterValue: number; primaryMeter: string },
+  asset: {
+    meterValue: number;
+    hourMeterValue: number;
+    primaryMeter: string;
+    /** Optional so existing callers are unaffected; when given, the vehicle can teach us its tank. */
+    fuelCapacity?: number;
+  },
 ): Record<string, unknown> {
   const patch: Record<string, unknown> = { lastSeen: reading.recordedAt };
 
@@ -343,6 +355,30 @@ export function assetCacheUpdate(
   if (reading.engineHours != null && reading.engineHours >= asset.hourMeterValue) {
     patch.hourMeterValue = reading.engineHours;
     if (asset.primaryMeter === "SMU") patch.meterValue = reading.engineHours;
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Let the vehicle tell us how big its tank is.
+  //
+  // Ten trucks were imported from a compliance spreadsheet, which records
+  // document expiry and nothing about fuel, so each arrived with a capacity of
+  // zero. Meanwhile every payload they sent carried `primaryFuelTankCapacity`
+  // — 300 L, or 160 L on the smaller ones. A capacity of zero is not a
+  // cosmetic gap: estimated range cannot be divided by it, the refuel detector
+  // has no threshold, and the vehicle page reports "tank size not recorded"
+  // about a vehicle that states its tank size every minute.
+  //
+  // Only ever fills a blank. A capacity somebody entered is a deliberate
+  // record — a replaced tank, an auxiliary one — and a sensor default must not
+  // silently overwrite it. The adapter has already rejected implausible values
+  // before this point.
+  // ───────────────────────────────────────────────────────────────────────────
+  if (
+    reading.fuelCapacityL != null &&
+    reading.fuelCapacityL > 0 &&
+    (asset.fuelCapacity == null || asset.fuelCapacity <= 0)
+  ) {
+    patch.fuelCapacity = reading.fuelCapacityL;
   }
 
   return patch;

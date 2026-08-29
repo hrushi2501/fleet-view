@@ -26,6 +26,17 @@ export interface TelemetryPing {
   engineHours: number | null;
   fuelLevelPct: number | null;
   fuelLevelLitres: number | null;
+  /**
+   * Tank size as the vehicle itself reports it, litres.
+   *
+   * Carried because the register frequently does not have it. Fifty-three
+   * assets were imported from a compliance spreadsheet that records document
+   * expiry and nothing about tanks, so every one arrived with a capacity of
+   * zero — while the vehicles were reporting 300 L, or 160 L for the smaller
+   * ones, in every single payload. Without it, estimated range cannot be
+   * computed and the refuel detector has no threshold to work against.
+   */
+  fuelCapacityLitres?: number | null;
   ignitionState: boolean | null;
   /**
    * How the fuel figure above was arrived at. Fuel numbers drive theft
@@ -339,6 +350,7 @@ export class TataFleetEdgeAdapter implements ITelemetryProviderAdapter {
           engineHours,
           fuelLevelPct,
           fuelLevelLitres: litres,
+          fuelCapacityLitres: capacity ?? null,
           ignitionState: typeof e.ignitionOn === "boolean" ? e.ignitionOn : null,
           fuelInterpretation: fuel,
           rawPayload: e as Record<string, unknown>,

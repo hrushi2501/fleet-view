@@ -97,6 +97,17 @@ describe("a Fleet Edge push body is understood", () => {
     assert.equal(p!.timestamp.toISOString(), "2023-09-14T12:11:38.000Z");
   });
 
+  test("the tank size the vehicle reports is carried, not dropped", async () => {
+    // The pull path already learned tank capacity from the payload; the push
+    // path did not. So ten trucks that arrived only over push sat at a
+    // capacity of zero while every message they sent said 300 L — estimated
+    // range undividable, the refuel detector with no threshold, and a vehicle
+    // page reporting "tank size not recorded" about a truck that states its
+    // tank size every minute.
+    const [p] = await new TataFleetEdgeAdapter().parsePayload(PUSH_BODY);
+    assert.equal(p!.fuelCapacityLitres, 300);
+  });
+
   test("the capitalised fuel field in the spec is read", async () => {
     // Documented as `PrimaryFuelLevel`, sent by the live pull as
     // `primaryFuelLevel`. Reading only one spelling loses the tank entirely,
