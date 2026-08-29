@@ -1,8 +1,20 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": ["bom1"],
+  "regions": [
+    "bom1"
+  ],
   "crons": [
-    { "path": "/api/push/cron", "schedule": "0 3 * * *" },
-    { "path": "/api/telematics/sync", "schedule": "* * * * *" }
+    {
+      "path": "/api/push/cron",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/telematics/sync",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/fuel/theft-scan",
+      "schedule": "0 21 * * *"
+    }
   ]
 }
