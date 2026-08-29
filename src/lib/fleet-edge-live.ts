@@ -45,12 +45,32 @@ export type LiveStatus = "MOVING" | "IDLING" | "STOPPED" | "OFFLINE" | "BREAKDOW
 /**
  * How long without a sample before a vehicle is called OFFLINE.
  *
- * The sync runs every two minutes and Fleet Edge rate-limits at roughly one
- * call a minute, so a single missed run is routine. Fifteen minutes is about
- * seven consecutive failures — long enough that it is not traffic shaping, short
- * enough that a driver who has lost signal shows up before the shift ends.
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Two thresholds, because a parked truck and a running one report at completely
+ * different rates and one number cannot serve both.
+ *
+ * The single 15-minute rule here was written for the pull era, when the sync ran
+ * every two minutes and a missed run was the only reason for a gap. On push the
+ * vehicle decides when to speak, and measured over 24 hours of live data the two
+ * cases are an order of magnitude apart:
+ *
+ *   engine running   p50 1 min · p90 2 min · p99 12 min · max 59 min
+ *   parked           p50 1 min · p90 62 min · p99 107 min · max 127 min
+ *
+ * Against 15 minutes, a parked truck was reported OFFLINE more often than not —
+ * which is worse than useless, because OFFLINE is meant to mean "we have lost
+ * this vehicle" and a screen that cries it about every yard-parked machine
+ * teaches people to ignore the one that has genuinely gone missing.
+ *
+ * Running: 30 minutes, comfortably clear of the 12-minute p99.
+ * Parked: 3 hours, clear of both the 107-minute p99 and the 127-minute maximum.
+ *
+ * Checked against Fleet Edge's own panel, which counted 2 offline of 13 at the
+ * same moment: these thresholds give the same 2, where 15 minutes gave 5.
+ * ─────────────────────────────────────────────────────────────────────────────
  */
-const OFFLINE_AFTER_MS = 15 * 60_000;
+const OFFLINE_RUNNING_MS = 30 * 60_000;
+const OFFLINE_PARKED_MS = 3 * 60 * 60_000;
 
 /** Below this the vehicle is not travelling; GPS speed jitters around zero. */
 const MOVING_SPEED_KPH = 3;
@@ -191,7 +211,7 @@ function defPercent(raw: Raw): number | null {
 // Status
 // ---------------------------------------------------------------------------
 
-function deriveStatus(
+export function deriveStatus(
   registerStatus: string,
   lastSeen: Date | null,
   speedKph: number | null,
@@ -203,7 +223,12 @@ function deriveStatus(
   // would hide it.
   if (registerStatus === "Breakdown") return "BREAKDOWN";
 
-  if (!lastSeen || now.getTime() - lastSeen.getTime() > OFFLINE_AFTER_MS) return "OFFLINE";
+  // A vehicle last seen with the engine running should speak again within
+  // minutes; one last seen parked may not for an hour. Judge each against its
+  // own case rather than the stricter of the two.
+  const silentFor = lastSeen ? now.getTime() - lastSeen.getTime() : Infinity;
+  const allowedSilence = ignitionOn === true ? OFFLINE_RUNNING_MS : OFFLINE_PARKED_MS;
+  if (!lastSeen || silentFor > allowedSilence) return "OFFLINE";
 
   if (speedKph != null && speedKph >= MOVING_SPEED_KPH) return "MOVING";
   // Engine running, wheels not turning. This is the state that burns diesel for
