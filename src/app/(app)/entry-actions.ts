@@ -389,7 +389,8 @@ async function saveCompliance__impl(fd: FormData) {
   revalidatePath("/");
 }
 
-export async function renewComplianceDoc(id: string, fd: FormData) {
+async function renewComplianceDoc__impl(id: string, fd: FormData) {
+  await requireAction("compliance.edit");
   const expiry = new Date(s(fd, "expiryDate") || Date.now());
   const number = s(fd, "number");
   const issueDateStr = s(fd, "issueDate");
@@ -689,6 +690,7 @@ export const deleteFuel = safe(deleteFuel__impl);
 export const saveWorkOrder = safe(saveWorkOrder__impl);
 export const updateWorkOrderStatus = safe(updateWorkOrderStatus__impl);
 export const saveCompliance = safe(saveCompliance__impl);
+export const renewComplianceDoc = safe(renewComplianceDoc__impl);
 export const saveUser = safe(saveUser__impl);
 export const changeOwnPassword = safe(changeOwnPassword__impl);
 export const adminResetUserPassword = safe(adminResetUserPassword__impl);

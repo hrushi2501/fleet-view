@@ -765,7 +765,7 @@ export function DocumentRenewModal({
     assetId: string;
     assetCode: string;
     docType: string;
-    number: string;
+    number: string | null;
     expiryDate: Date | string | null;
   };
 }) {
