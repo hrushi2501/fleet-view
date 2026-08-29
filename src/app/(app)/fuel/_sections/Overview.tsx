@@ -74,7 +74,7 @@ export async function Overview() {
   // loss. But it cannot sit only on the other tab either — this page reported
   // "Theft Alerts 0 · ₹0 at risk" while ₹21.7 K of diesel stood unaccounted one
   // click away, which reads as all-clear.
-  const detectedFills = await detectFills(visible, dieselRate, 7);
+  const { fills: detectedFills, unreliable: unreliableSenders } = await detectFills(visible, dieselRate, 7);
   const unloggedFills = detectedFills.filter((f) => !f.logged);
   const unloggedLitres = unloggedFills.reduce((s, f) => s + f.litresAdded, 0);
   const unloggedValue = unloggedFills.reduce((s, f) => s + f.estimatedValue, 0);
@@ -133,7 +133,16 @@ export async function Overview() {
         <StatCard
           label="Unlogged Fills"
           value={unloggedFills.length === 0 ? "0" : inr(unloggedValue, { compact: true })}
-          sub={unloggedFills.length === 0 ? "all fills have an entry" : `${num(unloggedLitres)} L · ${unloggedFills.length} fill${unloggedFills.length === 1 ? "" : "s"}, last 7 days`}
+          sub={
+            unreliableSenders.length > 0
+              // Say so on the tile itself. A quietly reduced count reads as
+              // "nothing to see", and the excluded vehicle is the one that
+              // needs a fitter.
+              ? `${unloggedFills.length === 0 ? "none detected" : `${num(unloggedLitres)} L · ${unloggedFills.length} fill${unloggedFills.length === 1 ? "" : "s"}`} · ${unreliableSenders.length} sender${unreliableSenders.length === 1 ? "" : "s"} excluded`
+              : unloggedFills.length === 0
+                ? "all fills have an entry"
+                : `${num(unloggedLitres)} L · ${unloggedFills.length} fill${unloggedFills.length === 1 ? "" : "s"}, last 7 days`
+          }
           accent={unloggedFills.length === 0 ? "emerald" : "amber"}
           icon={<Fuel className="h-5 w-5" />}
         />

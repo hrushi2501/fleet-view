@@ -37,6 +37,7 @@
  */
 import { db } from "@/lib/db";
 import { analyseUsage, type AnalyticsReading } from "@/lib/fleet-analytics";
+import { senderContradictsItself } from "@/lib/fuel-cache";
 
 /**
  * How far apart a sensor event and a keyed entry may be and still be the same
@@ -48,6 +49,19 @@ const MATCH_WINDOW_HOURS = 12;
 
 /** Below this a rise is sender noise or slosh, not a fill worth chasing. */
 const MIN_FILL_LITRES = 20;
+
+/** A vehicle whose sender cannot be believed, so no fill is claimed for it. */
+export type UnreliableSender = {
+  assetId: string;
+  assetCode: string;
+  registrationNo: string | null;
+};
+
+export type DetectFillsResult = {
+  fills: DetectedFill[];
+  /** Excluded from `fills` — reported so the fault is visible, not silent. */
+  unreliable: UnreliableSender[];
+};
 
 export type DetectedFill = {
   assetId: string;
@@ -78,14 +92,14 @@ export async function detectFills(
   assetWhere: Record<string, unknown>,
   dieselRate: number,
   sinceDays = 7,
-): Promise<DetectedFill[]> {
+): Promise<DetectFillsResult> {
   const since = new Date(Date.now() - sinceDays * 86_400_000);
 
   const assets = await db.asset.findMany({
     where: assetWhere,
     select: { id: true, code: true, registrationNo: true, fuelCapacity: true },
   });
-  if (assets.length === 0) return [];
+  if (assets.length === 0) return { fills: [], unreliable: [] };
 
   const assetIds = assets.map((a) => a.id);
 
@@ -139,10 +153,41 @@ export async function detectFills(
   }
 
   const out: DetectedFill[] = [];
+  const unreliable: UnreliableSender[] = [];
 
   for (const asset of assets) {
     const rows = readingsBy.get(asset.id) ?? [];
     if (rows.length < 2) continue;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // A sender that contradicts itself cannot be used to accuse anybody.
+    //
+    // RJ21GE1657 alternates between roughly 25 L and 210 L on a 300 L tank,
+    // holding each state for minutes. Every upward leg looks exactly like a
+    // refuel, so this function reported twenty "fills the tank saw but nobody
+    // logged" for that one truck on a single day — 132 L, 179 L, 188 L, 190 L —
+    // around two hundred thousand rupees of diesel that never moved.
+    //
+    // That is the worst failure this system can have. The screen is headed
+    // "nobody logged", it names a vehicle and a driver's day, and it is read by
+    // someone deciding whether fuel was stolen. Twenty fabricated entries do
+    // not merely add noise; they manufacture a case.
+    //
+    // The same test that withholds the displayed level withholds the fills. The
+    // vehicle is reported as having an unreliable sender instead — true, and
+    // pointing at a workshop rather than at a person.
+    // ─────────────────────────────────────────────────────────────────────────
+    const litreSeries = rows
+      .map((r) => r.fuelLevelL)
+      .filter((n): n is number => n != null);
+    if (senderContradictsItself(litreSeries, asset.fuelCapacity ?? null)) {
+      unreliable.push({
+        assetId: asset.id,
+        assetCode: asset.code,
+        registrationNo: asset.registrationNo,
+      });
+      continue;
+    }
 
     const { usage } = analyseUsage(rows as AnalyticsReading[], null, asset.fuelCapacity ?? null);
     const assetEntries = entriesBy.get(asset.id) ?? [];
@@ -180,5 +225,5 @@ export async function detectFills(
     }
   }
 
-  return out.sort((a, b) => b.at.getTime() - a.at.getTime());
+  return { fills: out.sort((a, b) => b.at.getTime() - a.at.getTime()), unreliable };
 }

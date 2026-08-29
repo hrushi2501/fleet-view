@@ -34,7 +34,7 @@ export async function FuelRecords() {
   // What the tanks actually saw, matched against what was written down. The
   // screen claimed to show "every fill" while reading only the keyed table, so
   // a fill nobody entered could not appear on it at all.
-  const detected = await detectFills(visible, dieselRate, 7);
+  const { fills: detected, unreliable: unreliableSenders } = await detectFills(visible, dieselRate, 7);
   const unlogged = detected.filter((f) => !f.logged);
   const unloggedValue = unlogged.reduce((s, f) => s + f.estimatedValue, 0);
   // Litres the tanks received with no entry behind them. Added to the headline
@@ -85,7 +85,13 @@ export async function FuelRecords() {
           <div className="p-5 pb-3">
             <SectionTitle
               title={`${unlogged.length} fill${unlogged.length === 1 ? "" : "s"} the tank saw but nobody logged`}
-              subtitle="Detected from the fuel sensor over the last 7 days, with no matching entry in Fill History. Usually a receipt not yet entered, or diesel drawn from a site tank — worth confirming while the day is still fresh."
+              subtitle={
+                "Detected from the fuel sensor over the last 7 days, with no matching entry in Fill History. " +
+                "Usually a receipt not yet entered, or diesel drawn from a site tank — worth confirming while the day is still fresh." +
+                (unreliableSenders.length > 0
+                  ? ` ${unreliableSenders.map((u) => u.assetCode).join(", ")} ${unreliableSenders.length === 1 ? "is" : "are"} excluded: the tank sender contradicts itself, so no fill it appears to show can be believed.`
+                  : "")
+              }
             />
           </div>
           <div className="overflow-x-auto">

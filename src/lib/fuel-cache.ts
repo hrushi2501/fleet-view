@@ -54,6 +54,33 @@ export type CachedFuel = {
   unstable: boolean;
 };
 
+/**
+ * Did this sender contradict itself across the series?
+ *
+ * Both a large rise and a large fall inside the same window. A genuine fill
+ * only rises; genuine consumption only falls; a siphon only falls. Only a
+ * faulty sender does both.
+ *
+ * Exported because the same question decides two different things: what level
+ * to display, and whether this vehicle's "refuels" are real. Getting the second
+ * one wrong is far more expensive — it puts fills nobody made in front of
+ * somebody deciding whether a driver stole diesel.
+ *
+ * @param litres oldest → newest
+ */
+export function senderContradictsItself(litres: number[], tankL: number | null): boolean {
+  if (!tankL || tankL <= 0 || litres.length < 3) return false;
+  const limit = tankL * UNSTABLE_SWING_FRACTION;
+  let maxRise = 0;
+  let maxFall = 0;
+  for (let i = 1; i < litres.length; i++) {
+    const delta = litres[i]! - litres[i - 1]!;
+    if (delta > maxRise) maxRise = delta;
+    if (-delta > maxFall) maxFall = -delta;
+  }
+  return maxRise > limit && maxFall > limit;
+}
+
 function median(xs: number[]): number | null {
   if (xs.length === 0) return null;
   const s = [...xs].sort((a, b) => a - b);
@@ -103,22 +130,7 @@ export async function cachedFuelFor(assetId: string, capacityL?: number | null):
   const litres = rows.map((r) => r.fuelLevelL).filter((n): n is number => n != null);
   const tank = capacityL && capacityL > 0 ? capacityL : null;
 
-  let unstable = false;
-  if (tank && litres.length >= 3) {
-    const limit = tank * UNSTABLE_SWING_FRACTION;
-    // Walk oldest → newest and record the largest rise and the largest fall.
-    const series = [...litres].reverse();
-    let maxRise = 0;
-    let maxFall = 0;
-    for (let i = 1; i < series.length; i++) {
-      const delta = series[i]! - series[i - 1]!;
-      if (delta > maxRise) maxRise = delta;
-      if (-delta > maxFall) maxFall = -delta;
-    }
-    // Both directions beyond the limit: it went down and came back, or up and
-    // back down. A genuine fill only rises; genuine burn only falls.
-    unstable = maxRise > limit && maxFall > limit;
-  }
+  const unstable = senderContradictsItself([...litres].reverse(), tank);
 
   if (unstable) return { pct: null, at: rows[0]!.recordedAt, unstable: true };
 
