@@ -30,6 +30,14 @@ export type SpecSource = {
   make: string;
   model: string;
   yearMfg: number;
+  /** Recorded per vehicle. Null until somebody enters it — never guessed. */
+  engineModel?: string | null;
+  enginePowerHp?: number | null;
+  torqueNm?: number | null;
+  transmission?: string | null;
+  ladenWeightKg?: number | null;
+  unladenWeightKg?: number | null;
+  fuelType?: string | null;
 };
 
 export type SpecCard = {
@@ -63,23 +71,40 @@ export function specCards(s: SpecSource): SpecCard[] {
     {
       label: "ENGINE",
       icon: "engine",
-      // `engineNo` is a serial stamped on the block, not a model designation —
-      // useful, and not the same claim as "Cummins ISBe 6.7L". Saying which is
-      // which matters more than filling the space.
-      value: s.engineNo ? `No. ${s.engineNo}` : null,
-      sub: s.engineNo ? "Engine serial · model and rating not recorded" : "Engine details not recorded",
+      // The model when it is recorded; otherwise the serial stamped on the
+      // block, clearly labelled as such. They are different claims and saying
+      // which is which matters more than filling the space.
+      value: s.engineModel ?? (s.engineNo ? `No. ${s.engineNo}` : null),
+      sub: s.engineModel
+        ? [
+            s.enginePowerHp ? `${s.enginePowerHp} HP` : null,
+            s.torqueNm ? `${s.torqueNm} Nm` : null,
+            s.fuelType ?? null,
+          ].filter(Boolean).join(" · ") || "Rating not recorded"
+        : s.engineNo
+          ? "Engine serial · model and rating not recorded"
+          : "Engine details not recorded",
     },
     {
       label: "TRANSMISSION",
       icon: "transmission",
-      value: null,
-      sub: "Gearbox details not recorded",
+      value: s.transmission ?? null,
+      sub: s.transmission ? "As recorded on the vehicle" : "Gearbox details not recorded",
     },
     {
       label: "PAYLOAD CAPACITY",
       icon: "payload",
-      value: null,
-      sub: "Rated GCW not recorded",
+      // Laden minus unladen is the load it may legally carry. Both are needed:
+      // quoting gross weight as payload overstates it by the weight of the
+      // truck, which is most of it.
+      value: s.ladenWeightKg
+        ? `${new Intl.NumberFormat("en-IN").format(s.ladenWeightKg)} kg GVW`
+        : null,
+      sub: s.ladenWeightKg && s.unladenWeightKg
+        ? `${new Intl.NumberFormat("en-IN").format(s.ladenWeightKg - s.unladenWeightKg)} kg payload · ${new Intl.NumberFormat("en-IN").format(s.unladenWeightKg)} kg kerb`
+        : s.ladenWeightKg
+          ? "Kerb weight not recorded, so payload cannot be derived"
+          : "Rated weight not recorded",
     },
     fuelCard(s),
   ];

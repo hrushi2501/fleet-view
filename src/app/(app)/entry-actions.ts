@@ -20,6 +20,24 @@ async function uploadPhoto(file: FormDataEntryValue | null, prefix: string): Pro
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
 
+/**
+ * A number field that may legitimately be blank.
+ *
+ * `n` returns 0 for an empty input, which is right for a meter reading and
+ * wrong for a specification: a laden weight of 0 kg is not a lighter truck, it
+ * is a truck nobody has measured. Blank must stay null so the page can say
+ * "not recorded" instead of printing a zero.
+ */
+const nOrNull = (fd: FormData, k: string) => {
+  const raw = String(fd.get(k) ?? "").trim();
+  if (!raw) return null;
+  const v = Number(raw);
+  return Number.isFinite(v) ? v : null;
+};
+
+/** A text field that may be blank; empty becomes null rather than "". */
+const sOrNull = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim() || null;
+
 function docStatus(expiry: Date) {
   const days = (expiry.getTime() - Date.now()) / 86400000;
   return days < 0 ? "Expired" : days < 30 ? "Expiring" : "Valid";
@@ -48,6 +66,26 @@ async function saveAsset__impl(id: string | null, fd: FormData) {
     serviceDueDate: s(fd, "serviceDueDate") ? new Date(s(fd, "serviceDueDate")) : null,
     lastServiceDate: s(fd, "lastServiceDate") ? new Date(s(fd, "lastServiceDate")) : null,
     projectId: s(fd, "projectId") || null,
+    // Identity and specification. These were not in the form at all, so
+    // `chassisNo` and `engineNo` were unreachable once a vehicle existed, and
+    // the specification fields the vehicle page now shows had no way of ever
+    // being filled — every one of them would have read "not recorded" forever.
+    chassisNo: sOrNull(fd, "chassisNo"),
+    engineNo: sOrNull(fd, "engineNo"),
+    fuelType: sOrNull(fd, "fuelType"),
+    emissionNorm: sOrNull(fd, "emissionNorm"),
+    segment: sOrNull(fd, "segment"),
+    vehicleApplication: sOrNull(fd, "vehicleApplication"),
+    branch: sOrNull(fd, "branch"),
+    specification: sOrNull(fd, "specification"),
+    engineModel: sOrNull(fd, "engineModel"),
+    transmission: sOrNull(fd, "transmission"),
+    enginePowerHp: nOrNull(fd, "enginePowerHp"),
+    torqueNm: nOrNull(fd, "torqueNm"),
+    ladenWeightKg: nOrNull(fd, "ladenWeightKg"),
+    unladenWeightKg: nOrNull(fd, "unladenWeightKg"),
+    tonnage: nOrNull(fd, "tonnage"),
+    registrationDate: s(fd, "registrationDate") ? new Date(s(fd, "registrationDate")) : null,
     ...(s(fd, "lat") ? { lat: n(fd, "lat") } : {}),
     ...(s(fd, "lng") ? { lng: n(fd, "lng") } : {}),
   };

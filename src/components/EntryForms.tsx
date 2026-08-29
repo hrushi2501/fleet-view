@@ -228,7 +228,13 @@ const meterOpts = [{ value: "ODOMETER", label: "Odometer (km)" }, { value: "SMU"
 const catOpts = [{ value: "VEHICLE", label: "Vehicle" }, { value: "EQUIPMENT", label: "Equipment" }];
 
 /* ----------------------------- ASSET ----------------------------- */
-type AssetData = { id: string; code: string; name: string; assetClass: string; category: string; ownershipType: string; make: string; model: string; yearMfg: number; primaryMeter: string; meterValue: number; fuelCapacity: number; status: string; registrationNo: string | null; acquisitionCost: number; healthScore: number; utilization: number; projectId: string | null; serviceDueDate?: string | null; lastServiceDate?: string | null; lat?: number | null; lng?: number | null };
+type AssetData = { id: string; code: string; name: string; assetClass: string; category: string; ownershipType: string; make: string; model: string; yearMfg: number; primaryMeter: string; meterValue: number; fuelCapacity: number; status: string; registrationNo: string | null; acquisitionCost: number; healthScore: number; utilization: number; projectId: string | null; serviceDueDate?: string | null; lastServiceDate?: string | null; lat?: number | null; lng?: number | null;
+  chassisNo?: string | null; engineNo?: string | null; fuelType?: string | null;
+  emissionNorm?: string | null; segment?: string | null; vehicleApplication?: string | null;
+  branch?: string | null; specification?: string | null; engineModel?: string | null;
+  transmission?: string | null; enginePowerHp?: number | null; torqueNm?: number | null;
+  ladenWeightKg?: number | null; unladenWeightKg?: number | null; tonnage?: number | null;
+  registrationDate?: string | null };
 
 export function AssetEntry({ projects, asset }: { projects: Opt[]; asset?: AssetData }) {
   const projOpts = [{ value: "", label: "— None —" }, ...projects.map((p) => ({ value: p.id, label: p.label }))];
@@ -271,6 +277,33 @@ export function AssetEntry({ projects, asset }: { projects: Opt[]; asset?: Asset
           <Inp label="Next Service Due" name="serviceDueDate" type="date" defaultValue={asset?.serviceDueDate?.slice(0, 10)} />
           <div className="col-span-full">
             <LocationField lat={asset?.lat} lng={asset?.lng} />
+          </div>
+        </div>
+
+        {/* Specification — the fields the vehicle page shows and, until now, had
+            no way of ever being given. Every one is optional: left blank they
+            read "Not recorded", which is true, rather than zero, which is not. */}
+        <div className="mt-3 border-t border-slate-200/80 pt-3">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            Identity &amp; specification
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Inp label="Chassis No. / VIN" name="chassisNo" defaultValue={asset?.chassisNo ?? ""} placeholder="MAT566006R3B04319" />
+            <Inp label="Engine No." name="engineNo" defaultValue={asset?.engineNo ?? ""} />
+            <Inp label="Engine Model" name="engineModel" defaultValue={asset?.engineModel ?? ""} placeholder="Cummins ISBe 6.7L" />
+            <Inp label="Transmission" name="transmission" defaultValue={asset?.transmission ?? ""} placeholder="G1150 9-Speed" />
+            <Inp label="Engine Power (HP)" name="enginePowerHp" type="number" defaultValue={asset?.enginePowerHp ?? ""} />
+            <Inp label="Torque (Nm)" name="torqueNm" type="number" defaultValue={asset?.torqueNm ?? ""} />
+            <Inp label="Fuel Type" name="fuelType" defaultValue={asset?.fuelType ?? ""} placeholder="DIESEL" />
+            <Inp label="Emission Norm" name="emissionNorm" defaultValue={asset?.emissionNorm ?? ""} placeholder="BS 6" />
+            <Inp label="Gross Weight — Laden (kg)" name="ladenWeightKg" type="number" defaultValue={asset?.ladenWeightKg ?? ""} />
+            <Inp label="Kerb Weight — Unladen (kg)" name="unladenWeightKg" type="number" defaultValue={asset?.unladenWeightKg ?? ""} />
+            <Inp label="Tonnage" name="tonnage" type="number" defaultValue={asset?.tonnage ?? ""} />
+            <Inp label="Segment" name="segment" defaultValue={asset?.segment ?? ""} placeholder="HCV Const" />
+            <Inp label="Vehicle Application" name="vehicleApplication" defaultValue={asset?.vehicleApplication ?? ""} placeholder="Construction Aggregate" />
+            <Inp label="Branch" name="branch" defaultValue={asset?.branch ?? ""} />
+            <Inp label="Registration Date" name="registrationDate" type="date" defaultValue={asset?.registrationDate?.slice(0, 10) ?? ""} />
+            <Inp label="Specification" name="specification" defaultValue={asset?.specification ?? ""} />
           </div>
         </div>
       </details>

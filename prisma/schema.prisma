@@ -141,6 +141,28 @@ model Asset {
   usefulLifeYears Int      @default(8)
   salvageValue    Float    @default(0)
   inServiceDate   DateTime?
+  // ---- Specification -----------------------------------------------------
+  // The fields Fleet Edge holds against each vehicle that this register had
+  // nowhere to put. Named after its labels so the two reconcile by eye. All
+  // nullable: a blank is rendered "Not recorded", never as a zero or a guess.
+  fuelType           String?
+  /// BS 6, BS 4 …
+  emissionNorm       String?
+  /// Fleet Edge's segment, e.g. "HCV Const".
+  segment            String?
+  /// What the vehicle is used for, e.g. "Construction Aggregate".
+  vehicleApplication String?
+  /// Gross vehicle weight, kg — the rated payload figure.
+  ladenWeightKg      Int?
+  unladenWeightKg    Int?
+  tonnage            Float?
+  registrationDate   DateTime?
+  branch             String?
+  specification      String?
+  engineModel        String?
+  enginePowerHp      Int?
+  torqueNm           Int?
+  transmission       String?
   createdAt       DateTime @default(now())
 
   // Postgres does not index a foreign key on its own, so every filter and join

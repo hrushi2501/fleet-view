@@ -137,6 +137,17 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
     serviceDueDate: asset.serviceDueDate ? asset.serviceDueDate.toISOString() : null,
     lastServiceDate: asset.lastServiceDate ? asset.lastServiceDate.toISOString() : null,
     lat: asset.lat, lng: asset.lng,
+    // Every specification field must round-trip through the form. Omit one and
+    // saving any unrelated edit writes null over it, so a record would quietly
+    // empty itself each time somebody corrected a service date.
+    chassisNo: asset.chassisNo, engineNo: asset.engineNo, fuelType: asset.fuelType,
+    emissionNorm: asset.emissionNorm, segment: asset.segment,
+    vehicleApplication: asset.vehicleApplication, branch: asset.branch,
+    specification: asset.specification, engineModel: asset.engineModel,
+    transmission: asset.transmission, enginePowerHp: asset.enginePowerHp,
+    torqueNm: asset.torqueNm, ladenWeightKg: asset.ladenWeightKg,
+    unladenWeightKg: asset.unladenWeightKg, tonnage: asset.tonnage,
+    registrationDate: asset.registrationDate ? asset.registrationDate.toISOString() : null,
   };
 
   /* ── derived facts ──────────────────────────────────────────────────── */
@@ -303,6 +314,10 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
   const cards = specCards({
     fuelCapacity: asset.fuelCapacity, engineNo: asset.engineNo, chassisNo: asset.chassisNo,
     make: asset.make, model: asset.model, yearMfg: asset.yearMfg,
+    engineModel: asset.engineModel, enginePowerHp: asset.enginePowerHp,
+    torqueNm: asset.torqueNm, transmission: asset.transmission,
+    ladenWeightKg: asset.ladenWeightKg, unladenWeightKg: asset.unladenWeightKg,
+    fuelType: asset.fuelType,
   });
 
   /* ── the record, grouped ────────────────────────────────────────────── */
@@ -315,8 +330,15 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
     { label: "Make", value: asset.make || null },
     { label: "Model", value: asset.model || null },
     { label: "Year of manufacture", value: asset.yearMfg ? String(asset.yearMfg) : null, numeric: true },
-    { label: "Chassis number", value: asset.chassisNo },
+    { label: "Chassis number / VIN", value: asset.chassisNo },
     { label: "Engine number", value: asset.engineNo },
+    { label: "Fuel type", value: asset.fuelType },
+    { label: "Emission norm", value: asset.emissionNorm },
+    { label: "Segment", value: asset.segment },
+    { label: "Vehicle application", value: asset.vehicleApplication },
+    { label: "Registration date", value: asset.registrationDate ? fmtDate(asset.registrationDate) : null },
+    { label: "Branch", value: asset.branch },
+    { label: "Specification", value: asset.specification },
     { label: "Description", value: asset.name || null },
   ];
 
@@ -434,6 +456,65 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
       {attention.length > 0 && (
         <div className="grid gap-2.5 sm:grid-cols-2">{attention}</div>
       )}
+
+      {/* ── Lifetime and measured figures ───────────────────────────────────
+          Two different things side by side, each labelled with what it covers.
+          The odometer and hour meter are lifetime totals the vehicle carries
+          itself. Efficiency and diesel burned are measured from telemetry, and
+          this system has only been receiving it since August — presenting a
+          30-day figure as "overall", the way a provider dashboard does, would
+          be a wrong number wearing a confident label. */}
+      <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
+        <Panel>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-[#8b93a5]">
+            {asset.primaryMeter === "SMU" ? "Engine hours" : "Odometer"}
+          </p>
+          <p className="mt-1.5 text-[22px] font-extrabold tracking-[-.4px] text-[#17233b]">
+            {asset.meterValue > 0 ? num(asset.meterValue) : "—"}
+            <span className="ml-1 text-[13px] font-semibold text-[#667085]">{meterUnit}</span>
+          </p>
+          <p className="mt-1 text-[11px] text-[#8b93a5]">Lifetime, as the vehicle reports it</p>
+        </Panel>
+
+        <Panel>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-[#8b93a5]">Engine hours</p>
+          <p className="mt-1.5 text-[22px] font-extrabold tracking-[-.4px] text-[#17233b]">
+            {asset.hourMeterValue > 0 ? num(asset.hourMeterValue) : <span className="text-slate-300">—</span>}
+            {asset.hourMeterValue > 0 && <span className="ml-1 text-[13px] font-semibold text-[#667085]">h</span>}
+          </p>
+          <p className="mt-1 text-[11px] text-[#8b93a5]">
+            {asset.hourMeterValue > 0 ? "Lifetime run hours" : "This vehicle sends the odometer in the hour field"}
+          </p>
+        </Panel>
+
+        <Panel>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-[#8b93a5]">Fuel efficiency</p>
+          <p className="mt-1.5 text-[22px] font-extrabold tracking-[-.4px] text-[#17233b]">
+            {kmPerL != null ? `${kmPerL}` : <span className="text-slate-300">—</span>}
+            {kmPerL != null && <span className="ml-1 text-[13px] font-semibold text-[#667085]">km/L</span>}
+          </p>
+          <p className="mt-1 text-[11px] text-[#8b93a5]">
+            {kmPerL != null ? "Measured over the last 30 days" : "Needs denser telemetry"}
+          </p>
+        </Panel>
+
+        <Panel>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-[#8b93a5]">Diesel burned</p>
+          <p className="mt-1.5 text-[22px] font-extrabold tracking-[-.4px] text-[#17233b]">
+            {measured && !measured.insufficientData
+              ? num(measured.litresBurned)
+              : <span className="text-slate-300">—</span>}
+            {measured && !measured.insufficientData && (
+              <span className="ml-1 text-[13px] font-semibold text-[#667085]">L</span>
+            )}
+          </p>
+          <p className="mt-1 text-[11px] text-[#8b93a5]">
+            {measured && !measured.insufficientData
+              ? "Last 30 days, not lifetime"
+              : "Telemetry too sparse to measure"}
+          </p>
+        </Panel>
+      </div>
 
       {/* ── The designed grid ────────────────────────────────────────────── */}
       <div className="grid gap-3.5 lg:grid-cols-[1.05fr_1fr_1fr]">
