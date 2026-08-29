@@ -12,11 +12,14 @@
  */
 import { requirePage } from "@/lib/access";
 import { fmtDate } from "@/lib/utils";
+import { db } from "@/lib/db";
 import {
   myBasics, latestIgnition, vehicleState, whereIsIt, myTrips, todaysTrips,
   myShift, myServiceDue, myPersonDocs, myVehicleDocs, type DocRow,
 } from "./_data";
 import { MyHeader, NotLinked, NoVehicle, Screen, Hero, Notice, Fact, Tile } from "./_ui";
+import { DriverQrScanner } from "@/components/DriverQrScanner";
+import { DriverQuickHub } from "@/components/DriverQuickHub";
 
 export const dynamic = "force-dynamic";
 
@@ -24,11 +27,17 @@ export default async function MyWorkPage() {
   const access = await requirePage("my.work");
   const { driver, vehicle } = await myBasics(access);
 
+  const availableVehicles = await db.asset.findMany({
+    where: { status: { notIn: ["Off-hired", "Disposed"] } },
+    select: { id: true, code: true, name: true, registrationNo: true, assetClass: true },
+    orderBy: { code: "asc" },
+  });
+
   if (!driver) {
     return (
       <Screen>
         <MyHeader href="/my" />
-        <NotLinked loginName={access.session.name} />
+        <DriverQrScanner vehicles={availableVehicles} triggerVariant="card" />
       </Screen>
     );
   }
@@ -65,9 +74,43 @@ export default async function MyWorkPage() {
 
   return (
     <Screen>
-      <MyHeader href="/my" note={`${driver.name.split(" ")[0]} · ${fmtDate(now)}`} />
+      <div className="flex items-center justify-between">
+        <MyHeader href="/my" note={`${driver.name.split(" ")[0]} · ${fmtDate(now)}`} />
+        {vehicle && (
+          <DriverQrScanner
+            vehicles={availableVehicles}
+            triggerVariant="button"
+            currentVehicleCode={vehicle.code}
+          />
+        )}
+      </div>
 
-      {!vehicle && <NoVehicle />}
+      {!vehicle && (
+        <DriverQrScanner
+          vehicles={availableVehicles}
+          triggerVariant="card"
+        />
+      )}
+
+      {vehicle && (
+        <DriverQuickHub
+          driverName={driver.name}
+          vehicle={{
+            id: vehicle.id,
+            code: vehicle.code,
+            name: vehicle.name,
+            registrationNo: vehicle.registrationNo,
+            meterValue: vehicle.meterValue,
+            primaryMeter: vehicle.primaryMeter,
+            fuelLevelPct: vehicle.fuelLevelPct,
+            fuelCapacity: vehicle.fuelCapacity,
+          }}
+          todayTripsCount={today.length}
+          todayKm={todayKm}
+          expiredDocsCount={expired.length}
+          overdueServiceCount={overdue.length}
+        />
+      )}
 
       {vehicle && state && (
         <>
@@ -77,11 +120,6 @@ export default async function MyWorkPage() {
             hint={state.hint}
             meta={`${vehicle.registrationNo ?? vehicle.code} · ${place}`}
           />
-
-          <div className="grid grid-cols-2 gap-3">
-            <Fact label="Today's trips" value={String(today.length)} sub={today.length === 0 ? "Abhi tak koi trip nahi" : undefined} />
-            <Fact label="Distance today" value={`${Math.round(todayKm)} km`} />
-          </div>
         </>
       )}
 

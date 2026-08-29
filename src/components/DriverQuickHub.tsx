@@ -1,0 +1,389 @@
+"use client";
+
+import React, { useState, useTransition } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import {
+  Fuel,
+  Route,
+  Wrench,
+  CheckCircle2,
+  Clock,
+  LogOut,
+  Plus,
+  Loader2,
+  X,
+  Sparkles,
+  Truck,
+  ArrowRight,
+  ShieldCheck,
+  AlertTriangle,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useToast } from "@/components/Toast";
+import { logDriverTrip, endDriverShift } from "@/app/(app)/my/actions";
+
+interface DriverQuickHubProps {
+  driverName: string;
+  vehicle: {
+    id: string;
+    code: string;
+    name: string;
+    registrationNo: string | null;
+    meterValue: number;
+    primaryMeter: string;
+    fuelLevelPct: number | null;
+    fuelCapacity: number;
+  };
+  todayTripsCount: number;
+  todayKm: number;
+  expiredDocsCount: number;
+  overdueServiceCount: number;
+}
+
+export function DriverQuickHub({
+  driverName,
+  vehicle,
+  todayTripsCount,
+  todayKm,
+  expiredDocsCount,
+  overdueServiceCount,
+}: DriverQuickHubProps) {
+  const [tripModalOpen, setTripModalOpen] = useState(false);
+  const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
+  const [endingMeter, setEndingMeter] = useState(String(vehicle.meterValue));
+  const [tripForm, setTripForm] = useState({
+    origin: "Quarry Pit #2",
+    destination: "Crusher Plant A",
+    material: "Aggregate 20mm",
+    tonnage: "32.5",
+    distanceKm: "14",
+    endMeter: String(vehicle.meterValue + 14),
+  });
+
+  const [pending, startTransition] = useTransition();
+  const toast = useToast();
+  const router = useRouter();
+
+  const handleTripSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const fd = new FormData();
+    fd.set("assetId", vehicle.id);
+    fd.set("origin", tripForm.origin);
+    fd.set("destination", tripForm.destination);
+    fd.set("material", tripForm.material);
+    fd.set("tonnage", tripForm.tonnage);
+    fd.set("distanceKm", tripForm.distanceKm);
+    fd.set("endMeter", tripForm.endMeter);
+
+    startTransition(async () => {
+      try {
+        await logDriverTrip(fd);
+        toast.success(`✓ Trip recorded: ${tripForm.origin} ➔ ${tripForm.destination} (${tripForm.tonnage} MT)`);
+        setTripModalOpen(false);
+        router.refresh();
+      } catch (err: any) {
+        toast.error("Trip Log Failed", err.message || "Could not record trip");
+      }
+    });
+  };
+
+  const handleShiftCheckout = (e: React.FormEvent) => {
+    e.preventDefault();
+    const meter = parseFloat(endingMeter) || undefined;
+    startTransition(async () => {
+      try {
+        await endDriverShift(meter);
+        toast.success("✓ Shift completed & sign-off logged!");
+        setCheckoutModalOpen(false);
+        router.refresh();
+      } catch (err: any) {
+        toast.error("Checkout Failed", err.message || "Could not end shift");
+      }
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* 1. Live Active Shift Control Card */}
+      <div className="overflow-hidden rounded-3xl border border-emerald-500/30 bg-gradient-to-br from-emerald-600 to-teal-800 p-5 text-white shadow-xl shadow-emerald-700/15">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-300 animate-ping" />
+            <span className="text-xs font-bold uppercase tracking-wider text-emerald-100">Duty Active</span>
+          </div>
+          <button
+            onClick={() => setCheckoutModalOpen(true)}
+            className="flex items-center gap-1.5 rounded-xl bg-white/20 px-3 py-1 text-xs font-bold text-white backdrop-blur-md hover:bg-white/30 active:scale-95 transition-all"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            <span>End Shift</span>
+          </button>
+        </div>
+
+        <div className="mt-3 flex items-baseline justify-between">
+          <div>
+            <h3 className="text-xl font-black">{vehicle.code}</h3>
+            <p className="text-xs text-emerald-100/90">{vehicle.name} {vehicle.registrationNo ? `· ${vehicle.registrationNo}` : ""}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-lg font-black">{vehicle.meterValue.toLocaleString()} <span className="text-xs font-normal text-emerald-200">{vehicle.primaryMeter === "SMU" ? "hrs" : "km"}</span></p>
+            <p className="text-[11px] text-emerald-200">Current Meter</p>
+          </div>
+        </div>
+
+        {/* Quick Meter / Fuel Level mini-bar */}
+        {vehicle.fuelLevelPct != null && (
+          <div className="mt-3 rounded-2xl bg-black/20 p-2.5 backdrop-blur-sm">
+            <div className="flex justify-between text-[11px] font-semibold text-emerald-100">
+              <span>Fuel Tank Level</span>
+              <span>{Math.round(vehicle.fuelLevelPct)}% ({Math.round((vehicle.fuelLevelPct / 100) * vehicle.fuelCapacity)} L)</span>
+            </div>
+            <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-white/20">
+              <div
+                className={cn(
+                  "h-full rounded-full transition-all",
+                  vehicle.fuelLevelPct < 20 ? "bg-rose-400" : vehicle.fuelLevelPct < 40 ? "bg-amber-400" : "bg-emerald-300"
+                )}
+                style={{ width: `${Math.min(100, vehicle.fuelLevelPct)}%` }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 2. THE BIG 3 FIELD ACTION TILES (56px+ Touch Targets) */}
+      <div className="grid grid-cols-3 gap-2.5">
+        {/* ACTION 1: Fill Diesel */}
+        <Link
+          href="/my/fuel?action=fuel"
+          className="flex flex-col items-center justify-center rounded-3xl border border-amber-200 bg-amber-50/80 p-4 text-center transition-transform active:scale-95 hover:bg-amber-100/70 shadow-xs"
+        >
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-md shadow-amber-500/30">
+            <Fuel className="h-6 w-6" />
+          </div>
+          <span className="mt-2 text-xs font-black text-amber-950">Fill Diesel</span>
+          <span className="text-[10px] font-semibold text-amber-700">Diesel Bharna</span>
+        </Link>
+
+        {/* ACTION 2: Log Trip */}
+        <button
+          type="button"
+          onClick={() => setTripModalOpen(true)}
+          className="flex flex-col items-center justify-center rounded-3xl border border-brand-200 bg-brand-50/80 p-4 text-center transition-transform active:scale-95 hover:bg-brand-100/70 shadow-xs"
+        >
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-md shadow-brand-600/30">
+            <Route className="h-6 w-6" />
+          </div>
+          <span className="mt-2 text-xs font-black text-brand-950">Log Trip</span>
+          <span className="text-[10px] font-semibold text-brand-700">Trip Shuru</span>
+        </button>
+
+        {/* ACTION 3: Report Breakdown / Emergency Help */}
+        <Link
+          href="/my/service"
+          className="flex flex-col items-center justify-center rounded-3xl border border-rose-200 bg-rose-50/80 p-4 text-center transition-transform active:scale-95 hover:bg-rose-100/70 shadow-xs"
+        >
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-500 text-white shadow-md shadow-rose-500/30">
+            <Wrench className="h-6 w-6" />
+          </div>
+          <span className="mt-2 text-xs font-black text-rose-950">Breakdown</span>
+          <span className="text-[10px] font-semibold text-rose-700">Gaadi Kharab</span>
+        </Link>
+      </div>
+
+      {/* 3. Fast Trip Logger Modal */}
+      {tripModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md">
+          <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl animate-fade-up ring-1 ring-black/10">
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+                  <Route className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-ink-900">Record New Trip</h3>
+                  <p className="text-xs text-slate-500">{vehicle.code} · Quick Haul Entry</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setTripModalOpen(false)}
+                className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleTripSubmit} className="space-y-3.5 p-6">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-600">Origin / Loading</label>
+                  <input
+                    value={tripForm.origin}
+                    onChange={(e) => setTripForm({ ...tripForm, origin: e.target.value })}
+                    required
+                    placeholder="Quarry Pit #2"
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-brand-500"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-600">Destination / Dump</label>
+                  <input
+                    value={tripForm.destination}
+                    onChange={(e) => setTripForm({ ...tripForm, destination: e.target.value })}
+                    required
+                    placeholder="Crusher Plant A"
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-brand-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-600">Material Type</label>
+                  <select
+                    value={tripForm.material}
+                    onChange={(e) => setTripForm({ ...tripForm, material: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-brand-500"
+                  >
+                    <option value="Aggregate 20mm">Aggregate 20mm (Grit)</option>
+                    <option value="Aggregate 10mm">Aggregate 10mm</option>
+                    <option value="WMM / Base">WMM / Base Material</option>
+                    <option value="Earth / Soil Excavation">Earth / Soil Excavation</option>
+                    <option value="Sand (M-Sand)">Sand (M-Sand)</option>
+                    <option value="Bitumen Mix">Bitumen Mix (Asphalt)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-600">Net Weight (MT)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={tripForm.tonnage}
+                    onChange={(e) => setTripForm({ ...tripForm, tonnage: e.target.value })}
+                    required
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold outline-none focus:border-brand-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-600">Lead Distance (KM)</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={tripForm.distanceKm}
+                    onChange={(e) => {
+                      const km = parseFloat(e.target.value) || 0;
+                      setTripForm({
+                        ...tripForm,
+                        distanceKm: e.target.value,
+                        endMeter: String(vehicle.meterValue + km),
+                      });
+                    }}
+                    required
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-brand-500"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-600">Ending Odometer</label>
+                  <input
+                    type="number"
+                    value={tripForm.endMeter}
+                    onChange={(e) => setTripForm({ ...tripForm, endMeter: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold outline-none focus:border-brand-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setTripModalOpen(false)}
+                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={pending}
+                  className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-brand-700 disabled:opacity-60"
+                >
+                  {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {pending ? "Saving Trip…" : "Save Trip"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 4. Shift Checkout Modal */}
+      {checkoutModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md">
+          <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl animate-fade-up ring-1 ring-black/10">
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
+                  <LogOut className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-ink-900">End Shift Sign-Off</h3>
+                  <p className="text-xs text-slate-500">Log ending meter reading</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setCheckoutModalOpen(false)}
+                className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleShiftCheckout} className="space-y-4 p-6">
+              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3.5 text-xs text-slate-600">
+                <p className="font-bold text-ink-900">Vehicle: {vehicle.code} ({vehicle.name})</p>
+                <p className="mt-1">Starting Meter: <span className="font-mono font-bold text-ink-900">{vehicle.meterValue}</span></p>
+                <p className="mt-0.5 text-emerald-700 font-semibold">Today's Logged Trips: {todayTripsCount} ({Math.round(todayKm)} km)</p>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700">
+                  Final Ending Odometer Reading *
+                </label>
+                <input
+                  type="number"
+                  required
+                  value={endingMeter}
+                  onChange={(e) => setEndingMeter(e.target.value)}
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-base font-bold outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setCheckoutModalOpen(false)}
+                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={pending}
+                  className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-rose-700 disabled:opacity-60"
+                >
+                  {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {pending ? "Signing Off…" : "Confirm Shift Checkout"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default DriverQuickHub;

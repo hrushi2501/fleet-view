@@ -163,7 +163,7 @@ export async function GET(req: NextRequest) {
         id: s.id,
         category: "site",
         title: `${s.code} · ${s.name}`,
-        subtitle: `Project: ${s.project.code} · Type: ${s.type}`,
+        subtitle: `Project: ${s.project?.code ?? "—"} · Type: ${s.type}`,
         badge: s.active ? "Active" : "Inactive",
         badgeColor: s.active ? "bg-emerald-100 text-emerald-700 ring-emerald-600/20" : "bg-slate-100 text-slate-700 ring-slate-500/20",
         href: `/sites`,

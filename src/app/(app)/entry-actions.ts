@@ -384,6 +384,31 @@ async function saveCompliance__impl(fd: FormData) {
     },
   });
   revalidatePath("/compliance");
+  revalidatePath("/my/documents");
+  revalidatePath("/my");
+  revalidatePath("/");
+}
+
+export async function renewComplianceDoc(id: string, fd: FormData) {
+  const expiry = new Date(s(fd, "expiryDate") || Date.now());
+  const number = s(fd, "number");
+  const issueDateStr = s(fd, "issueDate");
+  const issueDate = issueDateStr ? new Date(issueDateStr) : new Date();
+
+  await db.complianceDoc.update({
+    where: { id },
+    data: {
+      ...(number ? { number } : {}),
+      issueDate,
+      expiryDate: expiry,
+      status: docStatus(expiry),
+    },
+  });
+
+  revalidatePath("/compliance");
+  revalidatePath("/my/documents");
+  revalidatePath("/my");
+  revalidatePath("/fleet");
   revalidatePath("/");
 }
 

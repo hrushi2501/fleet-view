@@ -17,6 +17,8 @@ function refresh() {
   revalidatePath("/master/people");
   revalidatePath("/fleet");
   revalidatePath("/drivers");
+  revalidatePath("/people");
+  revalidatePath("/people/attendance");
 }
 
 /* ------------------------------ M1 meters ------------------------------ */

@@ -29,7 +29,7 @@ export default async function MyDocumentsPage() {
     return (
       <Screen>
         <MyHeader href="/my/documents" />
-        <NotLinked loginName={access.session.name} />
+        <Nothing>Please assign a vehicle or scan QR code from Home to view vehicle compliance papers.</Nothing>
       </Screen>
     );
   }

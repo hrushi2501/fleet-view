@@ -11,9 +11,11 @@ import { requirePage } from "@/lib/access";
 import { Progress } from "@/components/ui";
 import { TERMS } from "@/lib/navigation";
 import { ASSET_CLASS_LABEL, num, timeAgo } from "@/lib/utils";
+import { db } from "@/lib/db";
 import { myBasics, latestIgnition, vehicleState, whereIsIt, PROBLEM_KINDS } from "../_data";
 import { MyHeader, NotLinked, NoVehicle, Screen, Hero, Fact, Notice } from "../_ui";
 import { reportProblem } from "../actions";
+import { DriverQrScanner } from "@/components/DriverQrScanner";
 
 export const dynamic = "force-dynamic";
 
@@ -26,20 +28,17 @@ export default async function MyVehiclePage({
   const { driver, vehicle } = await myBasics(access);
   const { error } = await searchParams;
 
-  if (!driver) {
-    return (
-      <Screen>
-        <MyHeader href="/my/vehicle" />
-        <NotLinked loginName={access.session.name} />
-      </Screen>
-    );
-  }
+  const availableVehicles = await db.asset.findMany({
+    where: { status: { notIn: ["Off-hired", "Disposed"] } },
+    select: { id: true, code: true, name: true, registrationNo: true, assetClass: true },
+    orderBy: { code: "asc" },
+  });
 
-  if (!vehicle) {
+  if (!driver || !vehicle) {
     return (
       <Screen>
         <MyHeader href="/my/vehicle" />
-        <NoVehicle />
+        <DriverQrScanner vehicles={availableVehicles} triggerVariant="card" />
       </Screen>
     );
   }
@@ -55,7 +54,14 @@ export default async function MyVehiclePage({
 
   return (
     <Screen>
-      <MyHeader href="/my/vehicle" note={vehicle.registrationNo ?? vehicle.code} />
+      <div className="flex items-center justify-between">
+        <MyHeader href="/my/vehicle" note={vehicle.registrationNo ?? vehicle.code} />
+        <DriverQrScanner
+          vehicles={availableVehicles}
+          triggerVariant="button"
+          currentVehicleCode={vehicle.code}
+        />
+      </div>
 
       {error && <Notice tone="warn" title="Problem save nahi hui — please pick one option and try again." />}
 

@@ -14,6 +14,7 @@ import {
   X,
   ChevronRight,
   ArrowRight,
+  QrCode,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +29,15 @@ interface QuickActionItem {
 }
 
 const QUICK_ACTIONS: QuickActionItem[] = [
+  {
+    id: "qr_scan",
+    title: "Scan Vehicle QR",
+    subtitle: "Open driver cabin camera scanner",
+    icon: QrCode,
+    href: "/my",
+    color: "bg-brand-500 text-white shadow-brand-500/25",
+    badge: "Scanner",
+  },
   {
     id: "fuel",
     title: "Issue Diesel",

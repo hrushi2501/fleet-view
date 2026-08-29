@@ -22,7 +22,7 @@ export default async function MyTripsPage() {
     return (
       <Screen>
         <MyHeader href="/my/trips" />
-        <NotLinked loginName={access.session.name} />
+        <Nothing>Please assign a vehicle or scan QR code from Home to view and record trips.</Nothing>
       </Screen>
     );
   }

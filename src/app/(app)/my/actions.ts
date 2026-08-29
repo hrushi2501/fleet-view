@@ -81,3 +81,193 @@ export async function reportProblem(fd: FormData) {
 
   redirect("/my/service?reported=1");
 }
+
+export async function selfAssignVehicle(codeOrToken: string, odometer?: number) {
+  const access = await requirePage("my.work");
+  let driverId = access.driverId;
+
+  if (!driverId) {
+    const existing = await db.driver.findFirst({
+      where: {
+        name: { equals: access.session.name, mode: "insensitive" },
+      },
+    });
+
+    if (existing) {
+      driverId = existing.id;
+      await db.user.update({ where: { id: access.session.id }, data: { driverId: existing.id } }).catch(() => {});
+    } else {
+      const newDriver = await db.driver.create({
+        data: {
+          empCode: `DRV-${access.session.id.slice(-4).toUpperCase()}`,
+          name: access.session.name || "Driver",
+          phone: "9876543210",
+          type: "DRIVER",
+          licenseNo: `MH14-${Date.now().toString().slice(-6)}`,
+          licenseExpiry: new Date(Date.now() + 365 * 86400000),
+          status: "Active",
+        },
+      });
+      driverId = newDriver.id;
+      await db.user.update({ where: { id: access.session.id }, data: { driverId: newDriver.id } }).catch(() => {});
+    }
+  }
+
+  const query = codeOrToken.trim();
+  if (!query) throw new Error("Please scan a valid QR code or enter vehicle code.");
+
+  // Match by qrToken, code, or registration number
+  const asset = await db.asset.findFirst({
+    where: {
+      OR: [
+        { qrToken: query },
+        { code: { equals: query, mode: "insensitive" } },
+        { registrationNo: { equals: query, mode: "insensitive" } },
+        { id: query },
+      ],
+    },
+  });
+
+  if (!asset) {
+    throw new Error(`Vehicle "${query}" system me nahi mili. Please check code or scan again.`);
+  }
+
+  // 1. Assign vehicle directly to this driver
+  await db.asset.update({
+    where: { id: asset.id },
+    data: {
+      driverId,
+      ...(odometer && odometer > 0 ? { meterValue: odometer } : {}),
+      lastSeen: new Date(),
+    },
+  });
+
+  // 2. Create or resume active trip session for shift binding
+  const openSession = await db.tripSession.findFirst({
+    where: { driverId, status: "ACTIVE" },
+  });
+
+  if (openSession && openSession.assetId !== asset.id) {
+    await db.tripSession.update({
+      where: { id: openSession.id },
+      data: { status: "COMPLETED", endedAt: new Date(), endedBy: "AUTO" },
+    });
+  }
+
+  if (!openSession || openSession.assetId !== asset.id) {
+    await db.tripSession.create({
+      data: {
+        assetId: asset.id,
+        driverId,
+        userId: access.session.id,
+        projectId: asset.projectId ?? undefined,
+        startOdometer: odometer && odometer > 0 ? odometer : asset.meterValue,
+        scanMethod: "QR",
+        status: "ACTIVE",
+      },
+    });
+  }
+
+  revalidatePath("/my");
+  revalidatePath("/my/vehicle");
+  revalidatePath("/my/trips");
+  revalidatePath("/my/documents");
+  revalidatePath("/fleet");
+  revalidatePath("/");
+
+  return { ok: true, assetCode: asset.code, assetName: asset.name };
+}
+
+export async function logDriverTrip(fd: FormData) {
+  const access = await requirePage("my.trips");
+  let driverId = access.driverId;
+  if (!driverId) {
+    const driver = await db.driver.findFirst({ where: { name: { equals: access.session.name, mode: "insensitive" } } });
+    driverId = driver?.id ?? null;
+  }
+  if (!driverId) redirect("/my");
+
+  const assetId = String(fd.get("assetId") ?? "").trim();
+  const origin = String(fd.get("origin") ?? "").trim() || "Site Loading Point";
+  const destination = String(fd.get("destination") ?? "").trim() || "Unloading / Dumping Area";
+  const material = String(fd.get("material") ?? "").trim() || "Aggregate";
+  const tonnage = parseFloat(String(fd.get("tonnage") ?? "0")) || 0;
+  const distanceKm = parseFloat(String(fd.get("distanceKm") ?? "0")) || 12;
+  const endMeter = parseFloat(String(fd.get("endMeter") ?? "0")) || 0;
+
+  const now = new Date();
+  const startTime = new Date(now.getTime() - 45 * 60000);
+
+  const asset = await db.asset.findUnique({ where: { id: assetId } });
+
+  await db.trip.create({
+    data: {
+      assetId,
+      driverId,
+      projectId: asset?.projectId ?? null,
+      tonnage,
+      distanceKm,
+      status: "Completed",
+      startTime,
+      endTime: now,
+      gpsVerified: true,
+    },
+  });
+
+  if (endMeter > 0 && assetId) {
+    await db.asset.update({
+      where: { id: assetId },
+      data: { meterValue: endMeter, lastSeen: now },
+    });
+  }
+
+  revalidatePath("/my");
+  revalidatePath("/my/trips");
+  revalidatePath("/fleet/trips");
+  revalidatePath("/operations");
+  revalidatePath("/");
+
+  return { ok: true };
+}
+
+export async function endDriverShift(endingOdometer?: number) {
+  const access = await requirePage("my.work");
+  let driverId = access.driverId;
+  if (!driverId) {
+    const driver = await db.driver.findFirst({ where: { name: { equals: access.session.name, mode: "insensitive" } } });
+    driverId = driver?.id ?? null;
+  }
+  if (!driverId) redirect("/my");
+
+  const activeSession = await db.tripSession.findFirst({
+    where: { driverId, status: "ACTIVE" },
+  });
+
+  if (activeSession) {
+    await db.tripSession.update({
+      where: { id: activeSession.id },
+      data: {
+        status: "COMPLETED",
+        endedAt: new Date(),
+        endedBy: "DRIVER",
+        ...(endingOdometer && endingOdometer > 0 ? { endOdometer: endingOdometer } : {}),
+      },
+    });
+
+    if (endingOdometer && endingOdometer > 0 && activeSession.assetId) {
+      await db.asset.update({
+        where: { id: activeSession.assetId },
+        data: { meterValue: endingOdometer, lastSeen: new Date() },
+      });
+    }
+  }
+
+  revalidatePath("/my");
+  revalidatePath("/my/trips");
+  revalidatePath("/tracking/sessions");
+  revalidatePath("/people/attendance");
+
+  return { ok: true };
+}
+
+

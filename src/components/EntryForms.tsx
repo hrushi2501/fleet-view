@@ -2,13 +2,13 @@
 
 import { useState, useTransition, ReactNode, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { X, Plus, Pencil, Trash2, Loader2, Camera, Calculator } from "lucide-react";
+import { X, Plus, Pencil, Trash2, Loader2, Camera, Calculator, RotateCcw } from "lucide-react";
 import { cn, ASSET_CLASS_LABEL, inr } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
   saveAsset, deleteAsset, saveDriver, deleteDriver, saveFuel,
-  saveWorkOrder, updateWorkOrderStatus, saveCompliance, saveProject,
+  saveWorkOrder, updateWorkOrderStatus, saveCompliance, renewComplianceDoc, saveProject,
   updateProject, deleteProject,
   saveUser, deleteUser, updateFuel, deleteFuel, setDieselRate,
 } from "@/app/(app)/entry-actions";
@@ -757,6 +757,202 @@ export function ComplianceEntry({ assets }: { assets: Opt[] }) {
   );
 }
 
+export function DocumentRenewModal({
+  doc,
+}: {
+  doc: {
+    id: string;
+    assetId: string;
+    assetCode: string;
+    docType: string;
+    number: string;
+    expiryDate: Date | string | null;
+  };
+}) {
+  const [open, setOpen] = useState(false);
+  const [pending, start] = useTransition();
+  const [err, setErr] = useState("");
+  const toast = useToast();
+  const router = useRouter();
+
+  // Compute default +1 year renewal date (or +6 months for PUC)
+  const baseDate = doc.expiryDate ? new Date(doc.expiryDate) : new Date();
+  const nextExpiry = new Date(baseDate);
+  if (doc.docType === "PUC") {
+    nextExpiry.setMonth(nextExpiry.getMonth() + 6);
+  } else {
+    nextExpiry.setFullYear(nextExpiry.getFullYear() + 1);
+  }
+  const defaultNextExpiryStr = nextExpiry.toISOString().slice(0, 10);
+  const defaultIssueDateStr = new Date().toISOString().slice(0, 10);
+
+  const [issueDate, setIssueDate] = useState(defaultIssueDateStr);
+  const [expiryDate, setExpiryDate] = useState(defaultNextExpiryStr);
+  const [docNumber, setDocNumber] = useState(doc.number || "");
+
+  const handleRenew = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    fd.set("assetId", doc.assetId);
+    fd.set("docType", doc.docType);
+    fd.set("number", docNumber);
+    fd.set("issueDate", issueDate);
+    fd.set("expiryDate", expiryDate);
+
+    start(async () => {
+      try {
+        await saveCompliance(fd);
+        setOpen(false);
+        toast.success(`✓ ${doc.docType} for ${doc.assetCode} renewed until ${expiryDate}`);
+        router.refresh();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Renewal failed");
+        toast.error("Renewal failed", e instanceof Error ? e.message : "Error");
+      }
+    });
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-100 transition-colors"
+      >
+        <RotateCcw className="h-3 w-3" /> Quick Renew
+      </button>
+
+      {open && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+          onClick={() => setOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-3xl bg-white shadow-2xl animate-fade-up ring-1 ring-black/5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+                  <RotateCcw className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-ink-900">
+                    Renew {doc.docType} — {doc.assetCode}
+                  </h3>
+                  <p className="text-xs text-slate-500">1-click renewal with auto-computed dates</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setOpen(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleRenew} className="p-6 space-y-4">
+              <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3 text-xs text-slate-600">
+                <p className="font-semibold text-ink-900">Machine: {doc.assetCode}</p>
+                <p>Document: {doc.docType}</p>
+                <p className="text-slate-400">Previous Ref: {doc.number}</p>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">
+                  New Certificate / Policy Number *
+                </label>
+                <input
+                  required
+                  value={docNumber}
+                  onChange={(e) => setDocNumber(e.target.value)}
+                  placeholder="e.g. POL-2026-98765"
+                  className={inputCls}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    Issue Date
+                  </label>
+                  <input
+                    type="date"
+                    value={issueDate}
+                    onChange={(e) => setIssueDate(e.target.value)}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    New Expiry Date *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={expiryDate}
+                    onChange={(e) => setExpiryDate(e.target.value)}
+                    className={inputCls}
+                  />
+                </div>
+              </div>
+
+              {/* Quick presets */}
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-[11px] font-medium text-slate-400">Presets:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date(issueDate || Date.now());
+                    d.setFullYear(d.getFullYear() + 1);
+                    setExpiryDate(d.toISOString().slice(0, 10));
+                  }}
+                  className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  +1 Year
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date(issueDate || Date.now());
+                    d.setMonth(d.getMonth() + 6);
+                    setExpiryDate(d.toISOString().slice(0, 10));
+                  }}
+                  className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  +6 Months
+                </button>
+              </div>
+
+              {err && (
+                <p className="rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-xs font-medium text-rose-600">
+                  {err}
+                </p>
+              )}
+
+              <div className="flex justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={pending}
+                  className="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-60"
+                >
+                  {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {pending ? "Renewing…" : "Save Renewal"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 /* ----------------------------- USER / ACCESS ----------------------------- */
 export function UserEntry() {
   return (
@@ -872,3 +1068,4 @@ export function ProjectDeleteButton({ id, code }: { id: string; code: string }) 
     </>
   );
 }
+

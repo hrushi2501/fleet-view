@@ -3,6 +3,7 @@ import { StatCard, Card, SectionTitle, Badge, Progress } from "@/components/ui";
 import { Donut } from "@/components/charts";
 import { WorkOrderEntry, WorkOrderStatus } from "@/components/EntryForms";
 import { ScheduleForm, SeedPmButton, RaiseWoButton, CompleteWoForm, DeleteRow, PreOpChecklistForm } from "@/components/MaintTyreForms";
+import { MaintenanceKanban } from "@/components/MaintenanceKanban";
 import { pmDue, reliability, SERVICE_TIERS, FAILURE_CODES, type ScheduleLite, type WoLite } from "@/lib/maintenance";
 import { scoreBreakdownRisk } from "@/lib/analytics";
 import { inr, num, fmtDate, timeAgo, STATUS_COLOR, ASSET_CLASS_LABEL } from "@/lib/utils";
@@ -234,56 +235,25 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
 
           {/* Kanban View vs Table View */}
           {view === "kanban" ? (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              {(["Open", "In-Progress", "Completed", "Closed"] as const).map((statusCol) => {
-                const colWos = wos.filter((w) => w.status === statusCol);
-                const colAccent = statusCol === "Open" ? "border-t-sky-500 bg-sky-50/30" : statusCol === "In-Progress" ? "border-t-amber-500 bg-amber-50/30" : statusCol === "Completed" ? "border-t-emerald-500 bg-emerald-50/30" : "border-t-slate-400 bg-slate-50/30";
-
-                return (
-                  <div key={statusCol} className={`rounded-xl border border-slate-200 border-t-4 ${colAccent} p-3 space-y-3 min-h-[500px]`}>
-                    <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
-                      <span className="font-bold text-sm text-slate-800">{statusCol}</span>
-                      <span className="text-xs font-bold bg-white px-2 py-0.5 rounded-full shadow-sm text-slate-600 border border-slate-200">{colWos.length}</span>
-                    </div>
-
-                    <div className="space-y-3 max-h-[700px] overflow-y-auto pr-1">
-                      {colWos.map((w) => (
-                        <div key={w.id} className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm space-y-2.5 hover:shadow-md transition-shadow">
-                          <div className="flex items-start justify-between">
-                            <span className="font-mono text-xs font-bold text-slate-500">{w.woNo}</span>
-                            <Badge color={PRIORITY_COLOR[w.priority]}>{w.priority}</Badge>
-                          </div>
-
-                          <div>
-                            <Link href={`/fleet/${w.assetId}`} className="font-bold text-sm text-brand-700 hover:underline">{w.asset?.code || "Asset"}</Link>
-                            <p className="text-xs text-slate-600 line-clamp-2 mt-0.5">{w.description}</p>
-                          </div>
-
-                          <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 pt-1 border-t border-slate-100">
-                            <span>Cost: <strong className="text-slate-800">{inr(w.totalCost, { compact: true })}</strong></span>
-                            <span>{w.downtimeHrs}h downtime</span>
-                          </div>
-
-                          {w.technician && (
-                            <div className="text-[11px] text-slate-500 flex items-center gap-1">
-                              <Users className="h-3 w-3 text-slate-400" />
-                              <span>{w.technician}</span>
-                            </div>
-                          )}
-
-                          <div className="pt-2 flex justify-end">
-                            <WorkOrderStatus id={w.id} status={w.status} />
-                          </div>
-                        </div>
-                      ))}
-                      {colWos.length === 0 && (
-                        <p className="text-center py-8 text-xs text-slate-400">No {statusCol.toLowerCase()} jobs</p>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <MaintenanceKanban
+              workOrders={wos.map((w) => ({
+                id: w.id,
+                woNo: w.woNo,
+                assetId: w.assetId,
+                assetCode: w.asset?.code || "Asset",
+                assetName: w.asset?.name || "",
+                type: w.type,
+                priority: w.priority,
+                status: w.status,
+                description: w.description,
+                downtimeHrs: w.downtimeHrs,
+                laborCost: w.laborCost,
+                partsCost: w.partsCost,
+                totalCost: w.totalCost,
+                reportedAt: w.reportedAt,
+                completedAt: w.completedAt,
+              }))}
+            />
           ) : (
             <div className="grid gap-4 lg:grid-cols-3">
               <Card>
