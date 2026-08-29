@@ -18,6 +18,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requirePage, canSeeAsset } from "@/lib/access";
+import { auditAs } from "@/lib/audit";
+import { driverAccidentNotification } from "@/lib/notification-events";
 // A "use server" module may only export async functions, so the list of
 // problems a driver can pick from lives with the rest of the driver app's data.
 import { PROBLEM_KINDS } from "./_data";
@@ -40,10 +42,14 @@ export async function reportProblem(fd: FormData) {
   // The claim in the form body, checked against what this session may see.
   if (!(await canSeeAsset(access, assetId))) redirect("/my");
 
-  const driver = await db.driver.findUnique({
+  const [driver, asset] = await Promise.all([
+    db.driver.findUnique({
     where: { id: access.driverId },
-    select: { name: true, phone: true },
-  });
+    select: { id: true, name: true, phone: true },
+    }),
+    db.asset.findUnique({ where: { id: assetId }, select: { id: true, code: true } }),
+  ]);
+  if (!driver || !asset) redirect("/my");
 
   // A stuck vehicle is a breakdown and goes to the top of the workshop's list;
   // anything the driver can still drive on is a repair. The driver's own words
@@ -59,25 +65,67 @@ export async function reportProblem(fd: FormData) {
     .filter(Boolean)
     .join(" — ");
 
-  await db.workOrder.create({
-    data: {
+  const accident = kind === "ACCIDENT";
+  const result = await db.$transaction(async (tx) => {
+    const workOrder = await tx.workOrder.create({
+      data: {
       // Date plus randomness rather than a counter: two drivers reporting in the
       // same second must not collide on a unique column.
       woNo: `DR-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`.toUpperCase(),
       assetId,
-      type: stopped ? "BREAKDOWN" : "REPAIR",
-      priority: stopped ? "Critical" : blocking ? "High" : "Medium",
+      type: stopped || accident ? "BREAKDOWN" : "REPAIR",
+      priority: stopped || accident ? "Critical" : blocking ? "High" : "Medium",
       status: "Open",
       description,
       reportedAt: new Date(),
-    },
+      },
+    });
+
+    const notification = accident
+      ? await tx.alert.create({ data: driverAccidentNotification({
+          assetId: asset.id,
+          assetCode: asset.code,
+          driverId: driver.id,
+          driverName: driver.name,
+          note,
+        }) })
+      : null;
+    return { workOrder, notification };
   });
+
+  if (result.notification) {
+    await auditAs(access.session, {
+      action: "CREATE",
+      module: "NOTIFICATIONS",
+      entity: "Alert",
+      entityId: result.notification.id,
+      summary: `Critical accident notification raised for ${asset.code}.`,
+      changes: { workOrderId: result.workOrder.id, severity: "Critical", category: "Driver" },
+    });
+
+    // Accident alerts are the one driver event loud enough to leave the in-app
+    // queue immediately. Web push is best-effort: missing VAPID configuration
+    // or a provider outage must never prevent the safety report from being
+    // recorded in Alert, WorkOrder, and AuditEvent.
+    try {
+      const { sendPushToAll } = await import("@/lib/push");
+      await sendPushToAll({
+        title: result.notification.title,
+        body: result.notification.message,
+        url: result.notification.actionUrl ?? "/maintenance",
+      });
+    } catch (error) {
+      console.error("[driver-accident] priority push failed", error);
+    }
+  }
 
   revalidatePath("/my");
   revalidatePath("/my/vehicle");
   revalidatePath("/my/service");
   // The workshop's own screens are what make this report worth filing.
   revalidatePath("/maintenance");
+  revalidatePath("/reports");
+  revalidatePath("/reports/notifications");
 
   redirect("/my/service?reported=1");
 }
@@ -269,5 +317,3 @@ export async function endDriverShift(endingOdometer?: number) {
 
   return { ok: true };
 }
-
-

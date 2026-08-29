@@ -82,8 +82,8 @@ export function DriverQuickHub({
         toast.success(`✓ Trip recorded: ${tripForm.origin} ➔ ${tripForm.destination} (${tripForm.tonnage} MT)`);
         setTripModalOpen(false);
         router.refresh();
-      } catch (err: any) {
-        toast.error("Trip Log Failed", err.message || "Could not record trip");
+      } catch (err: unknown) {
+        toast.error("Trip Log Failed", err instanceof Error ? err.message : "Could not record trip");
       }
     });
   };
@@ -97,8 +97,8 @@ export function DriverQuickHub({
         toast.success("✓ Shift completed & sign-off logged!");
         setCheckoutModalOpen(false);
         router.refresh();
-      } catch (err: any) {
-        toast.error("Checkout Failed", err.message || "Could not end shift");
+      } catch (err: unknown) {
+        toast.error("Checkout Failed", err instanceof Error ? err.message : "Could not end shift");
       }
     });
   };
@@ -345,7 +345,7 @@ export function DriverQuickHub({
               <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3.5 text-xs text-slate-600">
                 <p className="font-bold text-ink-900">Vehicle: {vehicle.code} ({vehicle.name})</p>
                 <p className="mt-1">Starting Meter: <span className="font-mono font-bold text-ink-900">{vehicle.meterValue}</span></p>
-                <p className="mt-0.5 text-emerald-700 font-semibold">Today's Logged Trips: {todayTripsCount} ({Math.round(todayKm)} km)</p>
+                <p className="mt-0.5 text-emerald-700 font-semibold">Today&apos;s Logged Trips: {todayTripsCount} ({Math.round(todayKm)} km)</p>
               </div>
 
               <div>

@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 import path from "path";
 
-/**hghghg
+/**
  * Production security headers.
  *
  * This app holds a client's commercial data — fuel spend, vendor invoices, staff
@@ -43,7 +43,6 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.join(__dirname),
   },
-  // @ts-ignore - allowedDevOrigins is supported in Next.js 14.2+ / 15 / 16
   allowedDevOrigins: ["*.loca.lt", "localhost:3000", "127.0.0.1:3000"],
   poweredByHeader: false,
   async headers() {

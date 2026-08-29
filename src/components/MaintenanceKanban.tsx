@@ -66,8 +66,8 @@ export function MaintenanceKanban({ workOrders }: { workOrders: KanbanWorkOrder[
         await updateWorkOrderStatus(woId, nextStatus);
         toast.success(`✓ Work Order moved to ${nextStatus}`);
         router.refresh();
-      } catch (err: any) {
-        toast.error("Status Update Failed", err.message || "Could not update status");
+      } catch (err: unknown) {
+        toast.error("Status Update Failed", err instanceof Error ? err.message : "Could not update status");
       } finally {
         setMovingId(null);
       }

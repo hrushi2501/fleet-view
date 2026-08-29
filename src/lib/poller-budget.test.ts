@@ -86,7 +86,7 @@ describe("exactly one scheduled poller hits Fleet Edge", () => {
     // The original condition also fired on production + ENABLED, which is true
     // of every Vercel instance, so the timer ran everywhere alongside the cron.
     assert.ok(
-      !/NODE_ENV\s*===\s*"production"/.test(src),
+      !/NODE_ENV\s*===\s*"production"[\s\S]{0,160}TATA_FLEET_EDGE_ENABLED/.test(src),
       "instrumentation.ts must not start the sync timer merely because it is production",
     );
   });

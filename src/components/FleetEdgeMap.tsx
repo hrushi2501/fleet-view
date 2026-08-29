@@ -10,7 +10,6 @@
  * say at a glance which way a vehicle is pointing and what it is doing.
  */
 
-import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, useMap } from "react-leaflet";
 import { useEffect, useMemo, useRef } from "react";

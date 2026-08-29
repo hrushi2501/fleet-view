@@ -18,7 +18,30 @@ before(() => {
   process.env.AUTH_SECRET = "test-secret-value-long-enough-to-be-real";
 });
 
-const { issueToken, verifyToken, isRevoked, SESSION_TTL_MS } = await import("./session-token.ts");
+const { issueToken, verifyToken, isRevoked, assertAuthSecretConfigured, SESSION_TTL_MS } = await import("./session-token.ts");
+
+describe("production session configuration", () => {
+  test("does not derive a production session key from DATABASE_URL", () => {
+    const env = process.env as Record<string, string | undefined>;
+    const previousNodeEnv = env.NODE_ENV;
+    const previousSecret = env.AUTH_SECRET;
+    const previousUrl = env.DATABASE_URL;
+    env.NODE_ENV = "production";
+    delete env.AUTH_SECRET;
+    env.DATABASE_URL = "postgresql://user:very-secret-password@example.test/database";
+
+    try {
+      assert.throws(() => assertAuthSecretConfigured(), /AUTH_SECRET/);
+    } finally {
+      if (previousNodeEnv === undefined) delete env.NODE_ENV;
+      else env.NODE_ENV = previousNodeEnv;
+      if (previousSecret === undefined) delete env.AUTH_SECRET;
+      else env.AUTH_SECRET = previousSecret;
+      if (previousUrl === undefined) delete env.DATABASE_URL;
+      else env.DATABASE_URL = previousUrl;
+    }
+  });
+});
 
 describe("a browser cannot author a session", () => {
   test("a bare user id is not a valid token", () => {

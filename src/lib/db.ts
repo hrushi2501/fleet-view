@@ -25,7 +25,16 @@ function resolveDbUrl(): string | undefined {
   }
   if (!finalUrl.includes("connection_limit=")) {
     const sep = finalUrl.includes("?") ? "&" : "?";
-    finalUrl = `${finalUrl}${sep}connection_limit=10&pool_timeout=30`;
+    finalUrl = `${finalUrl}${sep}connection_limit=10`;
+  }
+  // Supabase's serverless-friendly recommendation is commonly one connection
+  // per application instance. A short pool timeout turns a brief queue behind
+  // one slower query into a failed RSC response, leaving the browser on its
+  // loading skeleton. Keep the small pool, but give queued work a realistic
+  // window to acquire it.
+  if (!finalUrl.includes("pool_timeout=")) {
+    const sep = finalUrl.includes("?") ? "&" : "?";
+    finalUrl = `${finalUrl}${sep}pool_timeout=30`;
   }
   process.env.DATABASE_URL = finalUrl;
   return finalUrl;

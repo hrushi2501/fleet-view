@@ -11,20 +11,21 @@
     "postinstall": "prisma generate",
     "seed": "node prisma/seed.mjs",
     "setup": "prisma generate && prisma db push && node prisma/seed.mjs",
-    "db:deploy": "prisma db push && node prisma/seed.mjs",
+    "db:check": "prisma validate && node scripts/check-prisma-runtime.mjs",
+    "db:deploy": "npm run db:check && npm run setup:production",
     "backup": "./scripts-backup.sh",
     "setup:production": "node prisma/setup-production.mjs",
-    "db:rls": "psql \"$DATABASE_URL_UNPOOLED\" -f prisma/sql/enable-rls.sql",
-    "db:telemetry-index": "psql \"$DATABASE_URL_UNPOOLED\" -f prisma/sql/telemetry-unique-index.sql",
+    "db:rls": "node scripts/run-sql-file.mjs prisma/sql/enable-rls.sql && npm run db:rls:verify",
+    "db:rls:verify": "node scripts/run-sql-file.mjs prisma/sql/verify-rls.sql",
+    "db:audit-index": "node scripts/run-sql-file.mjs prisma/sql/security-schema-hardening.sql",
+    "db:telemetry-index": "node scripts/run-sql-file.mjs prisma/sql/telemetry-unique-index.sql",
+    "db:migrate-passwords": "node scripts/migrate-legacy-passwords.mjs",
     "test": "node --import ./scripts/test-setup.mjs --test 'src/**/*.test.ts'",
     "check": "npm run lint && tsc --noEmit && npm test",
     "worker:telematics": "node --env-file=.env.local --import ./scripts/test-setup.mjs scripts/telematics-worker.mjs",
     "worker:telematics:once": "node --env-file=.env.local --import ./scripts/test-setup.mjs scripts/telematics-worker.mjs --once",
     "db:clean-and-sync": "node --env-file=.env.local --import ./scripts/test-setup.mjs scripts/clean-and-sync-tata.mjs",
     "audit:confidence": "node --env-file=.env.local --import ./scripts/test-setup.mjs scripts/confidence-audit.mjs"
-  },
-  "prisma": {
-    "seed": "node prisma/seed.mjs"
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.83",

@@ -2,19 +2,19 @@
 
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { put } from "@vercel/blob";
-import { hashPassword, verifyPassword, getSession, revokeSessions } from "@/lib/auth";
+import { hashPassword, verifyPassword, getSession, passwordPolicyError, revokeSessions } from "@/lib/auth";
 import { getDieselRate } from "@/lib/settings";
 import { requireAction, requireUser, ActionError, safe } from "@/lib/guard";
 import { audit } from "@/lib/audit";
+import { uploadPrivateFile } from "@/lib/private-upload";
+import { canSeeAsset } from "@/lib/access";
+import { driverFuelFillNotification } from "@/lib/notification-events";
 
 async function uploadPhoto(file: FormDataEntryValue | null, prefix: string): Promise<string | null> {
   if (!file || typeof file === "string") return null;
   const f = file as File;
   if (!f.size) return null;
-  const ext = (f.name.split(".").pop() || "jpg").toLowerCase();
-  const blob = await put(`fuel/${prefix}-${Date.now()}.${ext}`, f, { access: "public", addRandomSuffix: true });
-  return blob.url;
+  return uploadPrivateFile(f, { folder: `fuel-${prefix}`, kind: "image" });
 }
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
@@ -89,24 +89,58 @@ async function saveAsset__impl(id: string | null, fd: FormData) {
     ...(s(fd, "lat") ? { lat: n(fd, "lat") } : {}),
     ...(s(fd, "lng") ? { lng: n(fd, "lng") } : {}),
   };
-  if (id) await db.asset.update({ where: { id }, data });
+  if (id) {
+    const updated = await db.asset.updateMany({ where: { id, decommissionedOn: null }, data });
+    if (updated.count !== 1) throw new ActionError("Decommissioned vehicles cannot be edited. Restore it deliberately before changing its register record.");
+  }
   else await db.asset.create({ data });
   revalidatePath("/fleet");
   revalidatePath("/");
 }
 
 async function deleteAsset__impl(id: string) {
-  await requireAction("fleet.delete");
-  await db.$transaction([
-    db.fuelTransaction.deleteMany({ where: { assetId: id } }),
-    db.trip.deleteMany({ where: { assetId: id } }),
-    db.workOrder.deleteMany({ where: { assetId: id } }),
-    db.complianceDoc.deleteMany({ where: { assetId: id } }),
-    db.alert.deleteMany({ where: { assetId: id } }),
-    db.costTransaction.deleteMany({ where: { assetId: id } }),
-    db.asset.delete({ where: { id } }),
-  ]);
+  const access = await requireAction("fleet.delete");
+  const asset = await db.asset.findUnique({
+    where: { id },
+    select: { id: true, code: true, status: true, decommissionedOn: true },
+  });
+  if (!asset) throw new ActionError("That vehicle no longer exists.");
+  if (asset.decommissionedOn) throw new ActionError("This vehicle has already been decommissioned.");
+
+  const now = new Date();
+  // A vehicle has fuel, trips, compliance, cost, maintenance and telemetry
+  // evidence attached. Removing those rows makes operational history and later
+  // financial reconciliation impossible, so the register's former "delete" is
+  // intentionally a retirement operation.
+  await db.$transaction(async (tx) => {
+    await tx.asset.update({
+      where: { id },
+      data: {
+        status: "Off-hired",
+        projectId: null,
+        driverId: null,
+        decommissionedOn: asset.decommissionedOn ?? now,
+      },
+    });
+    await tx.assetLifecycleEvent.create({
+      data: {
+        assetId: id,
+        kind: "DECOMMISSIONED",
+        date: now,
+        fromValue: asset.status,
+        toValue: "Off-hired",
+        note: "Decommissioned from the fleet register; linked history retained.",
+        by: access.session.name,
+      },
+    });
+  });
+  await audit({
+    action: "UPDATE", module: "FLEET", entity: "Asset", entityId: id,
+    summary: `Decommissioned ${asset.code}; linked operational and financial history retained.`,
+    changes: { fromStatus: asset.status, toStatus: "Off-hired", decommissionedOn: now.toISOString() },
+  });
   revalidatePath("/fleet");
+  revalidatePath("/");
 }
 
 /* ----------------------------- DRIVERS ----------------------------- */
@@ -147,6 +181,18 @@ async function saveDriver__impl(id: string | null, fd: FormData) {
     }
   }
 
+  // Validate a requested login before creating the driver record. Otherwise a
+  // weak/missing password would leave an orphan person behind after the action
+  // correctly refuses the credential.
+  const createLogin = !id && s(fd, "createLogin") === "true";
+  const loginEmail = s(fd, "loginEmail").toLowerCase();
+  const loginPassword = s(fd, "loginPassword");
+  if (createLogin) {
+    if (!loginEmail) throw new ActionError("Enter an email to create a driver login.");
+    const passwordError = passwordPolicyError(loginPassword);
+    if (passwordError) throw new ActionError(passwordError);
+  }
+
   const data = {
     empCode: s(fd, "empCode"),
     name: s(fd, "name"),
@@ -164,11 +210,8 @@ async function saveDriver__impl(id: string | null, fd: FormData) {
     await db.driver.update({ where: { id }, data });
   } else {
     const driver = await db.driver.create({ data });
-    const createLogin = s(fd, "createLogin") === "true";
-    const loginEmail = s(fd, "loginEmail").toLowerCase();
-    const loginPassword = s(fd, "loginPassword") || "driver123";
 
-    if (createLogin && loginEmail) {
+    if (createLogin) {
       const existingUser = await db.user.findUnique({ where: { email: loginEmail } });
       if (!existingUser) {
         const driverRole = await db.role.findUnique({ where: { name: "Driver" } });
@@ -202,7 +245,7 @@ async function deleteDriver__impl(id: string) {
 
 /* ----------------------------- FUEL ----------------------------- */
 async function saveFuel__impl(fd: FormData) {
-  await requireAction("fuel.issue");
+  const access = await requireAction("fuel.issue");
   const type = s(fd, "type") || "ISSUE";
   const quantity = n(fd, "quantity");
   const rate = n(fd, "rate") || (await getDieselRate());
@@ -219,6 +262,30 @@ async function saveFuel__impl(fd: FormData) {
   const lat = s(fd, "lat") ? Number(fd.get("lat")) : null;
   const lng = s(fd, "lng") ? Number(fd.get("lng")) : null;
   const assetId = s(fd, "assetId") || null;
+
+  // The driver wizard calls the same action as the office fuel form. A Server
+  // Action is still directly POSTable, so a driver must prove the submitted
+  // asset is their assigned vehicle before it can create either a fuel row or
+  // the notification that follows it.
+  let driverEvent: ReturnType<typeof driverFuelFillNotification> | null = null;
+  if (access.group === "DRIVER") {
+    if (!assetId || !access.driverId || !(await canSeeAsset(access, assetId))) {
+      throw new ActionError("You may record fuel only for your assigned vehicle.");
+    }
+    const [driver, asset] = await Promise.all([
+      db.driver.findUnique({ where: { id: access.driverId }, select: { id: true, name: true } }),
+      db.asset.findUnique({ where: { id: assetId }, select: { id: true, code: true } }),
+    ]);
+    if (!driver || !asset) throw new ActionError("Your assigned vehicle could not be found.");
+    driverEvent = driverFuelFillNotification({
+      assetId: asset.id,
+      assetCode: asset.code,
+      driverId: driver.id,
+      driverName: driver.name,
+      quantity,
+      rate,
+    });
+  }
 
   // geofence check: how far is the fill from the vehicle's known GPS position?
   let geofenceOk = fd.get("geofenceOk") !== "false";
@@ -256,6 +323,8 @@ async function saveFuel__impl(fd: FormData) {
       },
     });
 
+    if (driverEvent) await tx.alert.create({ data: driverEvent });
+
     if (assetId && meterValue > 0) {
       await tx.asset.update({
         where: { id: assetId },
@@ -270,6 +339,8 @@ async function saveFuel__impl(fd: FormData) {
 
   revalidatePath("/fuel");
   revalidatePath("/");
+  revalidatePath("/reports");
+  revalidatePath("/reports/notifications");
 }
 
 
@@ -421,6 +492,9 @@ async function saveUser__impl(fd: FormData) {
   if (existing) throw new ActionError("A user with this email already exists.");
   const role = s(fd, "role") || "Driver";
   const name = s(fd, "name");
+  const password = s(fd, "password");
+  const passwordError = passwordPolicyError(password);
+  if (passwordError) throw new ActionError(passwordError);
   let driverId = s(fd, "driverId") || null;
 
   // If role is Driver and no existing driver is selected, auto-create a person record
@@ -451,7 +525,7 @@ async function saveUser__impl(fd: FormData) {
       role,
       roleId: roleRecord?.id ?? null,
       driverId,
-      password: await hashPassword(s(fd, "password") || "driver123"),
+      password: await hashPassword(password),
     },
   });
   revalidatePath("/users");
@@ -466,7 +540,8 @@ async function saveUser__impl(fd: FormData) {
 async function changeOwnPassword__impl(fd: FormData) {
   const access = await requireUser();
   const current = s(fd, "current"), next = s(fd, "next"), confirm = s(fd, "confirm");
-  if (next.length < 6) throw new ActionError("New password must be at least 6 characters.");
+  const passwordError = passwordPolicyError(next);
+  if (passwordError) throw new ActionError(passwordError);
   if (next !== confirm) throw new ActionError("New passwords do not match.");
   const user = await db.user.findUnique({ where: { id: access.session.id } });
   if (!user || !(await verifyPassword(current, user.password))) {
@@ -485,7 +560,8 @@ async function changeOwnPassword__impl(fd: FormData) {
 
 async function adminResetUserPassword__impl(userId: string, newPass: string) {
   await requireAction("admin.users");
-  if (!newPass || newPass.length < 6) throw new ActionError("Password must be at least 6 characters.");
+  const passwordError = passwordPolicyError(newPass);
+  if (passwordError) throw new ActionError(passwordError);
   const target = await db.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
   if (!target) throw new ActionError("That user no longer exists.");
 

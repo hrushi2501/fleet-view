@@ -29,7 +29,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     : await (async () => {
         // eslint-disable-next-line react-hooks/purity
         const soon = new Date(Date.now() + 15 * 86400000);
-        const [serviceDue, breakdowns] = await Promise.all([
+        // One batch acquires one pooled connection. This deployment deliberately
+        // uses connection_limit=1, so independent Promise.all calls only create
+        // a queue which can time out while the page is rendering in parallel.
+        const [serviceDue, breakdowns] = await db.$transaction([
           db.asset.count({ where: { serviceDueDate: { not: null, lte: soon }, ...assetScope(access) } }),
           db.workOrder.count({ where: { type: "BREAKDOWN", status: { in: ["Open", "In-Progress"] }, asset: assetScope(access) } }),
         ]);

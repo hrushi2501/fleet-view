@@ -2,7 +2,6 @@
 
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { put } from "@vercel/blob";
 import crypto from "crypto";
 import { getSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
@@ -10,6 +9,7 @@ import { decideGaugeReading, sensorGaugeDecision, makeQrToken, staleSessions, re
 import { requireAction, ActionError, safe } from "@/lib/guard";
 import { getDieselRate } from "@/lib/settings";
 import { fuelSensorState } from "@/lib/fuel-sensor";
+import { uploadPrivateFile } from "@/lib/private-upload";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -94,9 +94,7 @@ async function saveGaugeReading__impl(fd: FormData) {
   if (file && typeof file !== "string") {
     const f = file as File;
     if (f.size) {
-      const ext = (f.name.split(".").pop() || "jpg").toLowerCase();
-      const blob = await put(`gauge/${asset.code}-${Date.now()}.${ext}`, f, { access: "public", addRandomSuffix: true });
-      imageUrl = blob.url;
+      imageUrl = await uploadPrivateFile(f, { folder: "gauge", kind: "image" });
     }
   }
 

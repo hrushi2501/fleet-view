@@ -1,6 +1,5 @@
 import { db } from "@/lib/db";
 import { fleetUsage } from "@/lib/fleet-usage";
-import { getDieselRate } from "@/lib/settings";
 import { StatCard, Card, SectionTitle, Badge, HeroStat, MeterRow, Table, Th, Td, Tr } from "@/components/ui";
 import { TrendArea, MultiBar } from "@/components/charts";
 import { inr, num, timeAgo, ASSET_CLASS_LABEL, SEVERITY_COLOR, healthColor } from "@/lib/utils";
@@ -19,6 +18,8 @@ export default async function Dashboard() {
   const access = await requirePage(null);
   // Rows, not just the page: a scoped supervisor sees their own sites.
   const visible = assetScope(access);
+  // eslint-disable-next-line react-hooks/purity
+  const fuelSince = new Date(Date.now() - 30 * 86_400_000);
   const [
     assets,
     fuelIssues,
@@ -29,27 +30,55 @@ export default async function Dashboard() {
     breakdownsCount,
     urgentWorkOrders,
     unmarkedDriversCount,
-    dieselRate,
-  ] = await Promise.all([
-    db.asset.findMany({ where: visible }),
-    db.fuelTransaction.findMany({ where: { type: "ISSUE", asset: visible } }),
+    dieselSetting,
+  ] = await db.$transaction([
+    db.asset.findMany({
+      where: visible,
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        assetClass: true,
+        status: true,
+        acquisitionCost: true,
+        utilization: true,
+        healthScore: true,
+      },
+    }),
+    db.fuelTransaction.findMany({
+      where: { type: "ISSUE", date: { gte: fuelSince }, asset: visible },
+      select: { quantity: true, sensorRise: true, date: true },
+    }),
     db.alert.count({ where: { status: "Open", severity: "Critical" } }),
     db.complianceDoc.count({ where: { status: { in: ["Expiring", "Expired"] } } }),
-    db.costTransaction.findMany(),
-    db.alert.findMany({ orderBy: { createdAt: "desc" }, take: 6, include: { asset: true } }),
+    db.costTransaction.findMany({ select: { period: true, costHead: true, amount: true } }),
+    db.alert.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 6,
+      select: { id: true, severity: true, title: true, message: true, createdAt: true },
+    }),
     db.workOrder.count({ where: { status: { in: ["Open", "In-Progress"] }, type: "BREAKDOWN", asset: visible } }),
     db.workOrder.findMany({
       where: { status: { in: ["Open", "In-Progress"] }, type: "BREAKDOWN", asset: visible },
       take: 4,
-      include: { asset: true },
+      select: {
+        id: true,
+        woNo: true,
+        description: true,
+        priority: true,
+        asset: { select: { code: true } },
+      },
       orderBy: { reportedAt: "desc" },
     }),
     db.driver.count({ where: { status: "Active" } }),
     // The rate an administrator actually set. This page used to hardcode 92.5,
     // so the moment anyone updated the setting the dashboard's rupee figure
     // quietly disagreed with every other screen that priced the same litres.
-    getDieselRate(),
+    db.setting.findUnique({ where: { key: "dieselRate" }, select: { value: true } }),
   ]);
+
+  const configuredRate = Number(dieselSetting?.value);
+  const dieselRate = Number.isFinite(configuredRate) && configuredRate > 0 ? configuredRate : 92.5;
 
   // Measured from OEM telemetry rather than from what anyone typed in.
   const telemetry = await fleetUsage(30);

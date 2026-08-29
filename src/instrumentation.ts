@@ -23,50 +23,29 @@
  * call a minute, which is the rate Tata recommends. It is the right survivor
  * because it cannot duplicate itself and its runs are visible in the dashboard.
  *
- * `TATA_FLEET_EDGE_AUTO_SYNC=true` still starts the in-process timer, for
- * self-hosting or local development where there is no platform cron. Do not set
- * it on Vercel: it would put a second poller back alongside the cron. The
- * distributed lock in `poll-lock.ts` would stop the two overlapping, but they
- * would still spend the account's call budget twice over.
+ * For self-hosting and local development, run the dedicated
+ * `npm run worker:telematics` process instead. It has an explicit lifecycle and
+ * does not make Next instrumentation import Prisma and Node-only crypto into
+ * the Edge-compatible Webpack instrumentation graph.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-/** One call a minute — Fleet Edge allows 60 an hour across the subscription. */
-const INTERVAL_MS = 60_000;
-
-export async function register() {
-  if (process.env.NEXT_RUNTIME !== "nodejs") return;
-
-  // Opt-in only. The previous condition also fired on
-  // `NODE_ENV === "production" && TATA_FLEET_EDGE_ENABLED === "true"`, which is
-  // true of every Vercel instance — so the timer started everywhere by default.
-  if (process.env.TATA_FLEET_EDGE_AUTO_SYNC !== "true") return;
-
-  if (process.env.VERCEL) {
-    console.warn(
-      "[INSTRUMENTATION] TATA_FLEET_EDGE_AUTO_SYNC is set on Vercel. " +
-        "The cron in vercel.json already polls Fleet Edge every minute; this timer " +
-        "will spend the same 60-calls-per-hour budget a second time. Unset it.",
-    );
+export function register() {
+  // Keep this validation dependency-free: instrumentation is also compiled for
+  // the Edge-compatible Webpack graph, where importing the Node HMAC module
+  // would reintroduce the `crypto` resolution failure this file avoids.
+  if (process.env.NODE_ENV === "production") {
+    const secret = process.env.AUTH_SECRET?.trim();
+    if (!secret || new TextEncoder().encode(secret).byteLength < 32) {
+      throw new Error("AUTH_SECRET must be set to a random value of at least 32 bytes in production.");
+    }
   }
 
-  const { syncTataFleetEdge, isTataEnabled } = await import("@/lib/tata-fleet-edge");
+  if (process.env.TATA_FLEET_EDGE_AUTO_SYNC !== "true") return;
 
-  console.log("[INSTRUMENTATION] Starting in-process Fleet Edge sync timer (60s).");
-
-  const timer = setInterval(async () => {
-    try {
-      if (!isTataEnabled()) return;
-      // Overlapping runs are refused by the shared lock inside the sync, so a
-      // slow upstream cannot stack calls behind it.
-      const res = await syncTataFleetEdge();
-      if (!res.ok && res.error) {
-        console.warn("[INSTRUMENTATION] Tata sync warning:", res.error);
-      }
-    } catch (err) {
-      console.error("[INSTRUMENTATION] Tata sync background timer error:", err);
-    }
-  }, INTERVAL_MS);
-
-  if (timer && typeof timer.unref === "function") timer.unref();
+  console.warn(
+    "[INSTRUMENTATION] TATA_FLEET_EDGE_AUTO_SYNC is no longer supported. " +
+      "Run `npm run worker:telematics` for an explicit local/self-hosted poller; " +
+      "Vercel uses the cron in vercel.json.",
+  );
 }

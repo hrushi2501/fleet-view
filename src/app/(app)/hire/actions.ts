@@ -89,6 +89,7 @@ async function deleteLog__impl(id: string) {
 
 async function saveHireInspection__impl(contractId: string, fd: FormData) {
   await requireAction("hire.edit");
+  if (!contractId) throw new ActionError("Contract is required");
   const session = await getSession();
   const data = {
     contractId,
@@ -101,28 +102,37 @@ async function saveHireInspection__impl(contractId: string, fd: FormData) {
     damages: s(fd, "damages") || null,
     status: s(fd, "status") || "SUBMITTED",
   };
-  // Mocked for local testing without DB migration
-  // await db.hireInspection.create({ data });
-  await new Promise(r => setTimeout(r, 400));
+  if (data.fuelLevelPct != null && (data.fuelLevelPct < 0 || data.fuelLevelPct > 100)) {
+    throw new ActionError("Fuel level must be between 0 and 100%.");
+  }
+  await db.hireInspection.create({ data });
   refresh();
 }
 
 async function saveContractAmendment__impl(contractId: string, fd: FormData) {
   await requireAction("hire.edit");
+  if (!contractId) throw new ActionError("Contract is required");
   const session = await getSession();
-  const data = {
-    contractId,
-    effectiveDate: dt(fd, "effectiveDate"),
-    previousRate: n(fd, "previousRate"),
-    newRate: n(fd, "newRate"),
-    reason: s(fd, "reason"),
-    approvedBy: session?.name || "Admin",
-  };
-  // Mocked for local testing without DB migration
-  // await db.hireContractAmendment.create({ data });
-  // await db.hireContract.update({ where: { id: contractId }, data: { rate: data.newRate } });
-  await new Promise(r => setTimeout(r, 400));
-  
+  const newRate = n(fd, "newRate");
+  const reason = s(fd, "reason");
+  if (newRate <= 0) throw new ActionError("New rate must be greater than zero.");
+  if (!reason) throw new ActionError("Reason is required.");
+
+  await db.$transaction(async (tx) => {
+    const contract = await tx.hireContract.findUnique({ where: { id: contractId }, select: { rate: true } });
+    if (!contract) throw new ActionError("Contract was not found.");
+    await tx.hireContractAmendment.create({
+      data: {
+        contractId,
+        effectiveDate: dt(fd, "effectiveDate"),
+        previousRate: contract.rate,
+        newRate,
+        reason,
+        approvedBy: session?.name || "Admin",
+      },
+    });
+    await tx.hireContract.update({ where: { id: contractId }, data: { rate: newRate } });
+  });
   refresh();
 }
 
@@ -138,18 +148,26 @@ async function saveHirePayment__impl(fd: FormData) {
     referenceNo: s(fd, "referenceNo") || null,
     notes: s(fd, "notes") || null,
   };
-  // Mocked for local testing without DB migration
-  // await db.hirePayment.create({ data });
-  await new Promise(r => setTimeout(r, 400));
+  if (!data.vendor) throw new ActionError("Vendor is required.");
+  if (data.amount <= 0) throw new ActionError("Payment amount must be greater than zero.");
+  await db.hirePayment.create({ data });
   refresh();
 }
 
 async function approveHireLog__impl(id: string, status: string) {
   await requireAction("hire.approve");
   const session = await getSession();
-  // Mocked for local testing without DB migration
-  // await db.hireLog.update({ where: { id }, data: { approvalStatus: status, approvedBy: session?.name || "Admin", approvedAt: new Date() }});
-  await new Promise(r => setTimeout(r, 400));
+  if (!new Set(["DRAFT", "SUBMITTED", "APPROVED", "REJECTED"]).has(status)) {
+    throw new ActionError("Invalid approval status.");
+  }
+  await db.hireLog.update({
+    where: { id },
+    data: {
+      approvalStatus: status,
+      approvedBy: status === "APPROVED" || status === "REJECTED" ? session?.name || "Admin" : null,
+      approvedAt: status === "APPROVED" || status === "REJECTED" ? new Date() : null,
+    },
+  });
   refresh();
 }
 
@@ -157,19 +175,19 @@ async function approveHireLog__impl(id: string, status: string) {
 
 async function deleteInspection__impl(id: string) {
   await requireAction("hire.edit");
-  await new Promise(r => setTimeout(r, 200));
+  await db.hireInspection.delete({ where: { id } });
   refresh();
 }
 
 async function deleteAmendment__impl(id: string) {
   await requireAction("hire.edit");
-  await new Promise(r => setTimeout(r, 200));
+  await db.hireContractAmendment.delete({ where: { id } });
   refresh();
 }
 
 async function deletePayment__impl(id: string) {
   await requireAction("hire.approve");
-  await new Promise(r => setTimeout(r, 200));
+  await db.hirePayment.delete({ where: { id } });
   refresh();
 }
 

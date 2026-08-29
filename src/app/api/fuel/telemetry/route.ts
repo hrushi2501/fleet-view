@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { checkSharedSecret } from "@/lib/auth";
 import { requireApi } from "@/lib/access";
 import { getTelemetryAdapter } from "@/lib/telematics-adapters";
-import { normaliseReading, assetCacheUpdate, detectSchemaDrift, describeDrift } from "@/lib/telemetry-normalization";
+import { normaliseReading, assetCacheUpdate, detectSchemaDrift, describeDrift, readTelemetryJson } from "@/lib/telemetry-normalization";
 import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -70,6 +70,7 @@ export async function GET(req: Request) {
     db.asset.findMany({
       where: {
         fuelCapacity: { gt: 0 },
+        decommissionedOn: null,
       },
       select: {
         id: true,
@@ -124,7 +125,9 @@ export async function POST(req: Request) {
     const providerCode = url.searchParams.get("provider") || "GENERIC";
     const adapter = getTelemetryAdapter(providerCode);
 
-    const rawBody = await req.json();
+    const parsed = await readTelemetryJson(req);
+    if (!parsed.ok) return NextResponse.json({ success: false, error: parsed.error }, { status: parsed.status });
+    const rawBody = parsed.value;
     const pings = await adapter.parsePayload(rawBody);
 
     if (!pings.length) {
@@ -142,6 +145,7 @@ export async function POST(req: Request) {
     for (const p of pings) {
       const asset = await db.asset.findFirst({
         where: {
+          decommissionedOn: null,
           OR: [
             { deviceId: p.externalDeviceId },
             { code: p.externalDeviceId },

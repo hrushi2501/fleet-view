@@ -53,7 +53,11 @@ export type FleetUsage = {
 export async function fleetUsage(sinceDays = 30): Promise<FleetUsage> {
   const since = new Date(Date.now() - sinceDays * 86_400_000);
 
-  const [assets, readings, norms, dieselSetting] = await Promise.all([
+  // Run the related reads on one acquired connection. Production intentionally
+  // keeps a tiny Prisma pool behind Supabase's transaction pooler; four
+  // concurrent promises otherwise wait on one another and can exhaust the pool
+  // timeout during a dashboard render.
+  const [assets, readings, norms, dieselSetting] = await db.$transaction([
     db.asset.findMany({
       select: {
         id: true, code: true, name: true, registrationNo: true,

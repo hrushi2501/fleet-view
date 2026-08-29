@@ -27,6 +27,16 @@ interface VehicleOption {
   assetClass: string;
 }
 
+type BarcodeDetectorInstance = {
+  detect(source: ImageBitmapSource): Promise<Array<{ rawValue?: string }>>;
+};
+
+type BarcodeDetectorConstructor = new (options: { formats: string[] }) => BarcodeDetectorInstance;
+
+function barcodeDetector(): BarcodeDetectorConstructor | null {
+  return (window as Window & { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector ?? null;
+}
+
 export function DriverQrScanner({
   vehicles = [],
   triggerVariant = "card",
@@ -73,10 +83,12 @@ export function DriverQrScanner({
 
       // Barcode detection loop
       startScanningLoop();
-    } catch (err: any) {
+    } catch (err: unknown) {
       setCameraActive(false);
       setCameraError(
-        err?.message || "Camera access denied. You can still pick your vehicle from the list below."
+        err instanceof Error
+          ? err.message
+          : "Camera access denied. You can still pick your vehicle from the list below."
       );
       setTab("search");
     }
@@ -95,13 +107,13 @@ export function DriverQrScanner({
   };
 
   const startScanningLoop = () => {
-    if (!("BarcodeDetector" in window)) {
+    const BarcodeDetector = barcodeDetector();
+    if (!BarcodeDetector) {
       return; // Fallback to manual selection or capture
     }
 
     try {
-      // @ts-ignore
-      const detector = new window.BarcodeDetector({ formats: ["qr_code", "code_128", "data_matrix"] });
+      const detector = new BarcodeDetector({ formats: ["qr_code", "code_128", "data_matrix"] });
 
       scanIntervalRef.current = setInterval(async () => {
         if (!videoRef.current || videoRef.current.readyState < 2) return;
@@ -139,14 +151,15 @@ export function DriverQrScanner({
         toast.success(`✓ Gaadi assign ho gayi: ${res.assetCode} (${res.assetName})`);
         setOpen(false);
         router.refresh();
-      } catch (err: any) {
-        toast.error("Assignment Failed", err.message || "Could not link vehicle");
+      } catch (err: unknown) {
+        toast.error("Assignment Failed", err instanceof Error ? err.message : "Could not link vehicle");
       }
     });
   };
 
   useEffect(() => {
     if (open && tab === "camera") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- camera state changes after the media request resolves.
       startCamera();
     } else {
       stopCamera();
@@ -336,17 +349,17 @@ export function DriverQrScanner({
                       onChange={async (e) => {
                         const file = e.target.files?.[0];
                         if (!file) return;
-                        // @ts-ignore
-                        if ("BarcodeDetector" in window) {
+                        const BarcodeDetector = barcodeDetector();
+                        if (BarcodeDetector) {
                           try {
                             const img = new Image();
                             img.src = URL.createObjectURL(file);
                             await img.decode();
-                            // @ts-ignore
-                            const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
+                            const detector = new BarcodeDetector({ formats: ["qr_code"] });
                             const barcodes = await detector.detect(img);
-                            if (barcodes && barcodes.length > 0) {
-                              handleDetectedCode(barcodes[0].rawValue);
+                            const raw = barcodes[0]?.rawValue;
+                            if (raw) {
+                              handleDetectedCode(raw);
                               return;
                             }
                           } catch { }

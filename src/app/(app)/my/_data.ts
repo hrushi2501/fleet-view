@@ -408,6 +408,7 @@ function rank(s: ServiceItem["status"]): number {
  * marks the ones that decide priority even when the vehicle is still moving.
  */
 export const PROBLEM_KINDS: { value: string; label: string; blocking: boolean }[] = [
+  { value: "ACCIDENT", label: "Accident / collision", blocking: true },
   { value: "ENGINE", label: "Engine problem", blocking: true },
   { value: "BRAKE", label: "Brake / steering problem", blocking: true },
   { value: "TYRE", label: "Tyre problem", blocking: false },

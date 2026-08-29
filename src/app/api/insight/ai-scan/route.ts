@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePermission } from "@/lib/auth";
 import { createTelemetryAdapter } from "@/lib/telemetry-ingestion";
 import { AiFraudDetectionService } from "@/lib/ai-fraud";
+import { reserveRateLimit } from "@/lib/request-rate-limit";
 
 /**
  * Runs the fraud scan and writes cases. Was callable anonymously, so anyone
@@ -12,6 +13,22 @@ import { AiFraudDetectionService } from "@/lib/ai-fraud";
 export async function POST() {
   const auth = await requirePermission("fleet.view");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
+  // Fraud scans can fetch telemetry and write cases, so make the cooldown
+  // explicit per operator instead of letting a repeated UI click exhaust AI
+  // provider quota or create duplicate investigations.
+  const limit = await reserveRateLimit({
+    scope: "ai-fraud-scan",
+    subject: auth.session.id,
+    limit: 1,
+    windowMs: 5 * 60_000,
+  });
+  if (!limit.ok) {
+    return NextResponse.json(
+      { error: "A fraud scan was run recently. Please wait before running another.", retryInSeconds: limit.retryInSeconds },
+      { status: 429, headers: { "Retry-After": String(limit.retryInSeconds) } },
+    );
+  }
 
   try {
     // AUTO: the live Fleet Edge feed once it is configured, the generator until

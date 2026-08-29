@@ -321,7 +321,7 @@ export function DeleteButton({ kind, id, label }: { kind: "asset" | "driver" | "
     else if (kind === "driver") await deleteDriver(id);
     else await deleteUser(id);
     
-    toast.success(`✓ ${label} deleted successfully`);
+    toast.success(kind === "asset" ? `✓ ${label} decommissioned; history retained` : `✓ ${label} deleted successfully`);
     router.refresh();
     if (kind === "asset") router.push("/fleet");
   }
@@ -332,20 +332,20 @@ export function DeleteButton({ kind, id, label }: { kind: "asset" | "driver" | "
         onClick={() => setOpen(true)}
         className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50 transition-colors"
       >
-        <Trash2 className="h-3.5 w-3.5" /> Delete
+        <Trash2 className="h-3.5 w-3.5" /> {kind === "asset" ? "Decommission" : "Delete"}
       </button>
 
       <ConfirmDialog
         isOpen={open}
         onClose={() => setOpen(false)}
         onConfirm={handleDelete}
-        title={`Delete ${label}?`}
+        title={`${kind === "asset" ? "Decommission" : "Delete"} ${label}?`}
         description={
           kind === "asset"
-            ? "This will remove the vehicle and its active records. Historical audit trail will be maintained."
+            ? "This retires the vehicle, clears its current assignment, and preserves fuel, trip, maintenance, compliance, telemetry, and cost history."
             : `Are you sure you want to permanently delete this ${kind}? This action cannot be undone.`
         }
-        confirmLabel="Confirm Delete"
+        confirmLabel={kind === "asset" ? "Decommission vehicle" : "Confirm Delete"}
         tone="danger"
         requireTextMatch={kind === "asset" ? label : undefined}
       />
@@ -385,17 +385,17 @@ export function DriverEntry({ driver }: { driver?: DriverData }) {
               type="checkbox"
               name="createLogin"
               value="true"
-              defaultChecked={true}
+              defaultChecked={false}
               className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
             />
             <span>📲 Auto-create Driver App login account</span>
           </label>
           <div className="grid gap-2 sm:grid-cols-2 text-xs">
             <Inp label="Login Email" name="loginEmail" type="email" placeholder="emp-code@mahadev.com" />
-            <Inp label="Initial Password" name="loginPassword" defaultValue="driver123" />
+            <Inp label="Initial Password" name="loginPassword" type="password" placeholder="12+ chars, letter, number, symbol" />
           </div>
           <p className="text-[11px] text-slate-500">
-            Automatically connects this person record to the login account so vehicle check-ins and trips work on day 1.
+            Optional. Use at least 12 characters with a letter, number, and symbol; credentials are never generated with a shared default.
           </p>
         </div>
       )}
@@ -979,7 +979,8 @@ export function UserEntry() {
         defaultValue="Driver"
         required
       />
-      <Inp label="Password" name="password" required placeholder="set a strong password" />
+      <Inp label="Password" name="password" type="password" required placeholder="12+ chars, letter, number, symbol" />
+      <p className="col-span-full -mt-1 text-[11px] text-slate-500">Use at least 12 characters with a letter, number, and symbol.</p>
       <div className="col-span-full rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2 text-xs">
         <p className="font-semibold text-slate-700">Driver Person Profile Linking</p>
         <p className="text-[11px] text-slate-500">
@@ -1068,4 +1069,3 @@ export function ProjectDeleteButton({ id, code }: { id: string; code: string }) 
     </>
   );
 }
-

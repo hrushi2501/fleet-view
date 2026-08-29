@@ -21,6 +21,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { db } from "@/lib/db";
 import { getSession, permissionsFor, type Session } from "@/lib/auth";
 import { can, type RoleLite } from "@/lib/rbac";
@@ -126,7 +127,7 @@ export async function setProjectScope(userId: string, projectIds: string[] | nul
  * Everything downstream — page guards, navigation, query scoping — reads this
  * one function, so there is a single definition of what a user may reach.
  */
-export async function getAccess(): Promise<Access | null> {
+async function resolveAccess(): Promise<Access | null> {
   const session = await getSession();
   if (!session) return null;
 
@@ -160,6 +161,12 @@ export async function getAccess(): Promise<Access | null> {
     projectIds,
   };
 }
+
+// Layouts cannot pass data into their page children. Next 16's documented
+// pattern for ORM-backed identity is React.cache: it is request-scoped, so the
+// layout and page share one authorization lookup without sharing one user's
+// result with another request.
+export const getAccess = cache(resolveAccess);
 
 // ---------------------------------------------------------------------------
 // Page guards

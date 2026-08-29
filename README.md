@@ -29,10 +29,13 @@ You need a `.env.local`. It is gitignored and never committed — ask for the va
 |---|---|---|
 | `DATABASE_URL` | yes | Nothing runs. Pooled URL, keep `?pgbouncer=true&connection_limit=1` |
 | `DATABASE_URL_UNPOOLED` | yes | Direct connection for migrations |
+| `AUTH_SECRET` | production | Browser sessions cannot be issued safely |
 | `TATA_FLEET_EDGE_*` | for telemetry | Vehicle tracking, fuel analysis |
+| `TATA_PUSH_URL_TOKEN` | for Tata push | Strong provider-compatible webhook authentication |
 | `FLEET_INGEST_KEY` | for device push | `/api/telematics` fails closed with 503 |
 | `CRON_SECRET` | for cron | Scheduled sync returns 401 |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | for photo reading | OCR degrades to manual entry (gracefully) |
+| `BLOB_READ_WRITE_TOKEN` | for uploads | Evidence and document uploads fail safely |
 | `BUSINESS_TIMEZONE` | no (defaults `Asia/Kolkata`) | Dates land in the wrong day/month |
 
 **Do not run `prisma/import-mcc.mjs`.** It begins by deleting every asset, driver and
@@ -43,10 +46,19 @@ re-fetched** — the provider only ever returns a vehicle's *current* state.
 ## Checks
 
 ```bash
-npm test        # 108 unit tests (node's runner, no framework)
+npm test        # 385 unit tests (node's runner, no framework)
 npm run check   # lint + typecheck + tests
 npm run build
+npm run db:check # verifies Prisma's runtime tables and columns against the DB
 ```
+
+## Security operations
+
+Production deployment, webhook registration, RLS verification, monitoring,
+backup restore checks, and VAPID rotation are documented in
+[Security operations](docs/SECURITY-OPERATIONS.md). Run `npm run db:rls` after
+every production schema change; it applies and verifies the Supabase public API
+deny-all boundary.
 
 ## How this codebase thinks
 

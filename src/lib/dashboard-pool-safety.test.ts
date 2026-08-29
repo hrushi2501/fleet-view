@@ -1,0 +1,27 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+
+test("dashboard reads do not fan out against the one-connection production pool", () => {
+  const dashboard = source("../app/(app)/page.tsx");
+  const layout = source("../app/(app)/layout.tsx");
+  const fleetUsage = source("./fleet-usage.ts");
+
+  assert.match(dashboard, /await db\.\$transaction\(\[/);
+  assert.doesNotMatch(dashboard, /await Promise\.all\(\[/);
+  assert.match(layout, /await db\.\$transaction\(\[/);
+  assert.match(fleetUsage, /await db\.\$transaction\(\[/);
+  assert.doesNotMatch(fleetUsage, /await Promise\.all\(\[/);
+});
+
+test("authorization is deduplicated for the layout and page in one request", () => {
+  const access = source("./access.ts");
+  assert.match(access, /export const getAccess = cache\(resolveAccess\)/);
+});
+
+test("a short default pool timeout cannot strand a streamed page", () => {
+  const database = source("./db.ts");
+  assert.match(database, /pool_timeout=30/);
+});

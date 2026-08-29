@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { checkSharedSecret } from "@/lib/auth";
-import { normaliseReading, assetCacheUpdate } from "@/lib/telemetry-normalization";
+import { normaliseReading, assetCacheUpdate, readTelemetryJson } from "@/lib/telemetry-normalization";
 import type { TelemetryPing } from "@/lib/telematics-adapters";
 
 export const dynamic = "force-dynamic";
@@ -43,7 +43,7 @@ async function ingestOne(body: Record<string, unknown>) {
   if (!where) return { ok: false as const, error: "asset identifier required" };
 
   const asset = await db.asset.findFirst({
-    where,
+    where: { ...where, decommissionedOn: null },
     select: {
       id: true, code: true, fuelCapacity: true, meterValue: true,
       hourMeterValue: true, primaryMeter: true, telematicsProviderId: true,
@@ -161,8 +161,12 @@ async function ingestOne(body: Record<string, unknown>) {
 }
 
 export async function POST(req: Request) {
-  let body: Record<string, unknown> = {};
-  try { body = await req.json(); } catch { return NextResponse.json({ error: "bad json" }, { status: 400 }); }
+  const parsed = await readTelemetryJson(req);
+  if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: parsed.status });
+  if (!parsed.value || typeof parsed.value !== "object" || Array.isArray(parsed.value)) {
+    return NextResponse.json({ error: "Telemetry payload must be a JSON object." }, { status: 400 });
+  }
+  const body = parsed.value as Record<string, unknown>;
 
   const auth = checkSharedSecret(req, "FLEET_INGEST_KEY", { bodyKey: body.key });
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });

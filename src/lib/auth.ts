@@ -5,7 +5,17 @@ import { db } from "./db";
 import { can, type RoleLite } from "./rbac";
 import { issueToken, verifyToken, isRevoked, SESSION_TTL_MS } from "./session-token";
 
-const COOKIE = "fv_session";
+/**
+ * A host-only production cookie cannot be set or overwritten by a subdomain.
+ *
+ * `__Host-` is only valid with `Secure`, `Path=/`, and no `Domain` attribute;
+ * `setSession` intentionally satisfies all three. Development keeps the short
+ * name because localhost commonly runs over HTTP.
+ *
+ * Changing the production name deliberately invalidates the old cookie. A
+ * compatibility read would keep the weaker, subdomain-settable cookie alive.
+ */
+const COOKIE = process.env.NODE_ENV === "production" ? "__Host-fv_session" : "fv_session";
 
 /**
  * Where a user's session revocation epoch lives.
@@ -39,18 +49,50 @@ export async function revokeSessions(userId: string): Promise<void> {
   await db.setting.upsert({ where: { key }, update: { value }, create: { key, value } });
 }
 
+/** bcrypt's maximum input is 72 bytes; reject truncation rather than hiding it. */
+const MAX_PASSWORD_BYTES = 72;
+export const PASSWORD_MIN_LENGTH = 12;
+const BCRYPT_HASH = /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/;
+
+// This is deliberately not a credential. It is only a fixed bcrypt workload
+// for unknown and legacy-password accounts, so those cases take the same class
+// of time as an ordinary failed password comparison.
+const DUMMY_PASSWORD_HASH = "$2b$10$p1f5XPDNBz92g9Hztpm8iOEVBQSVbc1Kqlo/XWaT/VBXfLJfkCOym";
+
+/** Returns a safe user-facing message when a new password does not meet policy. */
+export function passwordPolicyError(plain: string): string | null {
+  if (plain.length < PASSWORD_MIN_LENGTH) {
+    return `Password must be at least ${PASSWORD_MIN_LENGTH} characters long.`;
+  }
+  if (Buffer.byteLength(plain, "utf8") > MAX_PASSWORD_BYTES) {
+    return "Password must be at most 72 bytes long.";
+  }
+  if (!/[A-Za-z]/.test(plain) || !/\d/.test(plain) || !/[^A-Za-z0-9]/.test(plain)) {
+    return "Password must include at least one letter, number, and symbol.";
+  }
+  return null;
+}
+
 export async function hashPassword(plain: string) {
+  const error = passwordPolicyError(plain);
+  if (error) throw new Error(error);
   return bcrypt.hash(plain, 10);
 }
 
-/** Verifies a password; supports legacy plaintext records so old accounts keep working. */
+/**
+ * Verifies a bcrypt password without retaining a plaintext compatibility path.
+ *
+ * A valid bcrypt comparison is still performed for unknown or legacy records.
+ * This prevents an email probe from being visibly faster than a failed login
+ * against a real bcrypt-backed account. Legacy rows must be migrated with
+ * `npm run db:migrate-passwords` before this release is deployed.
+ */
 export async function verifyPassword(plain: string, stored: string) {
-  if (stored.startsWith("$2")) return bcrypt.compare(plain, stored);
-  return plain === stored;
+  return bcrypt.compare(plain, isHashed(stored) ? stored : DUMMY_PASSWORD_HASH);
 }
 
 export function isHashed(stored: string) {
-  return stored.startsWith("$2");
+  return BCRYPT_HASH.test(stored);
 }
 
 /**

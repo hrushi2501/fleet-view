@@ -24,6 +24,7 @@
 import { getAccess, type Access } from "@/lib/access";
 import { canApprove } from "@/lib/rbac";
 import { db } from "@/lib/db";
+import { recordSystemAudit } from "@/lib/audit-writer";
 import { isActionError, type ActionResult, type ActionFailure } from "@/lib/action-result";
 
 // Re-exported so server-side callers have one import for the guard API.
@@ -182,16 +183,12 @@ async function recordDenial(access: Access, code: string): Promise<void> {
   const sensitive = code.startsWith("admin.") || code.endsWith(".approve") || code.endsWith(".delete") || code.endsWith(".close") || code.endsWith(".reconcile");
   if (!sensitive) return;
   try {
-    await db.auditEvent.create({
-      data: {
-        actorId: access.session.id,
-        actorName: access.session.name,
-        actorRole: access.session.role,
-        action: "DENIED",
-        module: "ADMIN",
-        summary: `Refused: ${code}`,
-        changes: JSON.stringify({ permission: code, group: access.group }),
-      },
+    await recordSystemAudit({
+      actor: access.session,
+      action: "DENIED",
+      module: "ADMIN",
+      summary: `Refused: ${code}`,
+      changes: { permission: code, group: access.group },
     });
   } catch {
     // An audit failure must not convert a 403 into a 500.

@@ -37,6 +37,7 @@ export type AuditAction =
   | "APPROVE"
   | "REJECT"
   | "LOGIN"
+  | "LOGIN_FAILED"
   | "LOGOUT"
   | "EXPORT"
   | "CONFIG"

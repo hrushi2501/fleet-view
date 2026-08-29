@@ -387,6 +387,7 @@ function normaliseId(v: string | null | undefined): string {
  */
 async function buildAssetIndex(): Promise<Map<string, ResolvedAsset>> {
   const assets = await db.asset.findMany({
+    where: { decommissionedOn: null },
     select: {
       id: true,
       code: true,
