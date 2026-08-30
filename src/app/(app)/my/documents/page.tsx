@@ -17,7 +17,7 @@
 import { requirePage } from "@/lib/access";
 import { fmtDate } from "@/lib/utils";
 import { myBasics, myPersonDocs, myVehicleDocs, type DocRow, type Tone } from "../_data";
-import { MyHeader, Screen, Hero, Group, Row, Nothing } from "../_ui";
+import { MyHeader, Screen, Hero, Group, Row, Nothing, NotLinked } from "../_ui";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +29,7 @@ export default async function MyDocumentsPage() {
     return (
       <Screen>
         <MyHeader href="/my/documents" />
-        <Nothing>Please assign a vehicle or scan QR code from Home to view vehicle compliance papers.</Nothing>
+        <NotLinked loginName={access.session.email} />
       </Screen>
     );
   }

@@ -151,7 +151,7 @@ export default async function RolesPage() {
                 <th className="px-5 py-3 font-medium">Email</th>
                 <th className="px-5 py-3 font-medium">Legacy Role</th>
                 <th className="px-5 py-3 font-medium">Assigned Role</th>
-                <th className="px-5 py-3 font-medium">Person Record</th>
+                <th className="px-5 py-3 font-medium">Driver</th>
                 <th className="px-5 py-3 text-right font-medium">Approval Limit</th>
               </tr>
             </thead>
@@ -166,9 +166,6 @@ export default async function RolesPage() {
                   </td>
                   <td className="px-5 py-3">
                     <LinkDriverSelect userId={u.id} driverId={u.driverId} drivers={driverOpts} />
-                    {u.role === "Driver" && !u.driverId && (
-                      <p className="mt-0.5 text-[11px] text-rose-600">Driver app shows nothing until this is linked.</p>
-                    )}
                   </td>
                   <td className="px-5 py-3 text-right text-slate-600">{u.roleRef?.approvalLimit ? inr(u.roleRef.approvalLimit, { compact: true }) : "—"}</td>
                 </tr>

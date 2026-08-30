@@ -28,7 +28,7 @@ export async function POST(req: Request) {
   }
 
   const account = await db.user.findUnique({ where: { id: auth.id }, include: { driverRef: true } });
-  const person = account?.driverRef ?? (await db.driver.findFirst({ where: { name: auth.name } }));
+  const person = account?.driverRef;
   if (!person) return NextResponse.json({ error: "Login not linked to a driver record" }, { status: 409 });
 
   const active = await db.tripSession.findFirst({

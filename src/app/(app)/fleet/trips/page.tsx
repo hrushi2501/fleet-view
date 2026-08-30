@@ -60,7 +60,7 @@ export default async function TripsPage() {
           <Link href="/fleet/tracking?tab=qr" className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">
             <QrCode className="h-4 w-4" /> Print QR sheet
           </Link>
-          <IssueQrButton />
+          {access.can("fleet.edit") && <IssueQrButton />}
         </div>
       </div>
 

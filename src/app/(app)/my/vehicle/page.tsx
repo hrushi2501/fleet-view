@@ -11,11 +11,11 @@ import { requirePage } from "@/lib/access";
 import { Progress } from "@/components/ui";
 import { TERMS } from "@/lib/navigation";
 import { ASSET_CLASS_LABEL, num, timeAgo } from "@/lib/utils";
-import { db } from "@/lib/db";
-import { myBasics, latestIgnition, vehicleState, whereIsIt, PROBLEM_KINDS } from "../_data";
-import { MyHeader, Screen, Hero, Fact, Notice } from "../_ui";
+import { myBasics, latestIgnition, myShift, vehicleState, whereIsIt, PROBLEM_KINDS } from "../_data";
+import { MyHeader, Screen, Hero, Fact, Notice, NotLinked } from "../_ui";
 import { reportProblem } from "../actions";
 import { DriverQrScanner } from "@/components/DriverQrScanner";
+import { DriverTripEndScanner } from "@/components/DriverTripEndScanner";
 
 export const dynamic = "force-dynamic";
 
@@ -28,23 +28,26 @@ export default async function MyVehiclePage({
   const { driver, vehicle } = await myBasics(access);
   const { error } = await searchParams;
 
-  const availableVehicles = await db.asset.findMany({
-    where: { status: { notIn: ["Off-hired", "Disposed"] } },
-    select: { id: true, code: true, name: true, registrationNo: true, assetClass: true },
-    orderBy: { code: "asc" },
-  });
-
-  if (!driver || !vehicle) {
+  if (!driver) {
     return (
       <Screen>
         <MyHeader href="/my/vehicle" />
-        <DriverQrScanner vehicles={availableVehicles} triggerVariant="card" />
+        <NotLinked loginName={access.session.email} />
+      </Screen>
+    );
+  }
+
+  if (!vehicle) {
+    return (
+      <Screen>
+        <MyHeader href="/my/vehicle" />
+        <DriverQrScanner triggerVariant="card" />
       </Screen>
     );
   }
 
   const now = new Date();
-  const [ignition, place] = await Promise.all([latestIgnition(vehicle.id), whereIsIt(vehicle)]);
+  const [ignition, place, shift] = await Promise.all([latestIgnition(vehicle.id), whereIsIt(vehicle), myShift(driver.id)]);
   const state = vehicleState(vehicle, ignition, now);
 
   const meterUnit = vehicle.primaryMeter === "SMU" ? "hours" : "km";
@@ -56,11 +59,9 @@ export default async function MyVehiclePage({
     <Screen>
       <div className="flex items-center justify-between">
         <MyHeader href="/my/vehicle" note={vehicle.registrationNo ?? vehicle.code} />
-        <DriverQrScanner
-          vehicles={availableVehicles}
-          triggerVariant="button"
-          currentVehicleCode={vehicle.code}
-        />
+        {shift.hasActiveTrip
+          ? <DriverTripEndScanner vehicleCode={vehicle.code} />
+          : <DriverQrScanner triggerVariant="button" />}
       </div>
 
       {error && <Notice tone="warn" title="Problem save nahi hui — please pick one option and try again." />}

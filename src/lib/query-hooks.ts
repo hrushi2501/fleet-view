@@ -14,7 +14,9 @@ import type { SearchResultItem } from "@/app/api/search/route";
  * Live Fleet Tracking Hook
  *
  * Provides real-time coordinates, live motion statuses, fuel levels, and meters.
- * Refetches in the background every 8 seconds while tab is active, caching for 15s.
+ * Refetches every 15 seconds while the tab is active. Fleet Edge's upstream
+ * sync runs every two minutes, so a faster loop only repeats the same database
+ * work and can starve normal authorization requests.
  */
 export function useLiveFleet(initialData?: LiveFleet) {
   return useQuery({
@@ -25,9 +27,12 @@ export function useLiveFleet(initialData?: LiveFleet) {
       return res.json();
     },
     initialData,
-    staleTime: 10 * 1000,
-    refetchInterval: 8 * 1000,
+    staleTime: 15 * 1000,
+    refetchInterval: 15 * 1000,
     refetchIntervalInBackground: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    retry: 0,
   });
 }
 

@@ -11,8 +11,9 @@
  * caller's `Access` and starts from `access.driverId`; nothing in this file can
  * be called in a way that returns another person's rows.
  *
- * The one rule that matters: a null `driverId` means the login was never linked
- * to a person record. That is an empty state, never a reason to widen the query.
+ * The one rule that matters: a null `driverId` means an administrator has not
+ * assigned this login to a driver. That is an empty state, never a reason to
+ * widen the query or create a driver from a login name.
  * `assetScope()` in `lib/access.ts` encodes the same rule with `"__none__"`, and
  * the loaders below mirror it by returning nothing rather than everything.
  * ─────────────────────────────────────────────────────────────────────────────
@@ -65,8 +66,8 @@ export type MyBasics = { driver: MyDriver | null; vehicle: MyVehicle | null };
 /**
  * The driver behind this login and the vehicle assigned to them.
  *
- * Both come back null-able on purpose. "Not linked to a person" and "linked but
- * no vehicle handed over yet" are two different, ordinary situations on a real
+ * Both come back null-able on purpose. "No driver assigned to this login" and
+ * "driver assigned but no vehicle handed over yet" are two different, ordinary situations on a real
  * site, and each needs its own message rather than a crash or a blank screen.
  *
  * A driver can in principle hold more than one machine. The app shows one,
@@ -75,35 +76,8 @@ export type MyBasics = { driver: MyDriver | null; vehicle: MyVehicle | null };
  * between page loads.
  */
 export async function myBasics(access: Access): Promise<MyBasics> {
-  let driverId = access.driverId;
-
-  // If session is not explicitly linked to driverId, auto-resolve or auto-create so the user is never stuck
-  if (!driverId) {
-    const existing = await db.driver.findFirst({
-      where: {
-        name: { equals: access.session.name, mode: "insensitive" },
-      },
-    });
-
-    if (existing) {
-      driverId = existing.id;
-      await db.user.update({ where: { id: access.session.id }, data: { driverId: existing.id } }).catch(() => {});
-    } else {
-      const newDriver = await db.driver.create({
-        data: {
-          empCode: `DRV-${access.session.id.slice(-4).toUpperCase()}`,
-          name: access.session.name || "Driver",
-          phone: "9876543210",
-          type: "DRIVER",
-          licenseNo: `MH14-${Date.now().toString().slice(-6)}`,
-          licenseExpiry: new Date(Date.now() + 365 * 86400000),
-          status: "Active",
-        },
-      });
-      driverId = newDriver.id;
-      await db.user.update({ where: { id: access.session.id }, data: { driverId: newDriver.id } }).catch(() => {});
-    }
-  }
+  const driverId = access.driverId;
+  if (!driverId) return { driver: null, vehicle: null };
 
   const driver = await db.driver.findUnique({
     where: { id: driverId },
@@ -305,6 +279,8 @@ export function todaysTrips(rows: TripRow[], now: Date = new Date()): TripRow[] 
 
 export type ShiftState = {
   onDuty: boolean;
+  /** An actual open QR trip, as distinct from attendance marked present. */
+  hasActiveTrip: boolean;
   label: string;
   detail: string;
   tone: Tone;
@@ -337,7 +313,7 @@ export async function myShift(driverId: string, now: Date = new Date()): Promise
     const since = session.startedAt.toLocaleTimeString("en-IN", {
       timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: true,
     });
-    return { onDuty: true, label: "On duty", detail: `Shift ${since} se chalu hai`, tone: "ok" };
+    return { onDuty: true, hasActiveTrip: true, label: "On duty", detail: `Shift ${since} se chalu hai`, tone: "ok" };
   }
 
   if (attendance) {
@@ -345,13 +321,14 @@ export async function myShift(driverId: string, now: Date = new Date()): Promise
     const shift = attendance.shift === "NIGHT" ? "Night shift" : "Day shift";
     return {
       onDuty: present,
+      hasActiveTrip: false,
       label: present ? "Marked present" : attendance.status.replace("_", " ").toLowerCase(),
       detail: present ? `${shift} · ${attendance.hours} hours` : shift,
       tone: present ? "ok" : "muted",
     };
   }
 
-  return { onDuty: false, label: "Not started", detail: "Aaj ki haziri abhi mark nahi hui", tone: "muted" };
+  return { onDuty: false, hasActiveTrip: false, label: "Not started", detail: "Aaj ki haziri abhi mark nahi hui", tone: "muted" };
 }
 
 /* ----------------------------------------------------------------- service */

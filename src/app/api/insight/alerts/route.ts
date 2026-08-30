@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { requirePermission } from "@/lib/auth";
+import { requireApi } from "@/lib/access";
+import { notificationScope } from "@/lib/notification-feed";
 
 /**
  * Both handlers were open: GET returned every alert in the fleet and PATCH let
@@ -11,7 +12,7 @@ import { requirePermission } from "@/lib/auth";
  * catalogue, which is a change for the owners of `rbac.ts` consumers to make.
  */
 export async function GET(request: NextRequest) {
-  const auth = await requirePermission("fleet.view");
+  const auth = await requireApi("fleet.view");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   try {
@@ -20,10 +21,14 @@ export async function GET(request: NextRequest) {
     const category = url.searchParams.get("category");
     const status = url.searchParams.get("status");
 
-    const where: Prisma.AlertWhereInput = {};
-    if (severity && severity !== 'ALL') where.severity = severity;
-    if (category && category !== 'ALL') where.category = category;
-    if (status && status !== 'ALL') where.status = status;
+    const where: Prisma.AlertWhereInput = {
+      AND: [
+        notificationScope(auth.access),
+        ...(severity && severity !== "ALL" ? [{ severity }] : []),
+        ...(category && category !== "ALL" ? [{ category }] : []),
+        ...(status && status !== "ALL" ? [{ status }] : []),
+      ],
+    };
 
     const alerts = await db.alert.findMany({
       where,
@@ -64,7 +69,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const auth = await requirePermission("fleet.view");
+  const auth = await requireApi("fleet.view");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   try {
@@ -74,6 +79,14 @@ export async function PATCH(request: NextRequest) {
     if (!id || !action) {
       return NextResponse.json({ error: "Missing id or action" }, { status: 400 });
     }
+
+    // Look up through the same row-level predicate as the list. An alert id
+    // alone is never authority to resolve another project's safety alert.
+    const existing = await db.alert.findFirst({
+      where: { AND: [{ id }, notificationScope(auth.access)] },
+      select: { id: true },
+    });
+    if (!existing) return NextResponse.json({ error: "Alert not found" }, { status: 404 });
 
     if (action === "acknowledge") {
        await db.alert.update({ where: { id }, data: { status: "Acknowledged", acknowledgedAt: new Date() } });

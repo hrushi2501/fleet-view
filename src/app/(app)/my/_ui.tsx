@@ -81,13 +81,10 @@ export function MyHeader({ href, note }: { href: string; note?: string }) {
 /* ------------------------------------------------------------ empty states */
 
 /**
- * The login is not attached to a person record.
+ * An administrator has not assigned this login to a driver yet.
  *
- * This is a real and fairly common situation — an account gets created for a new
- * driver before the office links it to their employee file — and the wrong
- * answer is to show the whole fleet "just until it's set up". So the screen
- * shows nothing at all, says plainly whose job it is to fix, and gives the
- * driver the one fact the office will ask for.
+ * The wrong answer is to show the whole fleet or invent a driver from a login
+ * name. The administrator owns driver creation and assignment.
  */
 export function NotLinked({ loginName }: { loginName: string }) {
   return (
@@ -95,17 +92,15 @@ export function NotLinked({ loginName }: { loginName: string }) {
       <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-50 text-amber-600">
         <UserX className="h-8 w-8" />
       </div>
-      <h2 className="mt-4 text-xl font-bold text-ink-900">Aapka account abhi link nahi hua</h2>
+      <h2 className="mt-4 text-xl font-bold text-ink-900">Driver access is being set up</h2>
       <p className="mx-auto mt-2 max-w-sm text-base leading-relaxed text-slate-600">
-        Your login is not yet connected to your driver record, so we cannot show
-        your vehicle, trips or documents here.
+        Your administrator will add your driver access before a vehicle, trip, or fuel record can be assigned to this login.
       </p>
       <p className="mx-auto mt-3 max-w-sm text-base leading-relaxed text-slate-600">
-        Please ask your supervisor or the office to connect this login
+        Please ask your administrator to add this driver login
         <span className="font-semibold text-ink-900"> ({loginName}) </span>
-        to your name. It takes one minute.
+        when it is ready for use.
       </p>
-      <p className="mt-4 text-sm text-slate-400">Tab tak yahan kuch nahi dikhega.</p>
     </Card>
   );
 }

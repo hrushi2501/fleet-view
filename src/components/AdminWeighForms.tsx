@@ -234,13 +234,13 @@ export function LinkDriverSelect({ userId, driverId, drivers }: { userId: string
       disabled={pending}
       onChange={(e) => start(async () => {
         await linkUserToDriver(userId, e.target.value);
-        toast.success("✓ Driver person record linked");
+        toast.success("✓ Driver assigned to login");
         await invalidateAllQueries(queryClient);
         router.refresh();
       })}
       className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium outline-none focus:border-brand-400 shadow-2xs"
     >
-      <option value="">— Not linked —</option>
+      <option value="">— No driver assigned —</option>
       {drivers.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
     </select>
   );

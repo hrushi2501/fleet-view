@@ -1,35 +1,49 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getSession } from "@/lib/auth";
+import { getAccess } from "@/lib/access";
 import { reconstructPath, type ReadingLite } from "@/lib/telematics";
 
 export const dynamic = "force-dynamic";
 
 /**
- * End a trip session. POST { sessionId?, lat?, lng?, odometer?, notes? }
+ * End a trip session. POST { token, lat?, lng?, odometer?, notes? }
  *
  * Distance comes from the recorded path where positions exist, and falls back to
  * the odometer difference where they do not — a vehicle with no GPS still
  * produces a usable trip record, just a coarser one.
  */
 export async function POST(req: Request) {
-  const auth = await getSession();
-  if (!auth) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  const access = await getAccess();
+  if (!access) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  if (access.group !== "DRIVER") return NextResponse.json({ error: "Only a driver account can end a vehicle trip." }, { status: 403 });
 
   let body: Record<string, unknown> = {};
-  try { body = await req.json(); } catch { /* checkout with no body is fine */ }
+  try { body = await req.json(); } catch { return NextResponse.json({ error: "A cabin QR code is required to end the trip." }, { status: 400 }); }
+  const token = String(body.token ?? "").trim();
+  if (!token || token.length > 48) return NextResponse.json({ error: "Scan or enter the cabin QR code to end this trip." }, { status: 400 });
 
-  const account = await db.user.findUnique({ where: { id: auth.id }, include: { driverRef: true } });
-  const person = account?.driverRef ?? (await db.driver.findFirst({ where: { name: auth.name } }));
+  const account = await db.user.findUnique({ where: { id: access.session.id }, include: { driverRef: true } });
+  // A trip belongs to the administrator-assigned driver, never to whichever
+  // record happens to share this login's display name.
+  const person = account?.driverRef;
+  if (!person || person.id !== access.driverId || person.status !== "Active") {
+    return NextResponse.json({ error: "An administrator must add this driver before a trip can be checked out." }, { status: 409 });
+  }
 
   const active = body.sessionId
-    ? await db.tripSession.findUnique({ where: { id: String(body.sessionId) } })
-    : person
-      ? await db.tripSession.findFirst({ where: { driverId: person.id, status: "ACTIVE" }, orderBy: { startedAt: "desc" } })
-      : null;
+    ? await db.tripSession.findFirst({
+      // A posted id is a claim, not authority. Without this predicate, one
+      // authenticated driver could close another driver's active shift.
+      where: { id: String(body.sessionId), driverId: person.id, status: "ACTIVE" },
+      include: { asset: { select: { qrToken: true } } },
+    })
+    : await db.tripSession.findFirst({ where: { driverId: person.id, status: "ACTIVE" }, orderBy: { startedAt: "desc" }, include: { asset: { select: { qrToken: true } } } });
 
   if (!active || active.status !== "ACTIVE") {
     return NextResponse.json({ error: "No active trip to check out of." }, { status: 404 });
+  }
+  if (!active.asset.qrToken || active.asset.qrToken !== token) {
+    return NextResponse.json({ error: "This is not the QR sticker for your active vehicle. Scan the sticker inside the current cabin." }, { status: 409 });
   }
 
   const num = (k: string) => (body[k] != null && isFinite(Number(body[k])) ? Number(body[k]) : null);
@@ -76,7 +90,7 @@ export async function POST(req: Request) {
 
   if (endOdo != null && endOdo > 0) {
     await db.meterReading.create({
-      data: { assetId: closed.assetId, meterType: "ODOMETER", value: endOdo, source: "GPS", refId: closed.id, recordedBy: auth.name },
+      data: { assetId: closed.assetId, meterType: "ODOMETER", value: endOdo, source: "GPS", refId: closed.id, recordedBy: access.session.name },
     });
     const asset = await db.asset.findUnique({ where: { id: closed.assetId } });
     if (asset && endOdo > asset.meterValue) {

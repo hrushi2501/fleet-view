@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { QrCode, LogOut, Loader2, Camera, MapPin, TriangleAlert, CheckCircle2, X } from "lucide-react";
+import { QrCode, Loader2, Camera, MapPin, TriangleAlert, CheckCircle2, X } from "lucide-react";
 import { isActionError } from "@/lib/action-result";
+import { DriverTripEndScanner } from "@/components/DriverTripEndScanner";
 
 type Vehicle = { id: string; code: string; registrationNo: string | null; assetClass: string; hasFuelSensor: boolean; tracking: string };
 type Active = { sessionId: string; vehicle: Vehicle; startedAt: string; trackingSource: string } | null;
@@ -98,23 +99,6 @@ export function DriverTripPanel({ active, hasCamera }: { active: Active; hasCame
     } catch { setMsg({ kind: "err", text: "Camera permission denied." }); }
   }
 
-  async function checkout() {
-    setBusy(true); setMsg(null);
-    const p = await pos();
-    try {
-      const r = await fetch("/api/session/checkout", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lat: p?.coords.latitude, lng: p?.coords.longitude }),
-      });
-      const d = await r.json();
-      setMsg(r.ok
-        ? { kind: "ok", text: `ट्रिप पूरी · Trip ended — ${d.distanceKm} km (${d.source})` }
-        : { kind: "err", text: d.error ?? "Checkout failed" });
-      router.refresh();
-    } catch { setMsg({ kind: "err", text: "Network problem. Try again." }); }
-    finally { setBusy(false); }
-  }
-
   return (
     <div className="mx-auto max-w-2xl space-y-3 px-4 pt-4">
       {msg && (
@@ -188,10 +172,10 @@ export function DriverTripPanel({ active, hasCamera }: { active: Active; hasCame
             </button>
           )}
 
-          <button onClick={checkout} disabled={busy}
-            className="flex w-full items-center justify-center gap-3 rounded-2xl bg-ink-900 py-5 text-base font-bold text-white active:scale-[0.99] disabled:opacity-50">
-            {busy ? <Loader2 className="h-6 w-6 animate-spin" /> : <LogOut className="h-6 w-6" />} ट्रिप खत्म करें · End trip
-          </button>
+          <div className="rounded-2xl bg-rose-50 p-4 ring-1 ring-rose-200">
+            <p className="mb-3 text-xs font-semibold text-rose-900">To prevent an accidental checkout, scan this vehicle&apos;s cabin QR to end the trip.</p>
+            <DriverTripEndScanner vehicleCode={active.vehicle.code} />
+          </div>
 
           {gaugeOpen && active && (
             <GaugeCapture assetId={active.vehicle.id} onClose={() => setGaugeOpen(false)} onDone={(m) => { setMsg(m); setGaugeOpen(false); router.refresh(); }} />

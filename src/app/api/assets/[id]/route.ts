@@ -52,7 +52,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   // the typed columns, while `raw` — the whole provider payload, the largest
   // column in the schema — is shown for the newest sample alone. Fetching 200
   // raw blobs to display one was the single heaviest read in the app.
-  const [history, latest] = await Promise.all([
+  const [history, latest, assetNorm, classNorm, idleNorm] = await db.$transaction([
     db.telemetryReading.findMany({
       where: { assetId: asset.id },
       orderBy: { recordedAt: "desc" },
@@ -72,16 +72,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         provider: { select: { name: true, lastSyncAt: true, lastSyncStatus: true } },
       },
     }),
+    db.consumptionNorm.findFirst({ where: { assetId: asset.id, unit: "KMPL" } }),
+    db.consumptionNorm.findFirst({ where: { assetClass: asset.assetClass, unit: "KMPL" } }),
+    db.consumptionNorm.findFirst({ where: { assetClass: asset.assetClass, unit: "LPH" } }),
   ]);
 
   // Derived usage: distance, burn, efficiency and unexplained loss, measured
   // between consecutive samples rather than read off any single one.
-  const norm =
-    (await db.consumptionNorm.findFirst({ where: { assetId: asset.id, unit: "KMPL" } })) ??
-    (await db.consumptionNorm.findFirst({ where: { assetClass: asset.assetClass, unit: "KMPL" } }));
-  const idleNorm = await db.consumptionNorm.findFirst({
-    where: { assetClass: asset.assetClass, unit: "LPH" },
-  });
+  const norm = assetNorm ?? classNorm;
 
   const { segments, usage } = analyseUsage(
     history.map((t) => ({

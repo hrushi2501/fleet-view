@@ -7,6 +7,7 @@
  * `fleet-analytics.ts`; this only groups it by vehicle and totals it.
  */
 import { db } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
 import { analyseUsage, describeUsage, type Confidence, type UsageSummary } from "@/lib/fleet-analytics";
 
 export type AssetUsage = {
@@ -50,7 +51,10 @@ export type FleetUsage = {
  * @param sinceDays window to analyse. Readings outside it are ignored, so the
  *        figures track recent behaviour rather than being diluted by history.
  */
-export async function fleetUsage(sinceDays = 30): Promise<FleetUsage> {
+export async function fleetUsage(
+  sinceDays = 30,
+  assetWhere: Prisma.AssetWhereInput = {},
+): Promise<FleetUsage> {
   const since = new Date(Date.now() - sinceDays * 86_400_000);
 
   // Run the related reads on one acquired connection. Production intentionally
@@ -59,13 +63,17 @@ export async function fleetUsage(sinceDays = 30): Promise<FleetUsage> {
   // timeout during a dashboard render.
   const [assets, readings, norms, dieselSetting] = await db.$transaction([
     db.asset.findMany({
+      where: assetWhere,
       select: {
         id: true, code: true, name: true, registrationNo: true,
         assetClass: true, lastSeen: true, fuelLevelPct: true, fuelCapacity: true,
       },
     }),
     db.telemetryReading.findMany({
-      where: { recordedAt: { gte: since } },
+      // Filtering the readings at the database as well as the asset list
+      // prevents a one-project dashboard from scanning the whole fleet's
+      // telemetry history only to discard it in memory.
+      where: { recordedAt: { gte: since }, asset: assetWhere },
       orderBy: { recordedAt: "asc" },
       select: {
         assetId: true, recordedAt: true, lat: true, lng: true, speedKph: true,

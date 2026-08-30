@@ -38,3 +38,23 @@ export function driverAccidentNotification(input: DriverEvent & { note?: string 
     actionUrl: "/maintenance?tab=workorders",
   };
 }
+
+/** Every driver-reported problem is recorded in the same durable notification
+ * stream. Accidents stay Critical; a blocking breakdown is a Warning; routine
+ * repair reports are Info for the assigned contractor and administrators. */
+export function driverProblemNotification(input: DriverEvent & {
+  kind: string;
+  blocking: boolean;
+  note?: string;
+}) {
+  const detail = input.note?.trim() ? ` Driver note: ${input.note.trim()}` : "";
+  return {
+    category: "Driver",
+    severity: input.blocking ? "Warning" : "Info",
+    title: `${input.blocking ? "Breakdown" : "Problem"} reported — ${input.assetCode}`,
+    message: `${input.driverName} reported ${input.kind.toLowerCase()} from the driver app.${detail}`,
+    assetId: input.assetId,
+    driverId: input.driverId,
+    actionUrl: "/maintenance?tab=workorders",
+  };
+}

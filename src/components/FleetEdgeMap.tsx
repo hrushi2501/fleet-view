@@ -54,6 +54,10 @@ const FALLBACK_BOUNDS: L.LatLngBoundsExpression = [
   [30.2, 78.3],
 ];
 
+// A street-level view that identifies the vehicle's road and nearby junctions
+// without zooming so close that the dispatcher loses their surrounding area.
+const VEHICLE_FOCUS_ZOOM = 11;
+
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string,
@@ -112,13 +116,15 @@ function vehicleIcon(m: FleetEdgeMapMarker, active: boolean): L.DivIcon {
 function ViewController({
   markers,
   selectedId,
+  focusRequest,
 }: {
   markers: FleetEdgeMapMarker[];
   selectedId: string | null;
+  focusRequest: number;
 }) {
   const map = useMap();
   const fitted = useRef(false);
-  const lastSelected = useRef<string | null>(null);
+  const lastFocusRequest = useRef<number | null>(null);
 
   useEffect(() => {
     if (fitted.current) return;
@@ -132,11 +138,11 @@ function ViewController({
   }, [markers, map]);
 
   useEffect(() => {
-    if (!selectedId || selectedId === lastSelected.current) return;
-    lastSelected.current = selectedId;
+    if (!selectedId || focusRequest === lastFocusRequest.current) return;
+    lastFocusRequest.current = focusRequest;
     const hit = markers.find((m) => m.id === selectedId);
-    if (hit) map.flyTo([hit.lat, hit.lng], Math.max(map.getZoom(), 13), { duration: 0.8 });
-  }, [selectedId, markers, map]);
+    if (hit) map.flyTo([hit.lat, hit.lng], VEHICLE_FOCUS_ZOOM, { duration: 0.8 });
+  }, [selectedId, focusRequest, markers, map]);
 
   return null;
 }
@@ -229,6 +235,7 @@ function FollowCursor({ point }: { point: TrackPoint | undefined }) {
 export default function FleetEdgeMap({
   markers,
   selectedId,
+  focusRequest,
   onSelect,
   view,
   track,
@@ -236,6 +243,7 @@ export default function FleetEdgeMap({
 }: {
   markers: FleetEdgeMapMarker[];
   selectedId: string | null;
+  focusRequest: number;
   onSelect: (id: string) => void;
   view: MapView;
   track?: TrackPoint[] | null;
@@ -270,7 +278,7 @@ export default function FleetEdgeMap({
         </>
       )}
 
-      <ViewController markers={markers} selectedId={selectedId} />
+      <ViewController markers={markers} selectedId={selectedId} focusRequest={focusRequest} />
 
       {track && track.length > 0 && (
         <>

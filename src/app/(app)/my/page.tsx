@@ -12,12 +12,11 @@
  */
 import { requirePage } from "@/lib/access";
 import { fmtDate } from "@/lib/utils";
-import { db } from "@/lib/db";
 import {
-  myBasics, latestIgnition, vehicleState, whereIsIt, myTrips, todaysTrips,
+  myBasics, latestIgnition, vehicleState, whereIsIt, myTrips,
   myShift, myServiceDue, myPersonDocs, myVehicleDocs, type DocRow,
 } from "./_data";
-import { MyHeader, Screen, Hero, Notice, Fact, Tile } from "./_ui";
+import { MyHeader, Screen, Hero, Notice, Fact, Tile, NotLinked } from "./_ui";
 import { DriverQrScanner } from "@/components/DriverQrScanner";
 import { DriverQuickHub } from "@/components/DriverQuickHub";
 
@@ -27,17 +26,11 @@ export default async function MyWorkPage() {
   const access = await requirePage("my.work");
   const { driver, vehicle } = await myBasics(access);
 
-  const availableVehicles = await db.asset.findMany({
-    where: { status: { notIn: ["Off-hired", "Disposed"] } },
-    select: { id: true, code: true, name: true, registrationNo: true, assetClass: true },
-    orderBy: { code: "asc" },
-  });
-
   if (!driver) {
     return (
       <Screen>
         <MyHeader href="/my" />
-        <DriverQrScanner vehicles={availableVehicles} triggerVariant="card" />
+        <NotLinked loginName={access.session.email} />
       </Screen>
     );
   }
@@ -59,9 +52,6 @@ export default async function MyWorkPage() {
     vehicle ? myVehicleDocs(vehicle.id, now) : Promise.resolve([]),
   ]);
 
-  const today = todaysTrips(trips, now);
-  const todayKm = today.reduce((sum, t) => sum + t.distanceKm, 0);
-
   const overdue = service.filter((s) => s.status === "overdue");
   const dueSoon = service.filter((s) => s.status === "due");
 
@@ -76,23 +66,13 @@ export default async function MyWorkPage() {
     <Screen>
       <div className="flex items-center justify-between">
         <MyHeader href="/my" note={`${driver.name.split(" ")[0]} · ${fmtDate(now)}`} />
-        {vehicle && (
-          <DriverQrScanner
-            vehicles={availableVehicles}
-            triggerVariant="button"
-            currentVehicleCode={vehicle.code}
-          />
-        )}
       </div>
 
-      {!vehicle && (
-        <DriverQrScanner
-          vehicles={availableVehicles}
-          triggerVariant="card"
-        />
+      {!shift.hasActiveTrip && (
+        <DriverQrScanner triggerVariant="card" />
       )}
 
-      {vehicle && (
+      {vehicle && shift.hasActiveTrip && (
         <DriverQuickHub
           driverName={driver.name}
           vehicle={{
@@ -105,8 +85,6 @@ export default async function MyWorkPage() {
             fuelLevelPct: vehicle.fuelLevelPct,
             fuelCapacity: vehicle.fuelCapacity,
           }}
-          todayTripsCount={today.length}
-          todayKm={todayKm}
           expiredDocsCount={expired.length}
           overdueServiceCount={overdue.length}
         />

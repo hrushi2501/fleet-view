@@ -28,10 +28,9 @@ const COOKIE = process.env.NODE_ENV === "production" ? "__Host-fv_session" : "fv
  */
 const epochKey = (userId: string) => `auth:epoch:${userId}`;
 
-async function revocationEpoch(userId: string): Promise<number | null> {
-  const row = await db.setting.findUnique({ where: { key: epochKey(userId) } });
-  if (!row?.value) return null;
-  const parsed = Number(row.value);
+function parseRevocationEpoch(value: string | undefined): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
   // An unreadable epoch fails closed — treated as "revoked now" rather than
   // silently accepting every token for that user.
   return Number.isFinite(parsed) ? parsed : Date.now();
@@ -115,10 +114,13 @@ export async function getSession() {
 
   const { sub: userId, iat } = verified.payload;
 
-  const user = await db.user.findUnique({
-    where: { id: userId },
-    select: { id: true, name: true, email: true, role: true, active: true },
-  });
+  const [user, epoch] = await db.$transaction([
+    db.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, email: true, role: true, active: true },
+    }),
+    db.setting.findUnique({ where: { key: epochKey(userId) }, select: { value: true } }),
+  ]);
   if (!user) return null;
   // A deactivated account kept working for as long as its cookie lived, which
   // makes "remove their access" a promise the app could not keep.
@@ -126,7 +128,7 @@ export async function getSession() {
 
   // Tokens issued before the user's revocation epoch are dead even though
   // their signature is valid and they have not expired.
-  if (isRevoked({ sub: userId, iat, exp: verified.payload.exp }, await revocationEpoch(userId))) {
+  if (isRevoked({ sub: userId, iat, exp: verified.payload.exp }, parseRevocationEpoch(epoch?.value))) {
     return null;
   }
 

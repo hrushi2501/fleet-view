@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getSession } from "@/lib/auth";
-import { evaluateScan, type SessionLite } from "@/lib/telematics";
+import { getAccess } from "@/lib/access";
+import { evaluateScan, staleSessions, type SessionLite } from "@/lib/telematics";
 import { assetCompliance, DOC_LABEL, type DocLite } from "@/lib/compliance";
 import { eligibility, safetyScore, type DriverLite, type CompetencyLite, type ViolationLite } from "@/lib/drivers";
 
@@ -17,62 +17,72 @@ export const dynamic = "force-dynamic";
  * driver at 6am with no override just gets worked around.
  */
 export async function POST(req: Request) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  const access = await getAccess();
+  if (!access) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  if (access.group !== "DRIVER") return NextResponse.json({ error: "Only a driver account can check in to a vehicle." }, { status: 403 });
 
   let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch { return NextResponse.json({ error: "bad json" }, { status: 400 }); }
 
   const token = String(body.token ?? "").trim();
   if (!token) return NextResponse.json({ error: "No QR token supplied" }, { status: 400 });
+  if (token.length > 48) return NextResponse.json({ error: "This is not a valid cabin sticker code." }, { status: 400 });
 
   const asset = await db.asset.findUnique({ where: { qrToken: token }, include: { compliance: true } });
   if (!asset) return NextResponse.json({ error: "This QR code does not match any vehicle." }, { status: 404 });
-
-  // Resolve the login to a person record — the explicit link, then a name fallback.
-  const account = await db.user.findUnique({ where: { id: session.id }, include: { driverRef: true } });
-  const person = account?.driverRef ?? (await db.driver.findFirst({ where: { name: session.name } }));
-  if (!person) {
-    return NextResponse.json({
-      error: "Your login is not linked to a driver record, so the trip cannot be attributed. Ask your supervisor to link it under Roles & Permissions.",
-    }, { status: 409 });
+  if (asset.decommissionedOn || ["Off-hired", "Disposed"].includes(asset.status)) {
+    return NextResponse.json({ error: "This vehicle is not available for check-in. Please contact your supervisor." }, { status: 409 });
   }
 
-  const open = await db.tripSession.findMany({ where: { status: "ACTIVE" } });
-  const outcome = evaluateScan(
-    asset.id, person.id,
-    open.map((s): SessionLite => ({ id: s.id, assetId: s.assetId, driverId: s.driverId, startedAt: s.startedAt, endedAt: s.endedAt, status: s.status }))
-  );
-
-  if (!outcome.ok) return NextResponse.json({ error: outcome.reason, blockingSessionId: outcome.blockingSessionId }, { status: 409 });
-
-  // Close a session the driver left open on another machine.
-  if (outcome.action === "START" && outcome.releaseSessionId) {
-    await db.tripSession.update({
-      where: { id: outcome.releaseSessionId },
-      data: { status: "COMPLETED", endedAt: new Date(), endedBy: "AUTO" },
-    });
+  // Only an administrator's explicit driver assignment can attribute a trip.
+  const account = await db.user.findUnique({ where: { id: access.session.id }, include: { driverRef: true } });
+  const person = account?.driverRef;
+  if (!person || person.id !== access.driverId || person.status !== "Active") {
+    return NextResponse.json({
+      error: "An administrator must add this driver before a trip can be attributed to this login.",
+    }, { status: 409 });
   }
 
   const num = (k: string) => (body[k] != null && isFinite(Number(body[k])) ? Number(body[k]) : null);
   const lat = num("lat"), lng = num("lng");
 
-  let tripSession;
-  if (outcome.action === "RESUME") {
-    tripSession = open.find((s) => s.assetId === asset.id && s.driverId === person.id)!;
-  } else {
-    tripSession = await db.tripSession.create({
-      data: {
-        assetId: asset.id, driverId: person.id, userId: session.id,
-        projectId: asset.projectId,
-        startLat: lat, startLng: lng,
-        startOdometer: num("odometer") ?? asset.meterValue,
-        // A vehicle with a device reports its own position; otherwise the phone does.
-        trackingSource: asset.deviceId ? "GPS" : lat != null ? "MOBILE" : "NONE",
-        scanMethod: "QR",
-      },
-    });
-    await db.asset.update({ where: { id: asset.id }, data: { driverId: person.id } });
+  // Session ownership is decided and written together. Two simultaneous scans
+  // cannot quietly create duplicate active trips for one vehicle.
+  let tripSession: { id: string };
+  let outcome: ReturnType<typeof evaluateScan>;
+  try {
+    const result = await db.$transaction(async (tx) => {
+      const now = new Date();
+      const allOpen = await tx.tripSession.findMany({ where: { status: "ACTIVE" } });
+      const rows = allOpen.map((s): SessionLite => ({ id: s.id, assetId: s.assetId, driverId: s.driverId, startedAt: s.startedAt, endedAt: s.endedAt, status: s.status }));
+      const stale = staleSessions(rows, now);
+      if (stale.length) {
+        await tx.tripSession.updateMany({ where: { id: { in: stale.map((s) => s.id) }, status: "ACTIVE" }, data: { status: "ABANDONED", endedAt: now, endedBy: "AUTO" } });
+      }
+      const current = rows.filter((s) => !stale.some((old) => old.id === s.id));
+      const decision = evaluateScan(asset.id, person.id, current, now);
+      if (!decision.ok) return { outcome: decision, session: null };
+      if (decision.action === "START" && decision.releaseSessionId) {
+        await tx.tripSession.update({ where: { id: decision.releaseSessionId }, data: { status: "COMPLETED", endedAt: now, endedBy: "AUTO" } });
+      }
+      if (decision.action === "RESUME") {
+        return { outcome: decision, session: current.find((s) => s.assetId === asset.id && s.driverId === person.id)! };
+      }
+      const session = await tx.tripSession.create({ data: {
+        assetId: asset.id, driverId: person.id, userId: access.session.id, projectId: asset.projectId,
+        startLat: lat, startLng: lng, startOdometer: num("odometer") ?? asset.meterValue,
+        trackingSource: asset.deviceId ? "GPS" : lat != null ? "MOBILE" : "NONE", scanMethod: "QR",
+      } });
+      await tx.asset.update({ where: { id: asset.id }, data: { driverId: person.id } });
+      return { outcome: decision, session };
+    }, { isolationLevel: "Serializable", maxWait: 5000, timeout: 10000 });
+    outcome = result.outcome;
+    if (!outcome.ok || !result.session) return NextResponse.json({ error: outcome.ok ? "Vehicle check-in could not be completed." : outcome.reason, blockingSessionId: outcome.ok ? undefined : outcome.blockingSessionId }, { status: 409 });
+    tripSession = result.session;
+  } catch (error: unknown) {
+    const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
+    if (code === "P2034") return NextResponse.json({ error: "Another check-in was processed at the same time. Please scan once more." }, { status: 409 });
+    throw error;
   }
 
   // --- advisory checks, returned not enforced ---

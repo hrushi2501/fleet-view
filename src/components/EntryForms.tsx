@@ -1001,9 +1001,9 @@ export function UserEntry() {
       <Inp label="Password" name="password" type="password" required placeholder="12+ chars, letter, number, symbol" />
       <p className="col-span-full -mt-1 text-[11px] text-slate-500">Use at least 12 characters with a letter, number, and symbol.</p>
       <div className="col-span-full rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2 text-xs">
-        <p className="font-semibold text-slate-700">Driver Person Profile Linking</p>
+        <p className="font-semibold text-slate-700">Driver account setup</p>
         <p className="text-[11px] text-slate-500">
-          When adding a Driver role, a matching person record will automatically be linked so vehicle assignments and trips work immediately.
+          Adding a driver login creates the driver entry needed for vehicle assignments and trip records. These details are optional and can be completed later by an administrator.
         </p>
         <div className="grid gap-2 sm:grid-cols-2">
           <Inp label="Employee Code (optional)" name="empCode" placeholder="DRV-XXXX (auto if blank)" />

@@ -1,9 +1,9 @@
 import { Sidebar } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
 import { ToastProvider } from "@/components/Toast";
-import { getAccess, assetScope } from "@/lib/access";
+import { getAccess } from "@/lib/access";
 import { navFor } from "@/lib/navigation";
-import { db } from "@/lib/db";
+import { getNotificationFeed } from "@/lib/notification-feed";
 import { redirect } from "next/navigation";
 
 /**
@@ -22,29 +22,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const items = navFor(access);
   const isDriver = access.group === "DRIVER";
 
-  // The office counters mean nothing on a driver's phone, and querying
-  // company-wide totals for someone who may not see them is the wrong shape.
-  const counts = isDriver
-    ? { notifCount: 0 }
-    : await (async () => {
-        // eslint-disable-next-line react-hooks/purity
-        const soon = new Date(Date.now() + 15 * 86400000);
-        // One batch acquires one pooled connection. This deployment deliberately
-        // uses connection_limit=1, so independent Promise.all calls only create
-        // a queue which can time out while the page is rendering in parallel.
-        const [serviceDue, breakdowns] = await db.$transaction([
-          db.asset.count({ where: { serviceDueDate: { not: null, lte: soon }, ...assetScope(access) } }),
-          db.workOrder.count({ where: { type: "BREAKDOWN", status: { in: ["Open", "In-Progress"] }, asset: assetScope(access) } }),
-        ]);
-        return { notifCount: serviceDue + breakdowns };
-      })();
+  const notificationFeed = await getNotificationFeed(access);
 
   return (
     <ToastProvider>
       <div className="min-h-screen">
         <Sidebar items={items} isDriver={isDriver} />
         <div className="lg:pl-64">
-          <Topbar user={access.session} notifCount={counts.notifCount} isDriver={isDriver} />
+          <Topbar
+            user={access.session}
+            notifCount={notificationFeed.attentionCount}
+            initialNotifications={notificationFeed.items}
+            notificationLogHref={access.can("reports.view") ? "/reports/notifications" : null}
+            isDriver={isDriver}
+          />
           <main className="mx-auto max-w-[1500px] px-4 py-6 lg:px-8">{children}</main>
         </div>
       </div>
