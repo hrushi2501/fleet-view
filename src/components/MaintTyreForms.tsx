@@ -255,7 +255,8 @@ export function ScheduleForm({
         <form
           action={(fd) =>
             start(async () => {
-              await saveSchedule(schedule?.id ?? null, fd);
+              const result = await saveSchedule(schedule?.id ?? null, fd);
+              if (isActionError(result)) { alert(result.error); return; }
               setOpen(false);
               await invalidateMaintenanceQueries(queryClient);
               router.refresh();
@@ -384,7 +385,8 @@ export function RaiseWoButton({ scheduleId }: { scheduleId: string }) {
     <button
       onClick={() =>
         start(async () => {
-          await raiseWoFromSchedule(scheduleId);
+          const result = await raiseWoFromSchedule(scheduleId);
+          if (isActionError(result)) { alert(result.error); return; }
           await invalidateMaintenanceQueries(queryClient);
           router.refresh();
         })
@@ -436,7 +438,8 @@ export function CompleteWoForm({
         <form
           action={(fd) =>
             start(async () => {
-              await completeWorkOrder(wo.id, fd);
+              const result = await completeWorkOrder(wo.id, fd);
+              if (isActionError(result)) { alert(result.error); return; }
               setOpen(false);
               await invalidateMaintenanceQueries(queryClient);
               await invalidateFleetQueries(queryClient);
@@ -674,7 +677,8 @@ export function WoLineForm({
               if (selectedItem) {
                 fd.set("partNo", selectedItem.partNo);
               }
-              await addWoLine(workOrderId, fd);
+              const result = await addWoLine(workOrderId, fd);
+              if (isActionError(result)) { alert(result.error); return; }
               setOpen(false);
               await invalidateMaintenanceQueries(queryClient);
               router.refresh();
@@ -772,7 +776,8 @@ export function ChecklistToggle({ id, done }: { id: string; done: boolean }) {
     <button
       onClick={() =>
         start(async () => {
-          await toggleChecklistItem(id, !done);
+          const result = await toggleChecklistItem(id, !done);
+          if (isActionError(result)) { alert(result.error); return; }
           await invalidateMaintenanceQueries(queryClient);
           router.refresh();
         })
@@ -800,7 +805,8 @@ export function ChecklistForm({ workOrderId }: { workOrderId: string }) {
     <form
       action={(fd) =>
         start(async () => {
-          await addChecklistItem(workOrderId, fd);
+          const result = await addChecklistItem(workOrderId, fd);
+          if (isActionError(result)) { alert(result.error); return; }
           await invalidateMaintenanceQueries(queryClient);
           router.refresh();
         })
@@ -866,7 +872,8 @@ export function TyreForm({
         <form
           action={(fd) =>
             start(async () => {
-              await saveTyre(tyre?.id ?? null, fd);
+              const result = await saveTyre(tyre?.id ?? null, fd);
+              if (isActionError(result)) { alert(result.error); return; }
               setOpen(false);
               await invalidateMaintenanceQueries(queryClient);
               router.refresh();
@@ -995,7 +1002,8 @@ export function TyreActionForm({
         <form
           action={(fd) =>
             start(async () => {
-              await meta.fn(fd);
+              const result = await meta.fn(fd);
+              if (isActionError(result)) { alert(result.error); return; }
               setOpen(false);
               await invalidateMaintenanceQueries(queryClient);
               await invalidateFleetQueries(queryClient);
@@ -1121,7 +1129,8 @@ export function ComponentForm({
         <form
           action={(fd) =>
             start(async () => {
-              await saveComponent(component?.id ?? null, fd);
+              const result = await saveComponent(component?.id ?? null, fd);
+              if (isActionError(result)) { alert(result.error); return; }
               setOpen(false);
               await invalidateMaintenanceQueries(queryClient);
               router.refresh();
@@ -1252,7 +1261,8 @@ export function ComponentActionForm({
         <form
           action={(fd) =>
             start(async () => {
-              await transferComponent(fd);
+              const result = await transferComponent(fd);
+              if (isActionError(result)) { alert(result.error); return; }
               setOpen(false);
               await invalidateMaintenanceQueries(queryClient);
               router.refresh();
@@ -1304,10 +1314,11 @@ export function DeleteRow({
   };
 
   async function handleDelete() {
-    if (kind === "schedule") await deleteSchedule(id);
-    else if (kind === "woline") await deleteWoLine(id);
-    else if (kind === "tyre") await deleteTyre(id);
-    else await deleteComponent(id);
+    const result = kind === "schedule" ? await deleteSchedule(id)
+      : kind === "woline" ? await deleteWoLine(id)
+      : kind === "tyre" ? await deleteTyre(id)
+      : await deleteComponent(id);
+    if (isActionError(result)) { toast.error(`Could not delete ${labels[kind]}`, result.error); return; }
 
     toast.success(`✓ ${labels[kind]} deleted successfully`);
     await invalidateMaintenanceQueries(queryClient);

@@ -59,7 +59,7 @@ const QUICK_ACTIONS: QuickActionItem[] = [
     title: "Weighbridge Ticket",
     subtitle: "Log gross / tare material entry",
     icon: Scale,
-    href: "/weighbridge",
+    href: "/sites/materials",
     color: "bg-brand-600 text-white shadow-brand-600/25",
     badge: "Active",
   },

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { batchSaveAttendance } from "@/app/(app)/master/actions";
+import { isActionError } from "@/lib/action-result";
 import { cn } from "@/lib/utils";
 
 export interface AttendanceDriverItem {
@@ -80,7 +81,11 @@ export function AttendanceBatchMatrix({
           projectId: projectId || null,
         }));
 
-        await batchSaveAttendance(items);
+        const result = await batchSaveAttendance(items);
+        if (isActionError(result)) {
+          toast.error("Failed to save attendance", result.error);
+          return;
+        }
         toast.success(
           `✓ Shift attendance signed off (${counts.present} Present, ${counts.absent} Absent)`
         );

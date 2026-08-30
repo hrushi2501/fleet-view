@@ -20,6 +20,10 @@ export function LocationGate({ children }: { children: React.ReactNode }) {
           setStatus(p.state === "granted" ? "granted" : p.state === "denied" ? "denied" : "prompt");
           p.onchange = () => { if (p.state === "granted") setStatus("granted"); else if (p.state === "denied") setStatus("denied"); };
         })
+        // Safari and restrictive webviews can expose `permissions` yet reject
+        // this query. Treat that as an ordinary prompt, never a permanent
+        // loading screen.
+        .catch(() => setStatus("prompt"));
     } else {
       queueMicrotask(() => setStatus("prompt"));
     }

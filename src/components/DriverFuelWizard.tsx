@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveFuel, saveServicePhotos } from "@/app/(app)/entry-actions";
+import { isActionError } from "@/lib/action-result";
 import { PushButton } from "@/components/PushButton";
 import { Truck, Camera, Check, ArrowLeft, Delete, Volume2, Fuel, LogOut, Loader2, CircleCheck, Wrench, X, Pencil, Sparkles } from "lucide-react";
 
@@ -260,7 +261,8 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
         if (geo) { fd.set("lat", String(geo.lat)); fd.set("lng", String(geo.lng)); }
         if (odo) fd.set("odometerPhoto", await compressImage(odo));
         if (pump) fd.set("pumpPhoto", await compressImage(pump));
-        await saveFuel(fd);
+        const result = await saveFuel(fd);
+        if (isActionError(result)) { alert(result.error); return; }
         buzz([40, 50, 80]); setStep("done"); router.refresh();
       } catch { /* stay on review */ }
     });
@@ -274,7 +276,8 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
       try {
         for (const f of oldPhotos) fd.append("oldPhotos", await compressImage(f));
         for (const f of newPhotos) fd.append("newPhotos", await compressImage(f));
-        await saveServicePhotos(fd);
+        const result = await saveServicePhotos(fd);
+        if (isActionError(result)) { alert(result.error); return; }
         buzz([40, 50, 80]); setStep("done"); router.refresh();
       } catch { setStep("rnew"); }
     });

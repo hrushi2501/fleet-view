@@ -79,7 +79,7 @@ export function CompetencyForm({ drivers, classes }: { drivers: Opt[]; classes: 
     <>
       <Trigger onClick={() => setOpen(true)} tone="ghost"><Plus className="h-4 w-4" /> Add Competency</Trigger>
       <Modal open={open} onClose={() => setOpen(false)} title="Clear an Operator for a Machine Class" subtitle="Assignment refuses machine classes a person has no recorded competency for.">
-        <form action={(fd) => start(async () => { await saveCompetency(fd); setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
+        <form action={(fd) => start(async () => { const result = await saveCompetency(fd); if (isActionError(result)) { alert(result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
           <Sel label="Person" name="driverId" required options={drivers.map((d) => ({ value: d.id, label: d.label }))} />
           <Sel label="Machine Class" name="assetClass" required options={classes} />
           <Sel label="Level" name="level" required options={[
@@ -104,7 +104,7 @@ export function ViolationForm({ drivers, assets }: { drivers: Opt[]; assets: Opt
     <>
       <Trigger onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Record Violation</Trigger>
       <Modal open={open} onClose={() => setOpen(false)} title="Record a Safety or Conduct Event" subtitle="Points feed the safety score and decay over a year, so a driver can recover from a bad patch.">
-        <form action={(fd) => start(async () => { await saveViolation(fd); setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
+        <form action={(fd) => start(async () => { const result = await saveViolation(fd); if (isActionError(result)) { alert(result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
           <Sel label="Person" name="driverId" required options={drivers.map((d) => ({ value: d.id, label: d.label }))} />
           <Sel label="Machine" name="assetId" options={[{ value: "", label: "— None —" }, ...assets.map((a) => ({ value: a.id, label: a.label }))]} />
           <Sel label="Type" name="type" required options={[
@@ -142,7 +142,7 @@ export function ViolationAction({ v }: { v: { id: string; status: string; action
     <>
       <button onClick={() => setOpen(true)} className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">Action</button>
       <Modal open={open} onClose={() => setOpen(false)} title="Close Out Violation" subtitle="Dismissing a violation removes its points from the safety score.">
-        <form action={(fd) => start(async () => { await updateViolation(v.id, fd); setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
+        <form action={(fd) => start(async () => { const result = await updateViolation(v.id, fd); if (isActionError(result)) { alert(result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
           <Sel label="Status" name="status" required defaultValue={v.status} options={[
             { value: "OPEN", label: "Open" }, { value: "ACTIONED", label: "Actioned" }, { value: "DISMISSED", label: "Dismissed — not counted" },
           ]} />
@@ -174,7 +174,7 @@ export function DocumentForm({ assets, docTypes, preset }: { assets: Opt[]; docT
         <Trigger onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Add Document</Trigger>
       )}
       <Modal open={open} onClose={() => setOpen(false)} title={preset?.supersedesId ? "Renew Document" : "Add Compliance Document"} subtitle="Renewals chain to the old record rather than overwriting it, so history stays traceable.">
-        <form action={(fd) => start(async () => { await saveDocument(fd); setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
+        <form action={(fd) => start(async () => { const result = await saveDocument(fd); if (isActionError(result)) { alert(result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
           <Sel label="Machine" name="assetId" required defaultValue={preset?.assetId} options={assets.map((a) => ({ value: a.id, label: a.label }))} />
           <Sel label="Document Type" name="docType" required defaultValue={preset?.docType} options={docTypes} />
           <Inp label="Document Number" name="number" required />
@@ -231,9 +231,10 @@ export function DeleteRow({ id, kind }: { id: string; kind: "competency" | "viol
   };
 
   async function handleDelete() {
-    if (kind === "competency") await deleteCompetency(id);
-    else if (kind === "violation") await deleteViolation(id);
-    else await deleteDocument(id);
+    const result = kind === "competency" ? await deleteCompetency(id)
+      : kind === "violation" ? await deleteViolation(id)
+      : await deleteDocument(id);
+    if (isActionError(result)) { toast.error(`Could not delete ${labels[kind]}`, result.error); return; }
 
     toast.success(`✓ ${labels[kind]} deleted successfully`);
     router.refresh();

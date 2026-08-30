@@ -10,6 +10,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { invalidateAllQueries, invalidateProductionQueries } from "@/lib/query-invalidation";
 import { saveProduction, deleteProduction, saveProdNorm, seedProdNorms } from "@/app/(app)/production/actions";
 import { saveCost, deleteCost, saveRevenue, deleteRevenue, saveDepreciation } from "@/app/(app)/costs/actions";
+import { isActionError } from "@/lib/action-result";
 
 type Opt = { id: string; label: string };
 
@@ -83,6 +84,7 @@ export function ProductionForm({ assets, projects, drivers }: { assets: Opt[]; p
   const [pending, start] = useTransition();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   return (
     <>
@@ -91,7 +93,8 @@ export function ProductionForm({ assets, projects, drivers }: { assets: Opt[]; p
         <form
           action={(fd) =>
             start(async () => {
-              await saveProduction(fd);
+              const result = await saveProduction(fd);
+              if (isActionError(result)) { toast.error("Production not saved", result.error); return; }
               setOpen(false);
               await invalidateProductionQueries(queryClient);
               router.refresh();
@@ -134,6 +137,7 @@ export function ProdNormForm({ classes }: { classes: { value: string; label: str
   const [pending, start] = useTransition();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   return (
     <>
@@ -142,7 +146,8 @@ export function ProdNormForm({ classes }: { classes: { value: string; label: str
         <form
           action={(fd) =>
             start(async () => {
-              await saveProdNorm(fd);
+              const result = await saveProdNorm(fd);
+              if (isActionError(result)) { toast.error("Target not saved", result.error); return; }
               setOpen(false);
               await invalidateProductionQueries(queryClient);
               router.refresh();
@@ -168,12 +173,14 @@ export function SeedProdNormsButton() {
   const [pending, start] = useTransition();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   return (
     <button
       onClick={() =>
         start(async () => {
-          await seedProdNorms();
+          const result = await seedProdNorms();
+          if (isActionError(result)) { toast.error("Defaults not installed", result.error); return; }
           await invalidateProductionQueries(queryClient);
           router.refresh();
         })
@@ -193,6 +200,7 @@ export function CostForm({ assets, projects }: { assets: Opt[]; projects: Opt[] 
   const [pending, start] = useTransition();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   return (
     <>
@@ -201,7 +209,8 @@ export function CostForm({ assets, projects }: { assets: Opt[]; projects: Opt[] 
         <form
           action={(fd) =>
             start(async () => {
-              await saveCost(fd);
+              const result = await saveCost(fd);
+              if (isActionError(result)) { toast.error("Cost not saved", result.error); return; }
               setOpen(false);
               await invalidateAllQueries(queryClient);
               router.refresh();
@@ -229,6 +238,7 @@ export function RevenueForm({ projects }: { projects: Opt[] }) {
   const [pending, start] = useTransition();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   return (
     <>
@@ -237,7 +247,8 @@ export function RevenueForm({ projects }: { projects: Opt[] }) {
         <form
           action={(fd) =>
             start(async () => {
-              await saveRevenue(fd);
+              const result = await saveRevenue(fd);
+              if (isActionError(result)) { toast.error("Revenue not saved", result.error); return; }
               setOpen(false);
               await invalidateAllQueries(queryClient);
               router.refresh();
@@ -268,6 +279,7 @@ export function DepreciationForm({ asset }: { asset: { id: string; code: string;
   const [pending, start] = useTransition();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   return (
     <>
@@ -276,7 +288,8 @@ export function DepreciationForm({ asset }: { asset: { id: string; code: string;
         <form
           action={(fd) =>
             start(async () => {
-              await saveDepreciation(asset.id, fd);
+              const result = await saveDepreciation(asset.id, fd);
+              if (isActionError(result)) { toast.error("Depreciation basis not saved", result.error); return; }
               setOpen(false);
               await invalidateAllQueries(queryClient);
               router.refresh();
@@ -311,9 +324,10 @@ export function DeleteRow({ id, kind }: { id: string; kind: "production" | "cost
   };
 
   async function handleDelete() {
-    if (kind === "production") await deleteProduction(id);
-    else if (kind === "cost") await deleteCost(id);
-    else await deleteRevenue(id);
+    const result = kind === "production" ? await deleteProduction(id)
+      : kind === "cost" ? await deleteCost(id)
+      : await deleteRevenue(id);
+    if (isActionError(result)) { toast.error("Delete failed", result.error); return; }
 
     toast.success(`✓ ${labels[kind]} deleted successfully`);
     if (kind === "production") {

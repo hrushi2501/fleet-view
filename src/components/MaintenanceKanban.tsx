@@ -13,6 +13,7 @@ import {
 import { cn, inr, timeAgo } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
 import { updateWorkOrderStatus } from "@/app/(app)/entry-actions";
+import { isActionError } from "@/lib/action-result";
 
 export interface KanbanWorkOrder {
   id: string;
@@ -57,7 +58,11 @@ export function MaintenanceKanban({ workOrders }: { workOrders: KanbanWorkOrder[
     setMovingId(woId);
     startTransition(async () => {
       try {
-        await updateWorkOrderStatus(woId, nextStatus);
+        const result = await updateWorkOrderStatus(woId, nextStatus);
+        if (isActionError(result)) {
+          toast.error("Status Update Failed", result.error);
+          return;
+        }
         toast.success(`✓ Work Order moved to ${nextStatus}`);
         router.refresh();
       } catch (err: unknown) {

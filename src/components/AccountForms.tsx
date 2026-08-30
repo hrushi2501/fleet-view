@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, KeyRound, CheckCircle2 } from "lucide-react";
 import { changeOwnPassword, adminResetUserPassword } from "@/app/(app)/entry-actions";
+import { isActionError } from "@/lib/action-result";
 
 const inp = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
 
@@ -18,7 +19,7 @@ export function ChangePasswordForm() {
     const fd = new FormData(form);
     setErr(""); setDone(false);
     start(async () => {
-      try { await changeOwnPassword(fd); setDone(true); form.reset(); }
+      try { const result = await changeOwnPassword(fd); if (isActionError(result)) { setErr(result.error); return; } setDone(true); form.reset(); }
       catch (e) { setErr(e instanceof Error ? e.message : "Could not change password."); }
     });
   }
@@ -53,7 +54,7 @@ export function ResetPwButton({ userId, name }: { userId: string; name: string }
     const pw = window.prompt(`Set a new password for ${name} (12+ characters; include a letter, number, and symbol):`);
     if (!pw) return;
     start(async () => {
-      try { await adminResetUserPassword(userId, pw); router.refresh(); alert("Password updated."); }
+      try { const result = await adminResetUserPassword(userId, pw); if (isActionError(result)) { alert(result.error); return; } router.refresh(); alert("Password updated."); }
       catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
     });
   }

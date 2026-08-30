@@ -220,7 +220,11 @@ function GaugeCapture({ assetId, onClose, onDone }: { assetId: string; onClose: 
 
     const { saveGaugeReading } = await import("@/app/(app)/tracking/actions");
     const res = await saveGaugeReading(fd);
-    if (isActionError(res)) {  return; }
+    if (isActionError(res)) {
+      setBusy(false);
+      onDone({ kind: "err", text: res.error });
+      return;
+    }
     onDone(res.status === "VERIFIED"
       ? { kind: "ok", text: `फ्यूल दर्ज · Fuel recorded at ${res.levelPct}%` }
       : { kind: "warn", text: "फोटो भेज दी · Sent for checking", details: res.reasons });

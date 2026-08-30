@@ -228,7 +228,8 @@ export function SeedRulesButton() {
     <button
       onClick={() =>
         start(async () => {
-          await seedRules();
+          const result = await seedRules();
+          if (isActionError(result)) { alert(result.error); return; }
           await invalidateLossPreventionQueries(queryClient);
           router.refresh();
         })
@@ -280,7 +281,8 @@ export function RuleEditor({
         <form
           action={(fd) =>
             start(async () => {
-              await updateRule(rule.id, fd);
+              const result = await updateRule(rule.id, fd);
+              if (isActionError(result)) { alert(result.error); return; }
               setOpen(false);
               await invalidateLossPreventionQueries(queryClient);
               router.refresh();
@@ -352,7 +354,8 @@ export function NewCaseForm({ assets, drivers }: { assets: Opt[]; drivers: Opt[]
         <form
           action={(fd) =>
             start(async () => {
-              await createCase(fd);
+              const result = await createCase(fd);
+              if (isActionError(result)) { alert(result.error); return; }
               setOpen(false);
               await invalidateLossPreventionQueries(queryClient);
               router.refresh();
@@ -441,7 +444,8 @@ export function CaseStatusForm({
         <form
           action={(fd) =>
             start(async () => {
-              await updateCase(c.id, fd);
+              const result = await updateCase(c.id, fd);
+              if (isActionError(result)) { alert(result.error); return; }
               setOpen(false);
               await invalidateLossPreventionQueries(queryClient, c.id);
               router.refresh();
@@ -495,7 +499,8 @@ export function NoteForm({ caseId }: { caseId: string }) {
     <form
       action={(fd) =>
         start(async () => {
-          await addNote(caseId, fd);
+          const result = await addNote(caseId, fd);
+          if (isActionError(result)) { alert(result.error); return; }
           await invalidateLossPreventionQueries(queryClient, caseId);
           router.refresh();
         })
@@ -538,7 +543,8 @@ export function EvidenceForm({ caseId }: { caseId: string }) {
         <form
           action={(fd) =>
             start(async () => {
-              await addEvidence(caseId, fd);
+              const result = await addEvidence(caseId, fd);
+              if (isActionError(result)) { alert(result.error); return; }
               setOpen(false);
               await invalidateLossPreventionQueries(queryClient, caseId);
               router.refresh();
@@ -597,7 +603,8 @@ export function RecoveryForm({ caseId }: { caseId: string }) {
         <form
           action={(fd) =>
             start(async () => {
-              await addRecovery(caseId, fd);
+              const result = await addRecovery(caseId, fd);
+              if (isActionError(result)) { alert(result.error); return; }
               setOpen(false);
               await invalidateLossPreventionQueries(queryClient, caseId);
               router.refresh();
@@ -640,7 +647,8 @@ export function DeleteCaseButton({ id, caseNo }: { id: string; caseNo?: string }
   const queryClient = useQueryClient();
 
   async function handleDelete() {
-    await deleteCase(id);
+    const result = await deleteCase(id);
+    if (isActionError(result)) { toast.error("Could not delete case", result.error); return; }
     toast.success(`✓ Fraud & loss case ${caseNo || ""} deleted`);
     await invalidateLossPreventionQueries(queryClient, id);
     router.push("/fuel/problems");

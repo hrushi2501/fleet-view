@@ -146,7 +146,8 @@ export function RoleForm({ role }: { role?: { id: string; name: string; label: s
       <Modal open={open} onClose={() => setOpen(false)} wide title={role ? `Permissions — ${role.label}` : "Create Role"} subtitle="Tick exactly what this role may do. Sensitive permissions are marked.">
         <form action={(fd) => start(async () => {
           try {
-            await saveRole(role?.id ?? null, fd);
+            const result = await saveRole(role?.id ?? null, fd);
+            if (isActionError(result)) { toast.error("Failed to save role", result.error); return; }
             setOpen(false);
             toast.success(role ? `✓ Permissions updated for ${role.label}` : "✓ Role created successfully");
             await invalidateAllQueries(queryClient);
@@ -209,7 +210,8 @@ export function AssignRoleSelect({ userId, roleId, roles }: { userId: string; ro
       defaultValue={roleId ?? ""}
       disabled={pending}
       onChange={(e) => start(async () => {
-        await assignRole(userId, e.target.value);
+        const result = await assignRole(userId, e.target.value);
+        if (isActionError(result)) { toast.error("Role assignment failed", result.error); return; }
         toast.success("✓ Role assignment updated");
         await invalidateAllQueries(queryClient);
         router.refresh();
@@ -233,7 +235,8 @@ export function LinkDriverSelect({ userId, driverId, drivers }: { userId: string
       defaultValue={driverId ?? ""}
       disabled={pending}
       onChange={(e) => start(async () => {
-        await linkUserToDriver(userId, e.target.value);
+        const result = await linkUserToDriver(userId, e.target.value);
+        if (isActionError(result)) { toast.error("Driver assignment failed", result.error); return; }
         toast.success("✓ Driver assigned to login");
         await invalidateAllQueries(queryClient);
         router.refresh();
@@ -255,7 +258,8 @@ export function DeleteRoleButton({ id, isSystem }: { id: string; isSystem: boole
   if (isSystem) return <span className="text-xs text-slate-300">system</span>;
 
   async function handleDelete() {
-    await deleteRole(id);
+    const result = await deleteRole(id);
+    if (isActionError(result)) { toast.error("Could not delete role", result.error); return; }
     toast.success("✓ Role deleted successfully");
     await invalidateAllQueries(queryClient);
     router.refresh();
@@ -333,7 +337,8 @@ export function TicketForm({ assets, drivers, projects, dispatchNos }: { assets:
         <form
           action={(fd) => start(async () => {
             try {
-              await saveTicket(fd);
+              const result = await saveTicket(fd);
+              if (isActionError(result)) { toast.error("Failed to save ticket", result.error); return; }
               setOpen(false);
               toast.success(`✓ Weighbridge ${kind.toLowerCase()} ticket saved`, `Net: ${num(activeNetKg)} kg (${netTonnes.toFixed(2)} t)`);
               await invalidateProductionQueries(queryClient);
@@ -484,7 +489,8 @@ export function DeleteTicketButton({ id, ticketNo }: { id: string; ticketNo?: st
   const queryClient = useQueryClient();
 
   async function handleDelete() {
-    await deleteTicket(id);
+    const result = await deleteTicket(id);
+    if (isActionError(result)) { toast.error("Could not delete ticket", result.error); return; }
     toast.success(`✓ Ticket ${ticketNo || ""} deleted successfully`);
     await invalidateProductionQueries(queryClient);
     await invalidateAllQueries(queryClient);
