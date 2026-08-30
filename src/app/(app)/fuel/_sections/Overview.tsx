@@ -54,9 +54,12 @@ export async function Overview() {
   const highFlagCount = fleet.highFlags.length + openAnomalies.filter((a) => a.severity === "HIGH").length;
   const allFlagCount = fleet.allFlags.length + openAnomalies.length;
 
-  const measuredKm = telemetry.totals.distanceKm > 0 ? telemetry.totals.distanceKm : fleet.totalKm;
-  const measuredKmpl = telemetry.totals.avgKmPerL ?? (fleet.avgFleetKmpl || null);
-  const usingTelemetry = telemetry.totals.distanceKm > 0;
+  // Mileage is an OEM-only operational KPI.  Do not silently fall back to
+  // manual slips, parked assets, or equipment: an unavailable number is more
+  // honest than a plausible-looking mixed-fleet average.
+  const measuredKm = telemetry.totals.distanceKm;
+  const measuredKmpl = telemetry.totals.avgKmPerL;
+  const usingTelemetry = telemetry.totals.activeVehicles > 0;
 
   // Ranked by measured efficiency when telemetry exists, since fuel slips may
   // not have been entered yet. Vehicles whose telemetry cannot support a fuel
@@ -126,8 +129,8 @@ export async function Overview() {
           accent="violet"
           icon={<Droplets className="h-5 w-5" />}
         />
-        <StatCard label="Avg Fleet Mileage" value={measuredKmpl != null ? `${measuredKmpl.toFixed(2)} km/L` : "—"} sub={usingTelemetry ? "measured from vehicle data" : "road vehicles"} accent={telemetry.perAsset.some((a) => a.belowNorm) ? "rose" : "emerald"} icon={<Gauge className="h-5 w-5" />} />
-        <StatCard label="Distance Covered" value={`${num(measuredKm)} km`} sub={usingTelemetry ? "odometer delta" : undefined} accent="brand" icon={<TrendingUp className="h-5 w-5" />} />
+        <StatCard label="Avg Fleet Mileage" value={measuredKmpl != null ? `${measuredKmpl.toFixed(2)} km/L` : "—"} sub={usingTelemetry ? "active Tata Fleet Edge road vehicles" : "no active Tata vehicle with usable mileage"} accent={telemetry.perAsset.some((a) => a.belowNorm) ? "rose" : "emerald"} icon={<Gauge className="h-5 w-5" />} />
+        <StatCard label="Distance Covered" value={usingTelemetry ? `${num(measuredKm)} km` : "—"} sub={usingTelemetry ? "active Tata odometer delta" : "not inferred from manual entries"} accent="brand" icon={<TrendingUp className="h-5 w-5" />} />
         <StatCard label="Theft Alerts" value={num(highFlagCount)} sub={`${allFlagCount} total flags`} accent="rose" icon={<ShieldAlert className="h-5 w-5" />} />
         <StatCard label="₹ at Risk" value={inr(atRisk + anomalyValue, { compact: true })} sub={`${num(Math.round((flaggedLitres + anomalyLitres) * 10) / 10)} L flagged`} accent="rose" icon={<TriangleAlert className="h-5 w-5" />} />
         <StatCard

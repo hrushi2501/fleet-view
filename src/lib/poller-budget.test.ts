@@ -120,3 +120,10 @@ describe("overlapping syncs are refused across instances", () => {
     );
   });
 });
+
+test("a failed cron result is durably visible without flooding the audit log", () => {
+  const route = readFileSync(join(root, "src/app/api/telematics/sync/route.ts"), "utf8");
+  assert.match(route, /if \(!result\.ok\)/);
+  assert.match(route, /await recordSystemAudit\(/);
+  assert.match(route, /TelemetryReading and/);
+});

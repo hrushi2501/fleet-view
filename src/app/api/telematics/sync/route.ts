@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { checkSharedSecret } from "@/lib/auth";
 import { requireApi } from "@/lib/access";
+import { recordSystemAudit } from "@/lib/audit-writer";
 import { syncTataFleetEdge, isTataEnabled, missingConfigKeys } from "@/lib/tata-fleet-edge";
 
 export const dynamic = "force-dynamic";
@@ -32,17 +33,30 @@ export async function GET(req: Request) {
   }
 
   if (!isTataEnabled()) {
-    return NextResponse.json({
+    const body = {
       ok: true,
       skipped: "Tata Fleet Edge disabled or unconfigured",
       enabled: process.env.TATA_FLEET_EDGE_ENABLED === "true",
       missing: missingConfigKeys(),
-    });
+    };
+    return NextResponse.json(body);
   }
 
   // No backfill window: Fleet Edge's Basic Pull API is a snapshot of each
   // vehicle's latest state and takes no time filter, so a missed run is a gap
   // in history rather than something a later run can recover.
   const result = await syncTataFleetEdge();
+  if (!result.ok) {
+    // Successful background work is already durable in TelemetryReading and
+    // its latest health is on TelematicsProvider. Persist only failures here:
+    // logging every minute would bury the Admin audit log in machine noise.
+    await recordSystemAudit({
+      action: "CONFIG",
+      module: "FLEET",
+      entity: "TelematicsProvider",
+      summary: "Tata Fleet Edge background sync failed",
+      changes: { trigger: authSecret.ok ? "CRON" : "MANUAL", error: result.error ?? "Unknown sync failure" },
+    });
+  }
   return NextResponse.json(result, { status: result.ok ? 200 : 502 });
 }

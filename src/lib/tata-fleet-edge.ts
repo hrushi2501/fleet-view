@@ -871,6 +871,10 @@ async function runTataSync(base: TataSyncResult): Promise<TataSyncResult> {
         where: { id: asset.id },
         data: {
           ...assetCacheUpdate(r, asset),
+          // Reading provenance already proves this asset came from Tata. Keep
+          // the register relation in step as well, so provider-scoped views
+          // and future reports do not depend on historical reading joins.
+          telematicsProviderId: provider.id,
           ...(reportedCapacity != null && reportedCapacity > 0 ? { fuelCapacity: reportedCapacity } : {}),
         },
       });

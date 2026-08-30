@@ -244,8 +244,8 @@ export default async function Dashboard() {
       {telemetry.totals.vehiclesReporting > 0 && (
         <section className="space-y-4">
           <SectionTitle
-            title="Measured from the vehicles — last 30 days"
-            subtitle={`${telemetry.totals.vehiclesReporting} vehicle${telemetry.totals.vehiclesReporting === 1 ? "" : "s"} reporting · odometer and tank readings straight from the vehicles themselves`}
+            title="Measured from active Tata Fleet Edge vehicles — last 30 days"
+            subtitle={`${telemetry.totals.activeVehicles} active road vehicle${telemetry.totals.activeVehicles === 1 ? "" : "s"} with credible mileage · ${telemetry.totals.vehiclesReporting} Tata asset${telemetry.totals.vehiclesReporting === 1 ? "" : "s"} reported`}
           />
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label="Distance covered" value={`${num(telemetry.totals.distanceKm)} km`} sub="Odometer delta" accent="brand" icon={<Activity className="h-5 w-5" />} />
@@ -259,7 +259,7 @@ export default async function Dashboard() {
             <StatCard
               label="Fleet efficiency"
               value={telemetry.totals.avgKmPerL != null ? `${telemetry.totals.avgKmPerL} km/L` : "—"}
-              sub={`Total distance ÷ total burn · ${telemetry.totals.confidence.toLowerCase()} confidence`}
+              sub={telemetry.totals.activeVehicles > 0 ? `Active Tata road vehicles only · ${telemetry.totals.confidence.toLowerCase()} confidence` : "No active Tata road vehicle has usable mileage"}
               accent={telemetry.perAsset.some((a) => a.belowNorm) ? "rose" : "emerald"}
               icon={<Gauge className="h-5 w-5" />}
             />
@@ -272,7 +272,7 @@ export default async function Dashboard() {
             />
           </div>
 
-          {(telemetry.totals.vehiclesWithInsufficientData > 0 || telemetry.totals.worstGapHours > 1) && (
+          {(telemetry.totals.vehiclesWithInsufficientData > 0 || telemetry.totals.vehiclesNotWorking > 0 || telemetry.totals.worstGapHours > 1) && (
             <div className="space-y-1.5 rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3">
               {telemetry.totals.vehiclesWithInsufficientData > 0 && (
                 <p className="text-[11px] leading-relaxed text-slate-500">
@@ -280,6 +280,11 @@ export default async function Dashboard() {
                   {telemetry.totals.vehiclesWithInsufficientData} of {telemetry.totals.vehiclesReporting} reporting
                   vehicle{telemetry.totals.vehiclesReporting === 1 ? "" : "s"} — those vehicles are excluded from the
                   efficiency figure rather than averaged into it. Open a vehicle to see what its telemetry is missing.
+                </p>
+              )}
+              {telemetry.totals.vehiclesNotWorking > 0 && (
+                <p className="text-[11px] leading-relaxed text-slate-500">
+                  {telemetry.totals.vehiclesNotWorking} Tata road vehicle{telemetry.totals.vehiclesNotWorking === 1 ? " was" : "s were"} parked or did not travel beyond the working threshold in this window, so {telemetry.totals.vehiclesNotWorking === 1 ? "it is" : "they are"} not included in fleet km/L.
                 </p>
               )}
               {telemetry.totals.worstGapHours > 1 && (

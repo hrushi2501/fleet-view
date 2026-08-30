@@ -8,7 +8,16 @@
  */
 import { db } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
-import { analyseUsage, describeUsage, type Confidence, type UsageSummary } from "@/lib/fleet-analytics";
+import {
+  analyseUsage,
+  describeUsage,
+  DEFAULT_FUEL_CONFIG,
+  type Confidence,
+  type UsageSummary,
+} from "@/lib/fleet-analytics";
+
+/** The only OEM feed allowed to contribute to the fleet efficiency KPI. */
+export const FLEET_EFFICIENCY_PROVIDER = "TATA_FLEET_EDGE";
 
 export type AssetUsage = {
   assetId: string;
@@ -16,6 +25,7 @@ export type AssetUsage = {
   name: string;
   registrationNo: string | null;
   assetClass: string;
+  category: string;
   lastSeen: Date | null;
   fuelLevelPct: number | null;
   usage: UsageSummary;
@@ -32,6 +42,8 @@ export type FleetUsage = {
   perAsset: AssetUsage[];
   totals: {
     vehiclesReporting: number;
+    /** Tata road vehicles that actually travelled and have a credible km/L window. */
+    activeVehicles: number;
     distanceKm: number;
     litresBurned: number;
     litresFilled: number;
@@ -44,8 +56,28 @@ export type FleetUsage = {
     confidence: Confidence;
     /** Vehicles whose telemetry cannot support a fuel figure at all. */
     vehiclesWithInsufficientData: number;
+    /** Parked or otherwise non-working Tata road vehicles are not efficiency inputs. */
+    vehiclesNotWorking: number;
   };
 };
+
+/**
+ * A fleet km/L is meaningful only for a road vehicle that actually worked in
+ * the analysis window.  Equipment may consume fuel while stationary, and a
+ * registered-but-parked vehicle must never lower the truck mileage figure.
+ */
+export function countsTowardFleetEfficiency(
+  asset: Pick<AssetUsage, "category">,
+  usage: Pick<UsageSummary, "distanceKm" | "litresBurned" | "avgKmPerL" | "insufficientData">,
+): boolean {
+  return (
+    asset.category === "VEHICLE" &&
+    !usage.insufficientData &&
+    usage.avgKmPerL != null &&
+    usage.litresBurned > 0 &&
+    usage.distanceKm > DEFAULT_FUEL_CONFIG.stationaryKm
+  );
+}
 
 /**
  * @param sinceDays window to analyse. Readings outside it are ignored, so the
@@ -56,6 +88,25 @@ export async function fleetUsage(
   assetWhere: Prisma.AssetWhereInput = {},
 ): Promise<FleetUsage> {
   const since = new Date(Date.now() - sinceDays * 86_400_000);
+  // Do not infer OEM provenance from a generic GPS-looking payload. The KPI
+  // is expressly a Tata Fleet Edge metric, so every included asset must have
+  // a Tata-attributed GPS reading inside this window. `providerId` on the
+  // reading is the source of truth: legacy imports can have valid Tata history
+  // before `Asset.telematicsProviderId` is backfilled.
+  const tataAssets: Prisma.AssetWhereInput = {
+    AND: [
+      assetWhere,
+      {
+        telemetry: {
+          some: {
+            recordedAt: { gte: since },
+            source: "GPS_API",
+            provider: { is: { code: FLEET_EFFICIENCY_PROVIDER } },
+          },
+        },
+      },
+    ],
+  };
 
   // Run the related reads on one acquired connection. Production intentionally
   // keeps a tiny Prisma pool behind Supabase's transaction pooler; four
@@ -63,17 +114,22 @@ export async function fleetUsage(
   // timeout during a dashboard render.
   const [assets, readings, norms, dieselSetting] = await db.$transaction([
     db.asset.findMany({
-      where: assetWhere,
+      where: tataAssets,
       select: {
         id: true, code: true, name: true, registrationNo: true,
-        assetClass: true, lastSeen: true, fuelLevelPct: true, fuelCapacity: true,
+        assetClass: true, category: true, lastSeen: true, fuelLevelPct: true, fuelCapacity: true,
       },
     }),
     db.telemetryReading.findMany({
       // Filtering the readings at the database as well as the asset list
       // prevents a one-project dashboard from scanning the whole fleet's
       // telemetry history only to discard it in memory.
-      where: { recordedAt: { gte: since }, asset: assetWhere },
+      where: {
+        recordedAt: { gte: since },
+        source: "GPS_API",
+        provider: { is: { code: FLEET_EFFICIENCY_PROVIDER } },
+        asset: tataAssets,
+      },
       orderBy: { recordedAt: "asc" },
       select: {
         assetId: true, recordedAt: true, lat: true, lng: true, speedKph: true,
@@ -134,6 +190,7 @@ export async function fleetUsage(
       name: asset.name,
       registrationNo: asset.registrationNo,
       assetClass: asset.assetClass,
+      category: asset.category,
       lastSeen: asset.lastSeen,
       fuelLevelPct: asset.fuelLevelPct,
       usage,
@@ -155,10 +212,12 @@ export async function fleetUsage(
     return (a.usage.avgKmPerL ?? 99) - (b.usage.avgKmPerL ?? 99);
   });
 
-  // Vehicles whose own analysis is unusable are excluded from the fleet
-  // efficiency figure rather than averaged into it — one badly-sampled vehicle
-  // should not drag the fleet number somewhere no vehicle actually is.
-  const measurable = perAsset.filter((a) => !a.usage.insufficientData);
+  const roadVehicles = perAsset.filter((asset) => asset.category === "VEHICLE");
+  // Never allow a parked asset, an equipment item, an untrusted window, or a
+  // non-Tata reading to dilute this number.  The numerator and denominator
+  // come from this same eligible set, which prevents the old mixed-fleet
+  // 0.31 km/L artefact.
+  const measurable = perAsset.filter((asset) => countsTowardFleetEfficiency(asset, asset.usage));
 
   const distanceKm = sum(measurable.map((a) => a.usage.distanceKm));
   const litresBurned = sum(measurable.map((a) => a.usage.litresBurned));
@@ -168,18 +227,20 @@ export async function fleetUsage(
     perAsset,
     totals: {
       vehiclesReporting: perAsset.length,
-      distanceKm: round(sum(perAsset.map((a) => a.usage.distanceKm))),
+      activeVehicles: measurable.length,
+      distanceKm: round(distanceKm),
       litresBurned: round(litresBurned),
-      litresFilled: round(sum(perAsset.map((a) => a.usage.litresFilled))),
+      litresFilled: round(sum(measurable.map((a) => a.usage.litresFilled))),
       // Fleet efficiency is total distance over total burn — never an average
       // of per-vehicle figures, which would weigh a pickup like a tipper.
       avgKmPerL: litresBurned > 0 && distanceKm > 0 ? round(distanceKm / litresBurned) : null,
       litresUnaccounted: round(litresUnaccounted),
       valueUnaccounted: Math.round(litresUnaccounted * rate),
-      suspectSegments: perAsset.reduce((s, a) => s + a.usage.suspectSegments, 0),
-      worstGapHours: perAsset.reduce((m, a) => Math.max(m, a.usage.worstGapHours), 0),
-      confidence: weakest(perAsset.map((a) => a.usage.confidence)),
-      vehiclesWithInsufficientData: perAsset.length - measurable.length,
+      suspectSegments: measurable.reduce((s, a) => s + a.usage.suspectSegments, 0),
+      worstGapHours: measurable.reduce((m, a) => Math.max(m, a.usage.worstGapHours), 0),
+      confidence: weakest(measurable.map((a) => a.usage.confidence)),
+      vehiclesWithInsufficientData: roadVehicles.filter((a) => a.usage.insufficientData).length,
+      vehiclesNotWorking: roadVehicles.filter((a) => !a.usage.insufficientData && !countsTowardFleetEfficiency(a, a.usage)).length,
     },
   };
 }
