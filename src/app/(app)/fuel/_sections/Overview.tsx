@@ -6,12 +6,13 @@ import { FuelEntry, FuelEdit } from "@/components/EntryForms";
 import { analyzeFleet } from "@/lib/fuel";
 import { getDieselRate } from "@/lib/settings";
 import { inr, num, fmtDate, ASSET_CLASS_LABEL, distanceKm } from "@/lib/utils";
-import { Fuel, TriangleAlert, Droplets, Gauge, ShieldAlert, IndianRupee, TrendingUp, TrendingDown, MapPin } from "lucide-react";
+import { Fuel, TriangleAlert, Droplets, Gauge, ShieldAlert, IndianRupee, TrendingUp, TrendingDown, MapPin, CalendarDays } from "lucide-react";
 import Link from "next/link";
 
 import { businessMonth } from "@/lib/business-time";
 import { requirePage, assetScope } from "@/lib/access";
 import { detectFills } from "@/lib/fuel-fill-reconcile";
+import { dailyFillsByVehicle } from "@/lib/fuel-daily-fills";
 
 /**
  * Diesel in, diesel out, and what it bought — the module's front page.
@@ -78,6 +79,12 @@ export async function Overview() {
   // "Theft Alerts 0 · ₹0 at risk" while ₹21.7 K of diesel stood unaccounted one
   // click away, which reads as all-clear.
   const { fills: detectedFills, unreliable: unreliableSenders } = await detectFills(visible, dieselRate, 7);
+
+  // Filling, day by day, across every vehicle rather than only the ones with
+  // paperwork. The per-vehicle table further down is built from
+  // `FuelTransaction` and so is blank for eleven trucks whose sender watched
+  // the diesel go in.
+  const daily = await dailyFillsByVehicle(visible, dieselRate, 14);
   const unloggedFills = detectedFills.filter((f) => !f.logged);
   const unloggedLitres = unloggedFills.reduce((s, f) => s + f.litresAdded, 0);
   const unloggedValue = unloggedFills.reduce((s, f) => s + f.estimatedValue, 0);
@@ -300,6 +307,104 @@ export async function Overview() {
             </tbody>
           </table>
         </div>
+      </Card>
+
+      {/* Filled per day, every vehicle */}
+      <Card className="p-0">
+        <div className="flex items-center gap-2 p-5 pb-3">
+          <CalendarDays className="h-5 w-5 text-brand-600" />
+          <SectionTitle
+            title="Diesel Filled Per Day — Every Vehicle"
+            subtitle="Last 14 days, from the tank sender and from logged fills combined"
+          />
+        </div>
+
+        {daily.days.length === 0 ? (
+          <p className="px-5 pb-5 text-sm text-slate-500">No fills recorded in the last 14 days.</p>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-x-8 gap-y-2 border-t border-slate-100 px-5 py-3 text-sm">
+              <span className="text-slate-500">
+                Total <span className="font-semibold text-ink-900">{num(daily.totals.litres)} L</span>
+              </span>
+              <span className="text-slate-500">
+                Across <span className="font-semibold text-ink-900">{daily.totals.vehicles}</span> vehicles
+              </span>
+              <span className="text-slate-500">
+                Logged <span className="font-semibold text-ink-900">{num(daily.totals.loggedLitres)} L</span>
+              </span>
+              <span className="text-slate-500">
+                Sensor-only <span className="font-semibold text-ink-900">{num(daily.totals.sensorLitres)} L</span>
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
+                  <tr>
+                    <th className="px-5 py-3 font-medium">Day</th>
+                    <th className="px-5 py-3 font-medium">Total</th>
+                    <th className="px-5 py-3 font-medium">Vehicles Filled — litres each</th>
+                    <th className="px-5 py-3 font-medium">Approx. Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {daily.days.map((d) => (
+                    <tr key={d.day} className="border-t border-slate-100 align-top hover:bg-brand-50/30">
+                      <td className="whitespace-nowrap px-5 py-3 font-medium text-ink-900">
+                        {fmtDate(new Date(`${d.day}T12:00:00+05:30`))}
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3 font-semibold text-ink-900">{num(d.litres)} L</td>
+                      <td className="px-5 py-3">
+                        <div className="flex flex-wrap gap-1.5">
+                          {d.vehicles.map((v) => (
+                            <Link
+                              key={v.assetId}
+                              href={`/fleet/${v.assetId}`}
+                              title={
+                                v.priced
+                                  ? `${v.fills} logged fill${v.fills > 1 ? "s" : ""} — receipt on record`
+                                  : `${v.fills} fill${v.fills > 1 ? "s" : ""} seen by the tank sender — no receipt entered`
+                              }
+                              className={
+                                "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition hover:brightness-95 " +
+                                (v.priced
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                                  : "border-slate-200 bg-slate-50 text-slate-700")
+                              }
+                            >
+                              <span className="font-semibold">{v.assetCode}</span>
+                              <span className="tabular-nums">{num(v.litres)} L</span>
+                              {v.fills > 1 ? <span className="text-[10px] opacity-70">×{v.fills}</span> : null}
+                            </Link>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3 text-slate-600">{inr(d.value, { compact: true })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="space-y-1 border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
+              <p>
+                <span className="mr-1 inline-block h-2 w-2 rounded-full bg-emerald-400 align-middle" />
+                Green has a receipt behind it — litres and rupees are both real.
+                <span className="ml-3 mr-1 inline-block h-2 w-2 rounded-full bg-slate-400 align-middle" />
+                Grey was measured by the tank sender only; the litres are measured, the value is an estimate
+                at {inr(dieselRate)}/L.
+              </p>
+              {daily.excluded.length > 0 ? (
+                <p>
+                  Not shown: {daily.excluded.map((e) => e.assetCode).join(", ")} — the tank sender contradicts
+                  itself on {daily.excluded.length === 1 ? "this vehicle" : "these vehicles"}, so no fill it
+                  appears to show can be believed.
+                </p>
+              ) : null}
+            </div>
+          </>
+        )}
       </Card>
 
       {/* Per-vehicle analytics */}

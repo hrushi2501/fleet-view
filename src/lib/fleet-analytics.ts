@@ -268,6 +268,64 @@ export type RefuelEvent = {
   hoursObserved: number;
 };
 
+/**
+ * How long a single physical refuel may take.
+ *
+ * A nozzle in a tank raises the level continuously, and a sender reporting once
+ * a minute sees that as a staircase rather than a step. Every tread clears the
+ * refuel threshold on its own, so without this the loop below books each one as
+ * a separate fill.
+ *
+ * RJ21GE2479 on 31 Aug is the case that exposed it: 149.7 L to 300.0 L between
+ * 04:55:49 and 04:59:49 IST, stationary, ignition on — one fill of 150.3 L,
+ * reported to the Fuel screen as three (43.6 L, 56.3 L, 50.4 L) and priced
+ * three times over.
+ *
+ * Ten minutes is comfortably longer than filling a 300 L tank and far shorter
+ * than the gap between two genuine visits to a pump.
+ */
+const FILL_COALESCE_MINUTES = 10;
+
+/**
+ * Joins the treads back into one staircase.
+ *
+ * Two events belong to the same fill when the later one begins where the
+ * earlier ended — which the baseline reset guarantees exactly — and follows it
+ * within the window above. The merged event keeps the first fill's starting
+ * level, the last one's finishing level, and the sum of the litres, so the mass
+ * balance is unchanged: this only stops one fill being counted as several.
+ */
+function coalesceRefuels(events: RefuelEvent[], cfg: FuelAnalysisConfig): RefuelEvent[] {
+  if (events.length < 2) return events;
+
+  const merged: RefuelEvent[] = [];
+  for (const next of events) {
+    const open = merged[merged.length - 1];
+    const contiguous =
+      open !== undefined &&
+      Math.abs(next.fromL - open.toL) < 0.05 &&
+      next.at.getTime() - open.at.getTime() <= FILL_COALESCE_MINUTES * 60_000;
+
+    if (!open || !contiguous) {
+      merged.push({ ...next });
+      continue;
+    }
+
+    open.toL = next.toL;
+    open.litresAdded = round(open.litresAdded + next.litresAdded, 2);
+    open.hoursObserved = round(open.hoursObserved + next.hoursObserved, 2);
+    // The position where filling finished is where the vehicle actually stood.
+    open.lat = next.lat;
+    open.lng = next.lng;
+    open.at = next.at;
+    open.confidence =
+      open.hoursObserved <= 0.5 ? "HIGH" : open.hoursObserved <= cfg.warningGapHours ? "MEDIUM" : "LOW";
+  }
+
+  return merged;
+}
+
+
 export type ImplausibleDrop = {
   at: Date;
   litres: number;
@@ -404,7 +462,9 @@ export function analyseFuelSeries(
     // moved. Leave the baseline where it is.
   }
 
-  const litresRefuelled = refuels.reduce((s, e) => s + e.litresAdded, 0);
+  const fills = coalesceRefuels(refuels, cfg);
+
+  const litresRefuelled = fills.reduce((s, e) => s + e.litresAdded, 0);
   const netDrop = startLevelL - endLevelL;
   const rawConsumed = netDrop + litresRefuelled;
 
@@ -422,7 +482,7 @@ export function analyseFuelSeries(
     endLevelL: round(endLevelL, 2),
     litresConsumed: round(litresConsumed, 2),
     litresRefuelled: round(litresRefuelled, 2),
-    refuels,
+    refuels: fills,
     implausibleDrops,
     levelSamples: levelled.length,
     uncertaintyL,
@@ -431,7 +491,7 @@ export function analyseFuelSeries(
     litresAcrossStaleGaps: round(litresAcrossStaleGaps, 2),
     // Below this the tank has not moved by more than the sender can resolve, so
     // "how much was burnt" has no answer worth printing.
-    withinNoise: litresConsumed <= noiseBandL && refuels.length === 0,
+    withinNoise: litresConsumed <= noiseBandL && fills.length === 0,
   };
 }
 
