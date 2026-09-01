@@ -2,6 +2,7 @@ import { requirePage } from "@/lib/access";
 import { PageTabs, resolveTab, type Tab } from "@/components/PageTabs";
 import { Workforce } from "./_sections/Workforce";
 import { PeopleRecords } from "./_sections/PeopleRecords";
+import { DriverVehicleHistory } from "./_sections/DriverVehicleHistory";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,7 @@ const TABS: Tab[] = [
   { key: "staff", label: "Staff & Drivers" },
   { key: "safety", label: "Safety & Competency" },
   { key: "records", label: "Documents & Attendance" },
+  { key: "mapping", label: "Driver & Vehicle Records" },
 ];
 
 export default async function PeoplePage({
@@ -39,7 +41,7 @@ export default async function PeoplePage({
 
       <PageTabs tabs={TABS} active={tab} basePath="/people" />
 
-      {tab === "records" ? <PeopleRecords /> : <Workforce tab={tab} />}
+      {tab === "records" ? <PeopleRecords /> : tab === "mapping" ? <DriverVehicleHistory /> : <Workforce tab={tab} />}
     </div>
   );
 }

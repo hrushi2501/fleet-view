@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useTransition, ReactNode, useEffect } from "react";
+import { useState, useTransition, ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { X, Plus, Loader2, Trash2, Calculator, Scale, CheckCircle2, AlertTriangle } from "lucide-react";
+import { X, Plus, Loader2, Trash2, Scale, AlertTriangle } from "lucide-react";
 import { cn, inr, num } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { useQueryClient } from "@tanstack/react-query";
+import { invalidateAllQueries, invalidateProductionQueries } from "@/lib/query-invalidation";
 import { seedRoles, saveRole, deleteRole, assignRole, linkUserToDriver } from "@/app/(app)/admin/actions";
 import { saveTicket, deleteTicket } from "@/app/(app)/weighbridge/actions";
-import { permissionsByModule, PERMISSIONS } from "@/lib/rbac";
+import { permissionsByModule } from "@/lib/rbac";
 import { MATERIALS } from "@/lib/weighbridge";
 import { isActionError } from "@/lib/action-result";
 
@@ -110,7 +112,7 @@ export function SeedRolesButton() {
             setMsg(`${r.roles} roles · ${r.linked} users linked`);
             toast.success("✓ Installed standard roles successfully", `${r.roles} roles configured`);
             router.refresh();
-          } catch (err) {
+          } catch (_err) {
             toast.error("Role installation failed");
           }
         })}
@@ -129,6 +131,7 @@ export function RoleForm({ role }: { role?: { id: string; name: string; label: s
   const [pending, start] = useTransition();
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
   const held = new Set(role?.permissions ?? []);
   const all = held.has("*");
   const groups = permissionsByModule();
@@ -143,9 +146,11 @@ export function RoleForm({ role }: { role?: { id: string; name: string; label: s
       <Modal open={open} onClose={() => setOpen(false)} wide title={role ? `Permissions — ${role.label}` : "Create Role"} subtitle="Tick exactly what this role may do. Sensitive permissions are marked.">
         <form action={(fd) => start(async () => {
           try {
-            await saveRole(role?.id ?? null, fd);
+            const result = await saveRole(role?.id ?? null, fd);
+            if (isActionError(result)) { toast.error("Failed to save role", result.error); return; }
             setOpen(false);
             toast.success(role ? `✓ Permissions updated for ${role.label}` : "✓ Role created successfully");
+            await invalidateAllQueries(queryClient);
             router.refresh();
           } catch (e) {
             toast.error("Failed to save role", e instanceof Error ? e.message : "Error");
@@ -198,14 +203,17 @@ export function AssignRoleSelect({ userId, roleId, roles }: { userId: string; ro
   const [pending, start] = useTransition();
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   return (
     <select
       defaultValue={roleId ?? ""}
       disabled={pending}
       onChange={(e) => start(async () => {
-        await assignRole(userId, e.target.value);
+        const result = await assignRole(userId, e.target.value);
+        if (isActionError(result)) { toast.error("Role assignment failed", result.error); return; }
         toast.success("✓ Role assignment updated");
+        await invalidateAllQueries(queryClient);
         router.refresh();
       })}
       className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium outline-none focus:border-brand-400 shadow-2xs"
@@ -220,19 +228,22 @@ export function LinkDriverSelect({ userId, driverId, drivers }: { userId: string
   const [pending, start] = useTransition();
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   return (
     <select
       defaultValue={driverId ?? ""}
       disabled={pending}
       onChange={(e) => start(async () => {
-        await linkUserToDriver(userId, e.target.value);
-        toast.success("✓ Driver person record linked");
+        const result = await linkUserToDriver(userId, e.target.value);
+        if (isActionError(result)) { toast.error("Driver assignment failed", result.error); return; }
+        toast.success("✓ Driver assigned to login");
+        await invalidateAllQueries(queryClient);
         router.refresh();
       })}
       className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium outline-none focus:border-brand-400 shadow-2xs"
     >
-      <option value="">— Not linked —</option>
+      <option value="">— No driver assigned —</option>
       {drivers.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
     </select>
   );
@@ -242,12 +253,15 @@ export function DeleteRoleButton({ id, isSystem }: { id: string; isSystem: boole
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   if (isSystem) return <span className="text-xs text-slate-300">system</span>;
 
   async function handleDelete() {
-    await deleteRole(id);
+    const result = await deleteRole(id);
+    if (isActionError(result)) { toast.error("Could not delete role", result.error); return; }
     toast.success("✓ Role deleted successfully");
+    await invalidateAllQueries(queryClient);
     router.refresh();
   }
 
@@ -290,6 +304,7 @@ export function TicketForm({ assets, drivers, projects, dispatchNos }: { assets:
 
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   const gVal = parseFloat(gross) || 0;
   const tVal = parseFloat(tare) || 0;
@@ -322,9 +337,12 @@ export function TicketForm({ assets, drivers, projects, dispatchNos }: { assets:
         <form
           action={(fd) => start(async () => {
             try {
-              await saveTicket(fd);
+              const result = await saveTicket(fd);
+              if (isActionError(result)) { toast.error("Failed to save ticket", result.error); return; }
               setOpen(false);
               toast.success(`✓ Weighbridge ${kind.toLowerCase()} ticket saved`, `Net: ${num(activeNetKg)} kg (${netTonnes.toFixed(2)} t)`);
+              await invalidateProductionQueries(queryClient);
+              await invalidateAllQueries(queryClient);
               router.refresh();
             } catch (err) {
               toast.error("Failed to save ticket", err instanceof Error ? err.message : "Error");
@@ -468,10 +486,14 @@ export function DeleteTicketButton({ id, ticketNo }: { id: string; ticketNo?: st
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   async function handleDelete() {
-    await deleteTicket(id);
+    const result = await deleteTicket(id);
+    if (isActionError(result)) { toast.error("Could not delete ticket", result.error); return; }
     toast.success(`✓ Ticket ${ticketNo || ""} deleted successfully`);
+    await invalidateProductionQueries(queryClient);
+    await invalidateAllQueries(queryClient);
     router.refresh();
   }
 

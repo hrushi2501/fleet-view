@@ -20,6 +20,7 @@ export async function QrStickers() {
     where: { qrToken: { not: null }, ...assetScope(access) },
     orderBy: { code: "asc" },
   });
+  const unissuedCount = await db.asset.count({ where: { qrToken: null, ...assetScope(access) } });
 
   const codes = await Promise.all(
     assets.map(async (a) => ({
@@ -36,13 +37,10 @@ export async function QrStickers() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold text-ink-900">Cabin QR Stickers</h2>
-            <p className="text-sm text-slate-500">
-              Print, laminate and fix one inside each cab where the driver can reach it. High error correction, so a
-              scuffed or partly dirty sticker still scans.
-            </p>
+            <p className="text-sm text-slate-500">Issue codes once, print this sheet, then laminate and fix one sticker inside each cab. Drivers scan only this sticker to begin duty.</p>
           </div>
           <div className="flex gap-2">
-            {assets.length === 0 && <IssueQrButton />}
+            {unissuedCount > 0 && access.can("fleet.edit") && <IssueQrButton />}
             <span className="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-4 py-2 text-sm text-slate-600">
               <Printer className="h-4 w-4" /> Use your browser&apos;s Print
             </span>
@@ -50,10 +48,16 @@ export async function QrStickers() {
         </div>
       </div>
 
+      <div className="grid gap-3 rounded-2xl border border-brand-100 bg-brand-50/60 p-4 text-sm text-slate-700 print:hidden sm:grid-cols-3">
+        <p><strong className="block text-brand-800">1. Issue & print</strong>{unissuedCount ? `${unissuedCount} vehicle${unissuedCount === 1 ? "" : "s"} still need a permanent QR code.` : "All visible vehicles have a QR code."}</p>
+        <p><strong className="block text-brand-800">2. Fit the sticker</strong>Place it inside the cabin, reachable by the driver and away from glare.</p>
+        <p><strong className="block text-brand-800">3. Driver check-in</strong>Driver logs in, scans the sticker, reads any safety warning, then starts duty.</p>
+      </div>
+
       {codes.length === 0 ? (
         <Card className="print:hidden">
           <p className="py-12 text-center text-sm text-slate-500">
-            No QR stickers issued yet — press <strong>Issue QR Codes</strong> on the Trips screen, phir yahan print kar sakte hain.
+            No QR stickers issued yet. A fleet editor can press <strong>Issue QR Codes</strong> above, then print this sheet.
           </p>
         </Card>
       ) : (

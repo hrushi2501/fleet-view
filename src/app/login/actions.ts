@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { setSession, verifyPassword, hashPassword, isHashed } from "@/lib/auth";
+import { setSession, verifyPassword } from "@/lib/auth";
 import { auditAs } from "@/lib/audit";
 import { checkLock, recordFailure, clearFailures, MAX_ATTEMPTS } from "@/lib/login-throttle";
 import { redirect } from "next/navigation";
@@ -12,11 +12,9 @@ import { redirect } from "next/navigation";
  * Three things happen here beyond checking the password, and each exists
  * because its absence was a real hole:
  *
- *  - Attempts are throttled. The form previously accepted unlimited guesses,
- *    and new driver logins are created with a known default password.
- *  - Success and failure are both audited. The audit screen renders a `LOGIN`
- *    badge and nothing had ever written one, so "who signed in, and from
- *    where" was unanswerable.
+ *  - Attempts are throttled. The form previously accepted unlimited guesses.
+ *  - Success and failure are both audited, so "who signed in, and from where"
+ *    is answerable without treating a failed attempt as a successful login.
  *  - The failure message never distinguishes an unknown address from a wrong
  *    password, so the form cannot be used to enumerate who holds an account.
  */
@@ -33,13 +31,17 @@ export async function login(_prev: unknown, formData: FormData) {
   }
 
   const user = await db.user.findUnique({ where: { email } });
+  // Always run bcrypt, including for unknown addresses. Without the dummy
+  // comparison inside `verifyPassword`, an unknown user returns tens of
+  // milliseconds sooner than a wrong password for a real account.
+  const passwordMatches = await verifyPassword(password, user?.password ?? "");
 
-  if (!user || !(await verifyPassword(password, user.password))) {
+  if (!user || !passwordMatches) {
     const { nowLocked } = await recordFailure(email);
     // Recorded against the address that was tried rather than a user, because
     // the attempt may not correspond to a real account.
     await auditAs(null, {
-      action: nowLocked ? "DENIED" : "LOGIN",
+      action: nowLocked ? "DENIED" : "LOGIN_FAILED",
       module: "ADMIN",
       entity: "User",
       entityId: user?.id,
@@ -58,11 +60,6 @@ export async function login(_prev: unknown, formData: FormData) {
       summary: `Sign-in refused for the deactivated account ${email}`,
     });
     return { error: "This account has been deactivated. Contact an administrator." };
-  }
-
-  // Transparently upgrade legacy plaintext passwords to bcrypt hashes.
-  if (!isHashed(user.password)) {
-    await db.user.update({ where: { id: user.id }, data: { password: await hashPassword(password) } });
   }
 
   await clearFailures(email);

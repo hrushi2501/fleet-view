@@ -103,29 +103,29 @@ export interface IAlertsAdapter {
 
 // --- Realistic Indian fleet data generators ---
 
-const FLEET_ASSETS = [
+const _FLEET_ASSETS = [
   "TATA-2518-A01", "TATA-2518-A02", "TATA-3518-A03", "JCB-3DX-E04", "JCB-3DX-E05",
   "JCB-220LC-E06", "TATA-PRIMA-T07", "TATA-SIGNA-T08", "KOMATSU-PC210-E09", "CAT-320D-E10",
   "L&T-CASE-E11", "TATA-LPK-D12", "TATA-LPT-D13", "ASHOK-2820-D14", "MAHINDRA-BLAZO-D15",
 ];
 
-const VENDORS = [
+const _VENDORS = [
   "Sharma Earthmovers", "Rajput Transport Co.", "Mewar Diesel Agency", "Jaipur Stone Suppliers",
   "Bishnoi Constructions", "Khatri & Sons Hire", "Chouhan Aggregates", "Modi Logistics Pvt Ltd",
 ];
 
-const DRIVERS = [
+const _DRIVERS = [
   "Ramesh Kumar", "Suresh Singh", "Mukesh Patel", "Dinesh Choudhary", "Lokesh Meena",
   "Vinod Sharma", "Ganesh Yadav", "Mahesh Soni", "Rajendra Jat", "Bharat Gurjar",
 ];
 
-const LOCATIONS = [
+const _LOCATIONS = [
   "NH-48 Bypass, Udaipur", "Nagaur Quarry Site", "Jodhpur Ring Road Yard", "Jaisalmer NHAI Project",
   "Barmer RCC Plant", "Pali Bridge Site", "Sikar–Bikaner NH Section", "Ajmer Crushing Unit",
 ];
 
 function rand(min: number, max: number) { return Math.floor(Math.random() * (max - min + 1)) + min; }
-function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
+function _pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
 function cuid(): string { return `mock_${Date.now()}_${rand(1000, 9999)}`; }
 
 /* ---- Mock Loss Prevention ---- */

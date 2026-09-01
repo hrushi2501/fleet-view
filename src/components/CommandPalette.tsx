@@ -15,10 +15,10 @@ import {
   Loader2,
   ArrowRight,
   Sparkles,
-  Command,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SearchResultItem } from "@/app/api/search/route";
+import { useFleetSearch } from "@/lib/query-hooks";
 
 const CATEGORY_ICONS: Record<SearchResultItem["category"], React.ComponentType<{ className?: string }>> = {
   vehicle: Truck,
@@ -49,15 +49,16 @@ export function CommandPalette({
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<SearchResultItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { data: searchResults = [], isLoading: searchLoading, isFetching } = useFleetSearch(query);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
+  const results = query.trim().length >= 2 ? searchResults : [];
+  const loading = query.trim().length >= 2 && (searchLoading || isFetching);
+
   const handleClose = useCallback(() => {
     setQuery("");
-    setResults([]);
     setSelectedIndex(0);
     onClose();
   }, [onClose]);
@@ -75,39 +76,9 @@ export function CommandPalette({
     };
   }, [isOpen]);
 
-  // Debounced search
-  useEffect(() => {
-    if (!query.trim() || query.trim().length < 2) {
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(query.trim())}`);
-        if (res.ok) {
-          const data = await res.json();
-          setResults(data.results || []);
-          setSelectedIndex(0);
-        }
-      } catch (err) {
-        console.error("Search error:", err);
-      } finally {
-        setLoading(false);
-      }
-    }, 200);
-
-    return () => clearTimeout(timer);
-  }, [query]);
-
   const handleQueryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setQuery(val);
-    if (!val.trim() || val.trim().length < 2) {
-      setResults([]);
-      setLoading(false);
-    } else {
-      setLoading(true);
-    }
+    setQuery(e.target.value);
+    setSelectedIndex(0);
   };
 
   const handleSelect = useCallback(
@@ -196,8 +167,6 @@ export function CommandPalette({
             <button
               onClick={() => {
                 setQuery("");
-                setResults([]);
-                setLoading(false);
               }}
               className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
               aria-label="Clear search"

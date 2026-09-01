@@ -17,6 +17,8 @@ import {
   describeDrift,
   DEFAULT_LIMITS,
   FLEET_EDGE_KNOWN_FIELDS,
+  MAX_RAW_TELEMETRY_PAYLOAD_BYTES,
+  rawPayloadSizeBytes,
 } from "./telemetry-normalization.ts";
 import { businessDay, businessMonth, parseBusinessDay, startOfBusinessDay } from "./business-time.ts";
 import { analyzeAsset, analyzeFleet } from "./fuel.ts";
@@ -115,6 +117,22 @@ describe("normalisation — a reading that cannot be placed in time is rejected"
     assert.equal(r.accepted, true);
     assert.equal(r.reading!.odometerKm, 500, "the reading is preserved for its fuel level");
     assert.ok(r.issues.some((i) => i.field === "odometerKm" && i.severity === "WARN"));
+  });
+});
+
+describe("normalisation — raw payload retention is bounded", () => {
+  test("rejects a provider payload over the 64 KiB per-reading ceiling", () => {
+    const rawPayload = { diagnostic: "x".repeat(MAX_RAW_TELEMETRY_PAYLOAD_BYTES) };
+    assert.ok(rawPayloadSizeBytes(rawPayload)! > MAX_RAW_TELEMETRY_PAYLOAD_BYTES);
+
+    const r = normaliseReading(ping({ rawPayload }), {}, DEFAULT_LIMITS, now);
+    assert.equal(r.accepted, false);
+    assert.ok(r.issues.some((i) => i.field === "rawPayload" && /64 KiB/.test(i.reason)));
+  });
+
+  test("keeps normal diagnostic payloads", () => {
+    const r = normaliseReading(ping({ rawPayload: { imei: "123", satellites: 12 } }), {}, DEFAULT_LIMITS, now);
+    assert.equal(r.accepted, true);
   });
 });
 

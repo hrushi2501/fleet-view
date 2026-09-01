@@ -1,11 +1,17 @@
 "use client";
 
-import { useState, useTransition, ReactNode, useEffect } from "react";
+import { useState, useTransition, ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { X, Plus, Pencil, Trash2, Loader2, Camera, Calculator } from "lucide-react";
+import { X, Plus, Pencil, Trash2, Loader2, Camera, Calculator, RotateCcw } from "lucide-react";
 import { cn, ASSET_CLASS_LABEL, inr } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  invalidateAllQueries,
+  invalidateFuelQueries,
+  invalidateComplianceQueries,
+} from "@/lib/query-invalidation";
 import {
   saveAsset, deleteAsset, saveDriver, deleteDriver, saveFuel,
   saveWorkOrder, updateWorkOrderStatus, saveCompliance, saveProject,
@@ -164,6 +170,7 @@ function Modal({ triggerLabel, triggerIcon, triggerClass, title, action, success
   const [err, setErr] = useState("");
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -182,6 +189,7 @@ function Modal({ triggerLabel, triggerIcon, triggerClass, title, action, success
 
         setOpen(false);
         toast.success(successMessage || `${title} saved successfully`);
+        await invalidateAllQueries(queryClient);
         router.refresh();
         onDone?.();
       } catch (e: unknown) {
@@ -315,13 +323,15 @@ export function DeleteButton({ kind, id, label }: { kind: "asset" | "driver" | "
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   async function handleDelete() {
     if (kind === "asset") await deleteAsset(id);
     else if (kind === "driver") await deleteDriver(id);
     else await deleteUser(id);
     
-    toast.success(`✓ ${label} deleted successfully`);
+    toast.success(kind === "asset" ? `✓ ${label} decommissioned; history retained` : `✓ ${label} deleted successfully`);
+    await invalidateAllQueries(queryClient);
     router.refresh();
     if (kind === "asset") router.push("/fleet");
   }
@@ -332,20 +342,20 @@ export function DeleteButton({ kind, id, label }: { kind: "asset" | "driver" | "
         onClick={() => setOpen(true)}
         className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50 transition-colors"
       >
-        <Trash2 className="h-3.5 w-3.5" /> Delete
+        <Trash2 className="h-3.5 w-3.5" /> {kind === "asset" ? "Decommission" : "Delete"}
       </button>
 
       <ConfirmDialog
         isOpen={open}
         onClose={() => setOpen(false)}
         onConfirm={handleDelete}
-        title={`Delete ${label}?`}
+        title={`${kind === "asset" ? "Decommission" : "Delete"} ${label}?`}
         description={
           kind === "asset"
-            ? "This will remove the vehicle and its active records. Historical audit trail will be maintained."
+            ? "This retires the vehicle, clears its current assignment, and preserves fuel, trip, maintenance, compliance, telemetry, and cost history."
             : `Are you sure you want to permanently delete this ${kind}? This action cannot be undone.`
         }
-        confirmLabel="Confirm Delete"
+        confirmLabel={kind === "asset" ? "Decommission vehicle" : "Confirm Delete"}
         tone="danger"
         requireTextMatch={kind === "asset" ? label : undefined}
       />
@@ -385,17 +395,17 @@ export function DriverEntry({ driver }: { driver?: DriverData }) {
               type="checkbox"
               name="createLogin"
               value="true"
-              defaultChecked={true}
+              defaultChecked={false}
               className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
             />
             <span>📲 Auto-create Driver App login account</span>
           </label>
           <div className="grid gap-2 sm:grid-cols-2 text-xs">
             <Inp label="Login Email" name="loginEmail" type="email" placeholder="emp-code@mahadev.com" />
-            <Inp label="Initial Password" name="loginPassword" defaultValue="driver123" />
+            <Inp label="Initial Password" name="loginPassword" type="password" placeholder="12+ chars, letter, number, symbol" />
           </div>
           <p className="text-[11px] text-slate-500">
-            Automatically connects this person record to the login account so vehicle check-ins and trips work on day 1.
+            Optional. Use at least 12 characters with a letter, number, and symbol; credentials are never generated with a shared default.
           </p>
         </div>
       )}
@@ -488,6 +498,7 @@ export function FuelEntry({ assets, projects, defaultRate = 92.5 }: { assets: Op
   const toast = useToast();
 
   const totalAmount = (parseFloat(qty) || 0) * (parseFloat(rate) || 0);
+  const queryClient = useQueryClient();
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -500,6 +511,7 @@ export function FuelEntry({ assets, projects, defaultRate = 92.5 }: { assets: Op
         await saveFuel(fd);
         setOpen(false); setOdo(null); setPump(null);
         toast.success(`✓ Diesel issue of ${qty} L recorded successfully`, `Total: ${inr(totalAmount)}`);
+        await invalidateFuelQueries(queryClient);
         router.refresh();
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Could not save. Try again.";
@@ -593,6 +605,7 @@ export function FuelEdit({ txn }: { txn: { id: string; label: string; quantity: 
   const [rate, setRate] = useState(String(txn.rate));
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
   const cls = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
 
   const totalAmount = (parseFloat(qty) || 0) * (parseFloat(rate) || 0);
@@ -606,6 +619,7 @@ export function FuelEdit({ txn }: { txn: { id: string; label: string; quantity: 
         await updateFuel(txn.id, fd);
         setOpen(false);
         toast.success("✓ Fuel entry updated");
+        await invalidateFuelQueries(queryClient);
         router.refresh();
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Could not save.";
@@ -619,6 +633,7 @@ export function FuelEdit({ txn }: { txn: { id: string; label: string; quantity: 
     await deleteFuel(txn.id);
     setOpen(false);
     toast.success("✓ Fuel entry deleted");
+    await invalidateFuelQueries(queryClient);
     router.refresh();
   }
 
@@ -717,6 +732,7 @@ export function WorkOrderStatus({ id, status }: { id: string; status: string }) 
   const [pending, start] = useTransition();
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   return (
     <select
@@ -727,6 +743,7 @@ export function WorkOrderStatus({ id, status }: { id: string; status: string }) 
         start(async () => {
           await updateWorkOrderStatus(id, newStatus);
           toast.success(`✓ Status changed to ${newStatus}`);
+          await invalidateAllQueries(queryClient);
           router.refresh();
         });
       }}
@@ -757,6 +774,204 @@ export function ComplianceEntry({ assets }: { assets: Opt[] }) {
   );
 }
 
+export function DocumentRenewModal({
+  doc,
+}: {
+  doc: {
+    id: string;
+    assetId: string;
+    assetCode: string;
+    docType: string;
+    number: string | null;
+    expiryDate: Date | string | null;
+  };
+}) {
+  const [open, setOpen] = useState(false);
+  const [pending, start] = useTransition();
+  const [err, setErr] = useState("");
+  const toast = useToast();
+  const router = useRouter();
+
+  // Compute default +1 year renewal date (or +6 months for PUC)
+  const baseDate = doc.expiryDate ? new Date(doc.expiryDate) : new Date();
+  const nextExpiry = new Date(baseDate);
+  if (doc.docType === "PUC") {
+    nextExpiry.setMonth(nextExpiry.getMonth() + 6);
+  } else {
+    nextExpiry.setFullYear(nextExpiry.getFullYear() + 1);
+  }
+  const defaultNextExpiryStr = nextExpiry.toISOString().slice(0, 10);
+  const defaultIssueDateStr = new Date().toISOString().slice(0, 10);
+
+  const [issueDate, setIssueDate] = useState(defaultIssueDateStr);
+  const [expiryDate, setExpiryDate] = useState(defaultNextExpiryStr);
+  const [docNumber, setDocNumber] = useState(doc.number || "");
+  const queryClient = useQueryClient();
+
+  const handleRenew = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    fd.set("assetId", doc.assetId);
+    fd.set("docType", doc.docType);
+    fd.set("number", docNumber);
+    fd.set("issueDate", issueDate);
+    fd.set("expiryDate", expiryDate);
+
+    start(async () => {
+      try {
+        await saveCompliance(fd);
+        setOpen(false);
+        toast.success(`✓ ${doc.docType} for ${doc.assetCode} renewed until ${expiryDate}`);
+        await invalidateComplianceQueries(queryClient, doc.assetId);
+        router.refresh();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Renewal failed");
+        toast.error("Renewal failed", e instanceof Error ? e.message : "Error");
+      }
+    });
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-100 transition-colors"
+      >
+        <RotateCcw className="h-3 w-3" /> Quick Renew
+      </button>
+
+      {open && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+          onClick={() => setOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-3xl bg-white shadow-2xl animate-fade-up ring-1 ring-black/5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+                  <RotateCcw className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-ink-900">
+                    Renew {doc.docType} — {doc.assetCode}
+                  </h3>
+                  <p className="text-xs text-slate-500">1-click renewal with auto-computed dates</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setOpen(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleRenew} className="p-6 space-y-4">
+              <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3 text-xs text-slate-600">
+                <p className="font-semibold text-ink-900">Machine: {doc.assetCode}</p>
+                <p>Document: {doc.docType}</p>
+                <p className="text-slate-400">Previous Ref: {doc.number}</p>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">
+                  New Certificate / Policy Number *
+                </label>
+                <input
+                  required
+                  value={docNumber}
+                  onChange={(e) => setDocNumber(e.target.value)}
+                  placeholder="e.g. POL-2026-98765"
+                  className={inputCls}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    Issue Date
+                  </label>
+                  <input
+                    type="date"
+                    value={issueDate}
+                    onChange={(e) => setIssueDate(e.target.value)}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    New Expiry Date *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={expiryDate}
+                    onChange={(e) => setExpiryDate(e.target.value)}
+                    className={inputCls}
+                  />
+                </div>
+              </div>
+
+              {/* Quick presets */}
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-[11px] font-medium text-slate-400">Presets:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date(issueDate || Date.now());
+                    d.setFullYear(d.getFullYear() + 1);
+                    setExpiryDate(d.toISOString().slice(0, 10));
+                  }}
+                  className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  +1 Year
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date(issueDate || Date.now());
+                    d.setMonth(d.getMonth() + 6);
+                    setExpiryDate(d.toISOString().slice(0, 10));
+                  }}
+                  className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  +6 Months
+                </button>
+              </div>
+
+              {err && (
+                <p className="rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-xs font-medium text-rose-600">
+                  {err}
+                </p>
+              )}
+
+              <div className="flex justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={pending}
+                  className="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-60"
+                >
+                  {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {pending ? "Renewing…" : "Save Renewal"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 /* ----------------------------- USER / ACCESS ----------------------------- */
 export function UserEntry() {
   return (
@@ -783,11 +998,12 @@ export function UserEntry() {
         defaultValue="Driver"
         required
       />
-      <Inp label="Password" name="password" required placeholder="set a strong password" />
+      <Inp label="Password" name="password" type="password" required placeholder="12+ chars, letter, number, symbol" />
+      <p className="col-span-full -mt-1 text-[11px] text-slate-500">Use at least 12 characters with a letter, number, and symbol.</p>
       <div className="col-span-full rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2 text-xs">
-        <p className="font-semibold text-slate-700">Driver Person Profile Linking</p>
+        <p className="font-semibold text-slate-700">Driver account setup</p>
         <p className="text-[11px] text-slate-500">
-          When adding a Driver role, a matching person record will automatically be linked so vehicle assignments and trips work immediately.
+          Adding a driver login creates the driver entry needed for vehicle assignments and trip records. These details are optional and can be completed later by an administrator.
         </p>
         <div className="grid gap-2 sm:grid-cols-2">
           <Inp label="Employee Code (optional)" name="empCode" placeholder="DRV-XXXX (auto if blank)" />
@@ -843,10 +1059,12 @@ export function ProjectDeleteButton({ id, code }: { id: string; code: string }) 
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   async function handleDelete() {
     await deleteProject(id);
     toast.success(`✓ Project ${code} deleted successfully`);
+    await invalidateAllQueries(queryClient);
     router.refresh();
   }
 

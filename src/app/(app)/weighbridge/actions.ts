@@ -2,10 +2,10 @@
 
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { put } from "@vercel/blob";
 import { getSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { requireAction, ActionError, safe } from "@/lib/guard";
+import { uploadPrivateFile } from "@/lib/private-upload";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -33,9 +33,7 @@ async function saveTicket__impl(fd: FormData) {
   if (file && typeof file !== "string") {
     const f = file as File;
     if (f.size) {
-      const ext = (f.name.split(".").pop() || "jpg").toLowerCase();
-      const blob = await put(`weighbridge/${ticketNo}-${Date.now()}.${ext}`, f, { access: "public", addRandomSuffix: true });
-      photo = blob.url;
+      photo = await uploadPrivateFile(f, { folder: "weighbridge", kind: "image" });
     }
   }
 

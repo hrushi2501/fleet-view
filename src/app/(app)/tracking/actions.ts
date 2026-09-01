@@ -2,7 +2,6 @@
 
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { put } from "@vercel/blob";
 import crypto from "crypto";
 import { getSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
@@ -10,6 +9,8 @@ import { decideGaugeReading, sensorGaugeDecision, makeQrToken, staleSessions, re
 import { requireAction, ActionError, safe } from "@/lib/guard";
 import { getDieselRate } from "@/lib/settings";
 import { fuelSensorState } from "@/lib/fuel-sensor";
+import { uploadPrivateFile } from "@/lib/private-upload";
+import { assetScope } from "@/lib/access";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -26,8 +27,8 @@ function refresh() {
 /** Issue permanent cabin QR tokens. Existing tokens are never regenerated —
  *  a sticker already on a windscreen must keep working. */
 async function issueQrTokens__impl() {
-  await requireAction("fuel.receipt");
-  const assets = await db.asset.findMany({ where: { qrToken: null }, select: { id: true } });
+  const access = await requireAction("fleet.edit");
+  const assets = await db.asset.findMany({ where: { qrToken: null, ...assetScope(access) }, select: { id: true } });
   for (const a of assets) {
     let token = makeQrToken(crypto.randomFillSync(new Uint8Array(10)));
     // Collisions are vanishingly unlikely but cheap to rule out.
@@ -94,9 +95,7 @@ async function saveGaugeReading__impl(fd: FormData) {
   if (file && typeof file !== "string") {
     const f = file as File;
     if (f.size) {
-      const ext = (f.name.split(".").pop() || "jpg").toLowerCase();
-      const blob = await put(`gauge/${asset.code}-${Date.now()}.${ext}`, f, { access: "public", addRandomSuffix: true });
-      imageUrl = blob.url;
+      imageUrl = await uploadPrivateFile(f, { folder: "gauge", kind: "image" });
     }
   }
 

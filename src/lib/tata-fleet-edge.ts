@@ -387,6 +387,7 @@ function normaliseId(v: string | null | undefined): string {
  */
 async function buildAssetIndex(): Promise<Map<string, ResolvedAsset>> {
   const assets = await db.asset.findMany({
+    where: { decommissionedOn: null },
     select: {
       id: true,
       code: true,
@@ -870,6 +871,10 @@ async function runTataSync(base: TataSyncResult): Promise<TataSyncResult> {
         where: { id: asset.id },
         data: {
           ...assetCacheUpdate(r, asset),
+          // Reading provenance already proves this asset came from Tata. Keep
+          // the register relation in step as well, so provider-scoped views
+          // and future reports do not depend on historical reading joins.
+          telematicsProviderId: provider.id,
           ...(reportedCapacity != null && reportedCapacity > 0 ? { fuelCapacity: reportedCapacity } : {}),
         },
       });
@@ -962,7 +967,7 @@ export async function getTataSyncStatus(): Promise<TataStatusInfo> {
   const missing = missingConfigKeys();
   const configured = missing.length === 0;
 
-  const [provider, lastReading, activeVehicles, totalReadings] = await Promise.all([
+  const [provider, lastReading, activeVehicles, totalReadings] = await db.$transaction([
     db.telematicsProvider.findUnique({
       where: { code: TATA_PROVIDER_CODE },
       select: {

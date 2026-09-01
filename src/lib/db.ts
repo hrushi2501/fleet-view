@@ -18,15 +18,32 @@ function resolveDbUrl(): string | undefined {
   const url = process.env.DATABASE_URL;
   if (!url) return undefined;
   let finalUrl = url;
+  const setParam = (name: string, value: string) => {
+    const parsed = new URL(finalUrl);
+    parsed.searchParams.set(name, value);
+    finalUrl = parsed.toString();
+  };
+  const param = (name: string) => new URL(finalUrl).searchParams.get(name);
   const isPooled = finalUrl.includes("pgbouncer") || finalUrl.includes(":6543");
-  if (isPooled && !finalUrl.includes("pgbouncer=true")) {
-    const sep = finalUrl.includes("?") ? "&" : "?";
-    finalUrl = `${finalUrl}${sep}pgbouncer=true`;
-  }
-  if (!finalUrl.includes("connection_limit=")) {
-    const sep = finalUrl.includes("?") ? "&" : "?";
-    finalUrl = `${finalUrl}${sep}connection_limit=10&pool_timeout=30`;
-  }
+  if (isPooled && param("pgbouncer") !== "true") setParam("pgbouncer", "true");
+
+  // A serverless deployment needs a deliberately tiny pool per function
+  // instance. Local development is one long-lived process, however, and a
+  // single connection makes concurrent RSC/API requests queue behind one
+  // another until Prisma's timeout expires. Keep production's explicit value,
+  // but give the local process enough headroom for normal browser navigation.
+  const requestedLimit = process.env.PRISMA_CONNECTION_LIMIT?.trim();
+  const configuredLimit = Number(param("connection_limit"));
+  const localMinimum = process.env.NODE_ENV === "production" ? 1 : 5;
+  const connectionLimit = requestedLimit
+    || (!Number.isFinite(configuredLimit) || configuredLimit < localMinimum
+      ? String(localMinimum)
+      : null);
+  if (connectionLimit) setParam("connection_limit", connectionLimit);
+  // A short pool timeout turns a brief queue behind one slower query into a
+  // failed RSC response, leaving the browser on its loading skeleton. Give
+  // queued work a realistic window to acquire one of the configured slots.
+  if (!param("pool_timeout")) setParam("pool_timeout", "30");
   process.env.DATABASE_URL = finalUrl;
   return finalUrl;
 }

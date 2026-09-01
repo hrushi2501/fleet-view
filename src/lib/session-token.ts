@@ -37,7 +37,7 @@
  * holds at once.
  * ─────────────────────────────────────────────────────────────────────────────
  */
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac } from "crypto";
 
 /** How long a freshly issued token stays valid. Matches the cookie's max-age. */
 export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -60,26 +60,27 @@ export type VerifyResult =
 /**
  * The signing key.
  *
- * `AUTH_SECRET` is the supported way to set this and should be a long random
- * string. When it is absent we derive a key from the database credentials
- * rather than falling back to a constant: a hardcoded default in a public
- * repository is a published key, which is the exact bug `checkSharedSecret`
- * was already fixed for.
- *
- * The connection string is server-only, high entropy (it contains the database
- * password) and must be present for the app to run at all, so deriving from it
- * keeps existing deployments working without a new environment variable. The
- * query string is stripped first because `db.ts` rewrites `DATABASE_URL` at
- * import time to append pooling parameters — hashing the mutated value would
- * make the key depend on module import order and silently log everyone out.
- *
- * Rotating `AUTH_SECRET` (or the database password) invalidates every existing
- * session, which is the correct behaviour.
+ * Production must set `AUTH_SECRET` to an independent, long random value.
+ * Deriving a session signing key from `DATABASE_URL` turns a database URL leak
+ * into a session-forgery incident, so that fallback is retained for local
+ * development only. Rotating `AUTH_SECRET` invalidates all existing sessions.
  */
 function signingKey(): string {
   const explicit = process.env.AUTH_SECRET?.trim();
-  if (explicit) return explicit;
+  if (explicit) {
+    if (process.env.NODE_ENV === "production" && Buffer.byteLength(explicit, "utf8") < 32) {
+      throw new Error("AUTH_SECRET must be at least 32 bytes in production.");
+    }
+    return explicit;
+  }
 
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Cannot sign sessions in production: set AUTH_SECRET to a random value of at least 32 bytes.");
+  }
+
+  // Development-only compatibility for existing local databases. This is not
+  // reachable in production, where a leaked connection string must never also
+  // be accepted as a session signing key.
   const raw = (process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL ?? "").trim();
   const base = raw.split("?")[0];
   if (base.length >= 16) return `derived:${base}`;
@@ -88,6 +89,11 @@ function signingKey(): string {
     "Cannot sign sessions: set AUTH_SECRET (a long random string) in the environment. " +
       "No default is used because a constant fallback in source control is a published key.",
   );
+}
+
+/** Validates required production auth configuration during server startup. */
+export function assertAuthSecretConfigured(): void {
+  if (process.env.NODE_ENV === "production") signingKey();
 }
 
 function b64url(input: Buffer | string): string {
@@ -100,10 +106,12 @@ function sign(payloadPart: string): string {
 
 /** Constant-time string compare that tolerates differing lengths. */
 function safeEqual(a: string, b: string): boolean {
-  const x = Buffer.from(a, "utf8");
-  const y = Buffer.from(b, "utf8");
-  if (x.length !== y.length) return false;
-  return timingSafeEqual(x, y);
+  if (a.length !== b.length) return false;
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
 }
 
 /** Mints a token for a user. `now` is injectable so tests can control expiry. */

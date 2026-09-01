@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useTransition, ReactNode } from "react";
+import { useState, useTransition } from "react";
 import { Badge } from "@/components/ui";
 import { SEVERITY_COLOR, timeAgo, cn } from "@/lib/utils";
 import { updateAlert, escalateAlert, assignAlert } from "@/app/(app)/alerts/actions";
 import { Check, Eye, Fuel, Wrench, ShieldAlert, MapPin, User, Clock, ArrowUpRight, UserPlus, X } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { isActionError } from "@/lib/action-result";
+import { useQueryClient } from "@tanstack/react-query";
+import { invalidateAlertsQueries } from "@/lib/query-invalidation";
 
 type Alert = {
   id: string;
@@ -79,6 +81,7 @@ export function AlertsClient({ alerts }: { alerts: Alert[] }) {
   const [status, setStatus] = useState("Open");
   const [pending, startTransition] = useTransition();
   const toast = useToast();
+  const queryClient = useQueryClient();
   const [assigningId, setAssigningId] = useState<string | null>(null);
 
   const categories = [...new Set(alerts.map((a) => a.category))];
@@ -139,14 +142,22 @@ export function AlertsClient({ alerts }: { alerts: Alert[] }) {
               {a.status === "Open" && (
                 <div className="flex shrink-0 flex-wrap gap-2">
                   <button
-                    onClick={() => startTransition(async () => { const r = await updateAlert(a.id, "Acknowledged"); if (isActionError(r)) toast.error('Could not update the alert', r.error); })}
+                    onClick={() => startTransition(async () => {
+                      const r = await updateAlert(a.id, "Acknowledged");
+                      if (isActionError(r)) toast.error('Could not update the alert', r.error);
+                      else await invalidateAlertsQueries(queryClient);
+                    })}
                     className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
                     title="Acknowledge"
                   >
                     <Eye className="h-3.5 w-3.5" /> Ack
                   </button>
                   <button
-                    onClick={() => startTransition(async () => { const r = await escalateAlert(a.id); if (isActionError(r)) toast.error('Could not update the alert', r.error); })}
+                    onClick={() => startTransition(async () => {
+                      const r = await escalateAlert(a.id);
+                      if (isActionError(r)) toast.error('Could not update the alert', r.error);
+                      else await invalidateAlertsQueries(queryClient);
+                    })}
                     className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100"
                     title="Escalate"
                   >
@@ -160,7 +171,11 @@ export function AlertsClient({ alerts }: { alerts: Alert[] }) {
                     <UserPlus className="h-3.5 w-3.5" /> Assign
                   </button>
                   <button
-                    onClick={() => startTransition(async () => { const r = await updateAlert(a.id, "Resolved"); if (isActionError(r)) toast.error('Could not update the alert', r.error); })}
+                    onClick={() => startTransition(async () => {
+                      const r = await updateAlert(a.id, "Resolved");
+                      if (isActionError(r)) toast.error('Could not update the alert', r.error);
+                      else await invalidateAlertsQueries(queryClient);
+                    })}
                     className="inline-flex items-center gap-1 rounded-lg bg-emerald-500 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-600"
                     title="Resolve"
                   >
@@ -171,13 +186,21 @@ export function AlertsClient({ alerts }: { alerts: Alert[] }) {
               {a.status === "Acknowledged" && (
                 <div className="flex shrink-0 gap-2">
                   <button
-                    onClick={() => startTransition(async () => { const r = await escalateAlert(a.id); if (isActionError(r)) toast.error('Could not update the alert', r.error); })}
+                    onClick={() => startTransition(async () => {
+                      const r = await escalateAlert(a.id);
+                      if (isActionError(r)) toast.error('Could not update the alert', r.error);
+                      else await invalidateAlertsQueries(queryClient);
+                    })}
                     className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100"
                   >
                     <ArrowUpRight className="h-3.5 w-3.5" /> Escalate
                   </button>
                   <button
-                    onClick={() => startTransition(async () => { const r = await updateAlert(a.id, "Resolved"); if (isActionError(r)) toast.error('Could not update the alert', r.error); })}
+                    onClick={() => startTransition(async () => {
+                      const r = await updateAlert(a.id, "Resolved");
+                      if (isActionError(r)) toast.error('Could not update the alert', r.error);
+                      else await invalidateAlertsQueries(queryClient);
+                    })}
                     className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-emerald-500 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-600"
                   >
                     <Check className="h-3.5 w-3.5" /> Resolve
@@ -200,6 +223,7 @@ export function AlertsClient({ alerts }: { alerts: Alert[] }) {
             startTransition(async () => {
               await assignAlert(assigningId, name);
               setAssigningId(null);
+              await invalidateAlertsQueries(queryClient);
             });
           }
         }}

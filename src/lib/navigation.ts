@@ -140,6 +140,7 @@ export const MODULES: NavItem[] = [
     permission: "reports.view",
     children: [
       { href: "/reports", label: "Reports", permission: "reports.view" },
+      { href: "/reports/notifications", label: "Notification Log", permission: "reports.view" },
       { href: "/reports/summary", label: "Management Summary", permission: "cost.view" },
       { href: "/reports/costs", label: "Total Cost & Profit", permission: "cost.view" },
     ],

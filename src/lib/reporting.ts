@@ -146,6 +146,7 @@ export const REPORT_CATALOGUE = [
   { key: "compliance", label: "Compliance register", module: "M13", description: "Every document with expiry, plus machines missing one entirely." },
   { key: "loss_cases", label: "Loss-prevention cases", module: "M6", description: "Cases with amount at risk, recovered and disposition." },
   { key: "maintenance", label: "Work orders", module: "M14", description: "Jobs with labour, parts, downtime and technician." },
+  { key: "notification_log", label: "Notification log", module: "M18", description: "Driver and system notifications, including status and priority." },
   { key: "weighbridge", label: "Weighbridge tickets", module: "M24", description: "Dispatch and receipt slips with shortage." },
   { key: "attendance", label: "Attendance", module: "M2", description: "Daily attendance by person and project." },
 ] as const;

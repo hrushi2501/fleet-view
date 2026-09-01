@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { Card, SectionTitle, Badge, StatCard } from "@/components/ui";
 import { CaseStatusForm, NoteForm, EvidenceForm, RecoveryForm, DeleteCaseButton } from "@/components/LossForms";
-import { inr, num, fmtDate, timeAgo } from "@/lib/utils";
+import { inr, fmtDate, timeAgo } from "@/lib/utils";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ShieldAlert, HandCoins, IndianRupee, Paperclip, History, ExternalLink } from "lucide-react";

@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { StatCard, Card, SectionTitle, Badge } from "@/components/ui";
 import { Donut } from "@/components/charts";
-import { ComplianceEntry } from "@/components/EntryForms";
+import { ComplianceEntry, DocumentRenewModal } from "@/components/EntryForms";
 import { num, fmtDate, STATUS_COLOR } from "@/lib/utils";
 import { ShieldCheck, ShieldAlert, ShieldX, FileText } from "lucide-react";
 import Link from "next/link";
@@ -11,7 +11,6 @@ export const dynamic = "force-dynamic";
 
 export default async function CompliancePage() {
   const access = await requirePage("compliance.view");
-  // Rows, not just the page: a supervisor scoped to a site sees that site.
   const visible = assetScope(access);
   const [docs, assets] = await Promise.all([
     db.complianceDoc.findMany({ where: { asset: visible }, include: { asset: true }, orderBy: { expiryDate: "asc" } }),
@@ -22,38 +21,32 @@ export default async function CompliancePage() {
   const valid = docs.filter((d) => d.status === "Valid").length;
   const expiring = docs.filter((d) => d.status === "Expiring").length;
   const expired = docs.filter((d) => d.status === "Expired").length;
-
-  const byType = [...new Set(docs.map((d) => d.docType))].map((t) => ({ name: t, value: docs.filter((d) => d.docType === t).length }));
-  const urgent = docs.filter((d) => d.status === "Expiring" || d.status === "Expired");
+  const urgent = docs.filter((d) => d.status !== "Valid");
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Compliance &amp; Documentation</h1>
-          <p className="text-sm text-slate-500">RC, Insurance, Fitness, Permit, PUC &amp; Road Tax — with expiry tracking</p>
+          <h1 className="text-2xl font-bold text-ink-900">Compliance &amp; Documents</h1>
+          <p className="text-sm text-slate-500">RC, Insurance, Fitness, Permits, PUC, Road Tax</p>
         </div>
         <ComplianceEntry assets={assetOpts} />
       </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Total Documents" value={num(docs.length)} accent="brand" icon={<FileText className="h-5 w-5" />} />
-        <StatCard label="Valid" value={num(valid)} sub={`${((valid / docs.length) * 100).toFixed(0)}% compliant`} accent="emerald" icon={<ShieldCheck className="h-5 w-5" />} />
-        <StatCard label="Expiring Soon" value={num(expiring)} sub="Within 30 days" accent="amber" icon={<ShieldAlert className="h-5 w-5" />} />
+        <StatCard label="Valid" value={num(valid)} sub={`${((valid / (docs.length || 1)) * 100).toFixed(0)}% compliant`} accent="emerald" icon={<ShieldCheck className="h-5 w-5" />} />
+        <StatCard label="Expiring (30d)" value={num(expiring)} sub="Needs renewal" accent="amber" icon={<ShieldAlert className="h-5 w-5" />} />
         <StatCard label="Expired" value={num(expired)} sub="Deployment-blocked" accent="rose" icon={<ShieldX className="h-5 w-5" />} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-6 lg:grid-cols-3">
         <Card>
-          <SectionTitle title="Documents by Type" />
-          <Donut data={byType} />
+          <SectionTitle title="Status Breakdown" />
+          <Donut data={[{ name: "Valid", value: valid }, { name: "Expiring", value: expiring }, { name: "Expired", value: expired }]} />
         </Card>
         <Card className="lg:col-span-2 p-0">
-          <div className="p-5 pb-3"><SectionTitle title="Expiry Watchlist" subtitle="Expiring & expired — needs renewal" /></div>
-          {/* Scrolls in both directions. This is opened on a phone at a site
-              gate to check whether a vehicle is legal to move, and the columns
-              do not fit that width — without the horizontal scroll the last
-              column is simply unreachable. */}
+          <div className="p-5 pb-3"><SectionTitle title="Expiry Watchlist" subtitle="Expiring & expired — 1-click renewal" /></div>
           <div className="max-h-[320px] overflow-y-auto overflow-x-auto">
             <table className="w-full min-w-[560px] text-sm">
               <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
@@ -63,6 +56,7 @@ export default async function CompliancePage() {
                   <th className="px-5 py-3 font-medium">Number</th>
                   <th className="px-5 py-3 font-medium">Expiry</th>
                   <th className="px-5 py-3 font-medium">Status</th>
+                  <th className="px-5 py-3 text-right font-medium">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -73,6 +67,20 @@ export default async function CompliancePage() {
                     <td className="px-5 py-3 font-mono text-xs text-slate-500">{d.number}</td>
                     <td className="px-5 py-3 text-slate-600">{fmtDate(d.expiryDate)}</td>
                     <td className="px-5 py-3"><Badge color={STATUS_COLOR[d.status]}>{d.status}</Badge></td>
+                    <td className="px-5 py-3 text-right">
+                      {d.asset && (
+                        <DocumentRenewModal
+                          doc={{
+                            id: d.id,
+                            assetId: d.assetId,
+                            assetCode: d.asset.code,
+                            docType: d.docType,
+                            number: d.number,
+                            expiryDate: d.expiryDate,
+                          }}
+                        />
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

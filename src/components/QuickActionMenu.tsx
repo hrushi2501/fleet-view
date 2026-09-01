@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   Plus,
   Fuel,
@@ -13,7 +12,7 @@ import {
   Sparkles,
   X,
   ChevronRight,
-  ArrowRight,
+  QrCode,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +27,15 @@ interface QuickActionItem {
 }
 
 const QUICK_ACTIONS: QuickActionItem[] = [
+  {
+    id: "qr_scan",
+    title: "Scan Vehicle QR",
+    subtitle: "Open driver cabin camera scanner",
+    icon: QrCode,
+    href: "/my",
+    color: "bg-brand-500 text-white shadow-brand-500/25",
+    badge: "Scanner",
+  },
   {
     id: "fuel",
     title: "Issue Diesel",
@@ -51,7 +59,7 @@ const QUICK_ACTIONS: QuickActionItem[] = [
     title: "Weighbridge Ticket",
     subtitle: "Log gross / tare material entry",
     icon: Scale,
-    href: "/weighbridge",
+    href: "/sites/materials",
     color: "bg-brand-600 text-white shadow-brand-600/25",
     badge: "Active",
   },
@@ -76,7 +84,6 @@ const QUICK_ACTIONS: QuickActionItem[] = [
 
 export function QuickActionMenu({ isDriver = false }: { isDriver?: boolean }) {
   const [open, setOpen] = useState(false);
-  const router = useRouter();
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Close on Escape or outside click

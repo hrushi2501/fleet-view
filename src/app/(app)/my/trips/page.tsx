@@ -10,7 +10,7 @@ import { requirePage } from "@/lib/access";
 import { businessDay } from "@/lib/business-time";
 import { fmtDate, num } from "@/lib/utils";
 import { myBasics, myTrips, todaysTrips, type TripRow } from "../_data";
-import { MyHeader, NotLinked, Screen, Fact, Group, Row, Nothing } from "../_ui";
+import { MyHeader, Screen, Fact, Group, Row, Nothing, NotLinked } from "../_ui";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +22,7 @@ export default async function MyTripsPage() {
     return (
       <Screen>
         <MyHeader href="/my/trips" />
-        <NotLinked loginName={access.session.name} />
+        <NotLinked loginName={access.session.email} />
       </Screen>
     );
   }

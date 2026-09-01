@@ -2,7 +2,7 @@
 
 import { useState, useTransition, ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { X, Plus, Loader2, Trash2, MapPin } from "lucide-react";
+import { X, Plus, Loader2, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -12,6 +12,7 @@ import {
   saveMobilization, updateMobilization, deleteMobilization
 } from "@/app/(app)/operations/actions";
 import { SITE_TYPES, SITE_TYPE_LABEL, TRANSPORT_MODES, TRANSPORT_LABEL } from "@/lib/operations";
+import { isActionError } from "@/lib/action-result";
 
 type Opt = { id: string; label: string };
 
@@ -125,7 +126,8 @@ export function SiteForm({ projects, site }: { projects: Opt[]; site?: { id: str
     setErr("");
     start(async () => {
       try {
-        await saveSite(site?.id ?? null, fd);
+        const result = await saveSite(site?.id ?? null, fd);
+        if (isActionError(result)) { setErr(result.error); toast.error("Site save failed", result.error); return; }
         setOpen(false);
         toast.success(site ? `✓ Site ${site.code} updated` : "✓ New site added successfully");
         router.refresh();
@@ -176,7 +178,8 @@ export function PlanForm({ projects, classes }: { projects: Opt[]; classes: { va
     setErr("");
     start(async () => {
       try {
-        await saveEquipmentPlan(fd);
+        const result = await saveEquipmentPlan(fd);
+        if (isActionError(result)) { setErr(result.error); toast.error("Plan save failed", result.error); return; }
         setOpen(false);
         toast.success("✓ Equipment plan saved");
         router.refresh();
@@ -225,7 +228,8 @@ export function AllocationForm({ assets, projects, sites }: { assets: Opt[]; pro
     setErr("");
     start(async () => {
       try {
-        await saveAllocation(fd);
+        const result = await saveAllocation(fd);
+        if (isActionError(result)) { setErr(result.error); toast.error("Allocation failed", result.error); return; }
         setOpen(false);
         toast.success("✓ Machine allocated to project");
         router.refresh();
@@ -276,7 +280,8 @@ export function AllocationStatusForm({ alloc }: { alloc: { id: string; status: s
     setErr("");
     start(async () => {
       try {
-        await updateAllocationStatus(alloc.id, fd);
+        const result = await updateAllocationStatus(alloc.id, fd);
+        if (isActionError(result)) { setErr(result.error); toast.error("Update failed", result.error); return; }
         setOpen(false);
         toast.success("✓ Allocation status updated");
         router.refresh();
@@ -322,7 +327,8 @@ export function MobilizationForm({ assets, projects }: { assets: Opt[]; projects
     setErr("");
     start(async () => {
       try {
-        await saveMobilization(fd);
+        const result = await saveMobilization(fd);
+        if (isActionError(result)) { setErr(result.error); toast.error("Request failed", result.error); return; }
         setOpen(false);
         toast.success("✓ Mobilisation order requested");
         router.refresh();
@@ -372,7 +378,8 @@ export function MobStatusForm({ order }: { order: { id: string; status: string; 
     setErr("");
     start(async () => {
       try {
-        await updateMobilization(order.id, fd);
+        const result = await updateMobilization(order.id, fd);
+        if (isActionError(result)) { setErr(result.error); toast.error("Update failed", result.error); return; }
         setOpen(false);
         toast.success("✓ Mobilisation status updated");
         router.refresh();
@@ -413,10 +420,11 @@ export function DeleteRow({ id, kind }: { id: string; kind: "site" | "plan" | "a
   const toast = useToast();
 
   async function handleDelete() {
-    if (kind === "site") await deleteSite(id);
-    else if (kind === "plan") await deleteEquipmentPlan(id);
-    else if (kind === "allocation") await deleteAllocation(id);
-    else await deleteMobilization(id);
+    const result = kind === "site" ? await deleteSite(id)
+      : kind === "plan" ? await deleteEquipmentPlan(id)
+      : kind === "allocation" ? await deleteAllocation(id)
+      : await deleteMobilization(id);
+    if (isActionError(result)) { toast.error("Delete failed", result.error); return; }
 
     toast.success(`✓ ${kind.charAt(0).toUpperCase() + kind.slice(1)} record deleted`);
     router.refresh();

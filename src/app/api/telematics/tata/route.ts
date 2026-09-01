@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { checkSharedSecret } from "@/lib/auth";
-import { normaliseReading, assetCacheUpdate } from "@/lib/telemetry-normalization";
+import { normaliseReading, assetCacheUpdate, readTelemetryJson } from "@/lib/telemetry-normalization";
 import { TataFleetEdgeAdapter } from "@/lib/telematics-adapters";
 import { cachedFuelFor } from "@/lib/fuel-cache";
 import type { TelemetryPing } from "@/lib/telematics-adapters";
@@ -97,6 +97,7 @@ async function resolveAsset(ping: TelemetryPing) {
   // `deviceId` is matched too so an aftermarket unit on the same account works.
   const assets = await db.asset.findMany({
     where: {
+      decommissionedOn: null,
       OR: [
         { registrationNo: { in: candidates, mode: "insensitive" } },
         { chassisNo: { in: candidates, mode: "insensitive" } },
@@ -141,15 +142,18 @@ async function resolveAsset(ping: TelemetryPing) {
  * deployment.
  */
 export async function GET() {
+  const urlToken = Boolean(process.env.TATA_PUSH_URL_TOKEN?.trim());
   const secret = Boolean(process.env.TATA_PUSH_KEY?.trim());
   return NextResponse.json({
     ok: true,
     service: "fleetview-erp",
     endpoint: "tata-fleet-edge-push",
     ready: true,
-    accepts: secret
-      ? "shared-secret"
-      : process.env.TATA_PUSH_TRUST_ANY === "true"
+    accepts: urlToken
+      ? "url-token"
+      : secret
+      ? "shared-secret (provider support required)"
+      : process.env.TATA_PUSH_TRUST_ANY === "true" && process.env.NODE_ENV !== "production"
         ? "any-source (debug)"
         : `source-ip: ${allowedIps().join(", ")}`,
   });
@@ -186,9 +190,35 @@ function allowedIps(): string[] {
  * trusted proxy in front, it would not be.
  */
 function callerIp(req: Request): string | null {
+  // `X-Forwarded-For` is only an access-control input when the deployment
+  // platform overwrites it. Vercel does so; a self-hosted reverse proxy needs
+  // an explicit operator assertion after it has been configured to strip any
+  // client-supplied value. Otherwise a caller could simply claim Tata's IP.
+  const trustedProxy = process.env.VERCEL === "1" || process.env.TATA_PUSH_TRUSTED_PROXY === "true";
+  if (!trustedProxy) return null;
   const fwd = req.headers.get("x-forwarded-for");
   if (fwd) return fwd.split(",")[0]!.trim() || null;
-  return req.headers.get("x-real-ip");
+  return null;
+}
+
+/**
+ * Fleet Edge cannot send an HTTP credential, but it posts to the exact URL
+ * registered during subscription. A high-entropy query token therefore gives
+ * us a control the provider can actually use. `checkSharedSecret` supplies the
+ * constant-time comparison; only the `token` parameter is copied into its
+ * established `key` input, so a header/body/query `key` cannot bypass this
+ * token-specific gate.
+ *
+ * Query parameters may be captured by platform access logs. Production
+ * operators must redact `token` from edge/request logs and rotate the token if
+ * a URL is ever shared outside the Tata subscription configuration.
+ */
+function checkUrlToken(req: Request): ReturnType<typeof checkSharedSecret> {
+  const incoming = new URL(req.url);
+  const supplied = incoming.searchParams.get("token") ?? "";
+  incoming.search = "";
+  incoming.searchParams.set("key", supplied);
+  return checkSharedSecret(new Request(incoming.toString()), "TATA_PUSH_URL_TOKEN");
 }
 
 /**
@@ -209,12 +239,14 @@ function callerIp(req: Request): string | null {
  *
  * The security model is therefore what the provider actually implements:
  *
- *   1. If `TATA_PUSH_KEY` is set, require it. Kept because Tata may add
- *      authentication later, and a deployment that has a secret should use it.
- *   2. Otherwise accept only from Fleet Edge's published egress address.
- *   3. `TATA_PUSH_TRUST_ANY=true` disables the address check, for debugging a
- *      feed that is failing for the wrong reason. It is deliberately awkward to
- *      set and never the default.
+ *   1. If `TATA_PUSH_URL_TOKEN` is set, require `?token=` in the registered
+ *      callback URL. This is the preferred production configuration: the
+ *      provider can call a URL even though it cannot add a header or signature.
+ *   2. If Tata adds credential support, `TATA_PUSH_KEY` can require it.
+ *   3. Otherwise accept only from Fleet Edge's published egress address, and
+ *      only behind Vercel or an explicitly configured trusted proxy.
+ *   4. `TATA_PUSH_TRUST_ANY=true` is available only outside production for
+ *      local diagnosis; it can never accidentally open a live endpoint.
  *
  * The residual risk is that anyone who learns this URL *and* can present that
  * source address could write telemetry. That is the exposure Fleet Edge's own
@@ -226,7 +258,13 @@ function authorisePush(
   req: Request,
   body: unknown,
 ): { ok: true } | { ok: false; status: 401 | 403 | 503; error: string } {
-  // 1. A configured secret is the strongest control available, so it wins.
+  // 1. The callback URL token is usable with the provider as it exists today.
+  if (process.env.TATA_PUSH_URL_TOKEN?.trim()) {
+    const auth = checkUrlToken(req);
+    return auth.ok ? { ok: true } : { ok: false, status: auth.status, error: auth.error };
+  }
+
+  // 2. A configured header/body secret is retained for a future provider API.
   const secret = process.env.TATA_PUSH_KEY?.trim();
   if (secret) {
     const bodyKey = body && typeof body === "object" ? (body as Record<string, unknown>).key : undefined;
@@ -234,34 +272,37 @@ function authorisePush(
     return auth.ok ? { ok: true } : { ok: false, status: auth.status as 401 | 503, error: auth.error };
   }
 
-  // 3. Explicit escape hatch, for diagnosing a feed in the wrong shape.
-  if (process.env.TATA_PUSH_TRUST_ANY === "true") return { ok: true };
+  // 4. Explicit local-only escape hatch, for diagnosing a feed in the wrong shape.
+  if (process.env.TATA_PUSH_TRUST_ANY === "true") {
+    if (process.env.NODE_ENV !== "production") return { ok: true };
+    return {
+      ok: false,
+      status: 503,
+      error: "TATA_PUSH_TRUST_ANY is forbidden in production. Configure TATA_PUSH_URL_TOKEN or a trusted source-IP boundary.",
+    };
+  }
 
-  // 2. The address is the control the provider's own spec relies on.
+  // 3. The address is the control the provider's own spec relies on.
   const ip = callerIp(req);
   const permitted = allowedIps();
   if (ip && permitted.includes(ip)) return { ok: true };
 
   return {
     ok: false,
-    status: 403,
+    status: process.env.VERCEL === "1" || process.env.TATA_PUSH_TRUSTED_PROXY === "true" ? 403 : 503,
     error:
-      `Pushes are accepted only from Fleet Edge (${permitted.join(", ")}). ` +
-      `This request came from ${ip ?? "an unknown address"}. ` +
-      `Set TATA_PUSH_KEY to authenticate by shared secret instead, or ` +
-      `TATA_PUSH_ALLOWED_IPS if the provider's address has changed.`,
+      ip === null
+        ? "IP authentication is disabled until this deployment confirms a trusted proxy. Configure TATA_PUSH_URL_TOKEN, deploy on Vercel, or set TATA_PUSH_TRUSTED_PROXY=true only after the proxy strips caller-supplied forwarded headers."
+        : `Pushes are accepted only from Fleet Edge (${permitted.join(", ")}). ` +
+          `Set TATA_PUSH_URL_TOKEN in the registered callback URL, or update ` +
+          `TATA_PUSH_ALLOWED_IPS if the provider's address has changed.`,
   };
 }
 
 export async function POST(req: Request) {
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    // A probe may POST an empty body with no content type at all. Nothing is
-    // written on this path, so acknowledging it cannot be abused.
-    return NextResponse.json({ ok: true, probe: true, accepted: 0 });
-  }
+  const parsed = await readTelemetryJson(req);
+  if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: parsed.status });
+  const body = parsed.value;
 
   // Same reasoning as GET: an empty body carries no telemetry, so treat it as a
   // reachability check rather than demanding a key that has not been issued.

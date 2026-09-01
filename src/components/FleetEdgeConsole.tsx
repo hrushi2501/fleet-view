@@ -17,16 +17,19 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import {
   Search, SlidersHorizontal, Download, Share2, MapPinned, Route, Info,
-  Fuel, Droplet, Clock, X, Play, TriangleAlert,
-  RefreshCw, Loader2, Truck, Radio,
+  Fuel, Droplet, Clock, X, Play,
+  RefreshCw, Loader2, Truck, Radio, ExternalLink,
 } from "lucide-react";
 import { cn, num } from "@/lib/utils";
 import { AssetGlass } from "@/components/AssetGlass";
 import type { LiveFleet, LiveStatus, LiveVehicle } from "@/lib/fleet-edge-live";
 import type { FleetEdgeMapMarker, MapView } from "@/components/FleetEdgeMap";
 import { PlaybackBar, useTrack } from "@/components/FleetEdgePlayback";
+import { useLiveFleet } from "@/lib/query-hooks";
+import { DISPATCH_STATUS_ORDER, sortLiveVehiclesByStatus } from "@/lib/live-fleet-order";
 
 const FleetEdgeMap = dynamic(() => import("./FleetEdgeMap"), {
   ssr: false,
@@ -36,6 +39,8 @@ const FleetEdgeMap = dynamic(() => import("./FleetEdgeMap"), {
     </div>
   ),
 });
+
+const POLL_MS = 15_000;
 
 // ---------------------------------------------------------------------------
 // Presentation vocabulary
@@ -50,7 +55,7 @@ const STATUS_LABEL: Record<LiveStatus, string> = {
 };
 
 /** Order of the filter strip. Moving first: it is what a dispatcher looks at. */
-const STATUS_ORDER: LiveStatus[] = ["MOVING", "IDLING", "STOPPED", "OFFLINE", "BREAKDOWN"];
+const STATUS_ORDER: LiveStatus[] = [...DISPATCH_STATUS_ORDER];
 
 const STATUS_BAR: Record<LiveStatus, string> = {
   MOVING: "bg-emerald-500",
@@ -122,12 +127,10 @@ function fmtClock(iso: string | null): string {
 // ---------------------------------------------------------------------------
 
 /** How often the console re-reads the fleet. The sync itself runs every 2 min. */
-const POLL_MS = 30_000;
-
 export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
-  const [fleet, setFleet] = useState<LiveFleet>(initial);
-  const [refreshing, setRefreshing] = useState(false);
-  const [staleError, setStaleError] = useState<string | null>(null);
+  const { data: liveData, isFetching: refreshing, error: liveError, refetch } = useLiveFleet(initial);
+  const fleet = liveData ?? initial;
+  const staleError = liveError instanceof Error ? liveError.message : liveError ? "Refresh failed" : null;
 
   const [status, setStatus] = useState<LiveStatus | "ALL">("ALL");
   const [listTab, setListTab] = useState<"ALL" | "ON_TRIP">("ALL");
@@ -135,6 +138,7 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [view, setView] = useState<MapView>("streets");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [focusRequest, setFocusRequest] = useState(0);
   const [glassId, setGlassId] = useState<string | null>(null);
   const [playbackOpen, setPlaybackOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -142,33 +146,29 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
   // Ticks once a second purely so the "12m 56s" chips count up. Kept separate
   // from the poll so the age of the data is honest between refreshes rather
   // than frozen at whatever it was when the last response landed.
-  const [now, setNow] = useState(() => Date.now());
+  // The first client render must use the same timestamp the server used. A
+  // `Date.now()` initializer crosses a second boundary during hydration and
+  // causes React to discard the tree, which then duplicates data requests.
+  const initialNow = Date.parse(initial.generatedAt);
+  const [now, setNow] = useState(() => Number.isFinite(initialNow) ? initialNow : 0);
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
+    const tick = () => setNow(Date.now());
+    tick();
+    const t = setInterval(tick, 1000);
     return () => clearInterval(t);
   }, []);
 
   const refresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      const res = await fetch("/api/telematics/live", { cache: "no-store" });
-      if (!res.ok) throw new Error(`Refresh failed (${res.status})`);
-      setFleet((await res.json()) as LiveFleet);
-      setStaleError(null);
-    } catch (e) {
-      // The screen keeps the last good fleet and says the refresh failed. It
-      // must never blank out — a dispatcher losing the map because one poll
-      // timed out is worse than a map with a warning on it.
-      setStaleError(e instanceof Error ? e.message : "Refresh failed");
-    } finally {
-      setRefreshing(false);
-    }
-  }, []);
+    await refetch();
+  }, [refetch]);
 
-  useEffect(() => {
-    const t = setInterval(refresh, POLL_MS);
-    return () => clearInterval(t);
-  }, [refresh]);
+  // Selection and map focus are intentionally separate. Selecting an already
+  // open vehicle must still return the map to it when a dispatcher clicks the
+  // same row again after panning elsewhere.
+  const focusVehicle = useCallback((vehicleId: string) => {
+    setSelectedId(vehicleId);
+    setFocusRequest((request) => request + 1);
+  }, []);
 
   const selected = useMemo(
     () => fleet.vehicles.find((v) => v.id === selectedId) ?? null,
@@ -179,7 +179,7 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return fleet.vehicles.filter((v) => {
+    const filtered = fleet.vehicles.filter((v) => {
       if (status !== "ALL" && v.status !== status) return false;
       if (listTab === "ON_TRIP" && !v.onTrip) return false;
       if (!q) return true;
@@ -187,6 +187,7 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
         .filter(Boolean)
         .some((s) => (s as string).toLowerCase().includes(q));
     });
+    return sortLiveVehiclesByStatus(filtered);
   }, [fleet.vehicles, status, listTab, query]);
 
   const markers: FleetEdgeMapMarker[] = useMemo(
@@ -208,15 +209,12 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
 
   return (
     <div className="space-y-3">
-      {fleet.unsubscribedCount > 0 && (
-        <SubscriptionBanner count={fleet.unsubscribedCount} total={fleet.counts.ALL} />
-      )}
-
       <div className="relative h-[calc(100vh-15rem)] min-h-[600px] w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-sm">
         <FleetEdgeMap
           markers={markers}
           selectedId={selectedId}
-          onSelect={setSelectedId}
+          focusRequest={focusRequest}
+          onSelect={focusVehicle}
           view={view}
           track={playbackOpen ? track.points : null}
           trackCursor={playbackOpen ? track.cursor : null}
@@ -241,7 +239,7 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
 
           <button
             onClick={() => {
-              if (!selectedId && visible.length) setSelectedId(visible[0].id);
+              if (!selectedId && visible.length) focusVehicle(visible[0].id);
               setPlaybackOpen((v) => !v);
             }}
             className={cn(
@@ -361,10 +359,10 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
                   v={v}
                   now={now}
                   active={v.id === selectedId}
-                  onSelect={() => setSelectedId(v.id)}
+                  onSelect={() => focusVehicle(v.id)}
                   onDetail={() => setGlassId(v.id)}
                   onPlayback={() => {
-                    setSelectedId(v.id);
+                    focusVehicle(v.id);
                     setPlaybackOpen(true);
                   }}
                 />
@@ -386,27 +384,6 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
       </div>
 
       {glassId && <AssetGlass assetId={glassId} onClose={() => setGlassId(null)} />}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Banner
-// ---------------------------------------------------------------------------
-
-function SubscriptionBanner({ count, total }: { count: number; total: number }) {
-  return (
-    <div className="flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
-      <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
-      <p className="text-sm text-rose-900">
-        <span className="font-semibold">
-          {count} of {total} vehicle{total === 1 ? "" : "s"} {count === 1 ? "is" : "are"} not
-          reporting telemetry.
-        </span>{" "}
-        They are in the register but no Fleet Edge sample has arrived for them, so their position,
-        fuel and meter on this screen are blank rather than stale. Adding a vehicle to tracking is a
-        commercial change with Tata Fleet Edge, not a software change.
-      </p>
     </div>
   );
 }
@@ -698,15 +675,17 @@ function DetailCard({
           <button onClick={onClose} className="text-slate-400 transition-colors hover:text-slate-700">
             <X className="h-4 w-4" />
           </button>
-          <span
-            className={cn(
-              "rounded-full px-2 py-0.5 text-[10px] font-bold text-white",
-              v.status === "OFFLINE" ? "bg-slate-400" : "bg-violet-500",
-            )}
-            title={v.lastUpdate ? `Last sample ${fmtClock(v.lastUpdate)}` : "No sample ever received"}
-          >
-            {fmtAge(v.lastUpdate, now)}
-          </span>
+          <div className="flex items-center gap-1">
+            <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold text-white", STATUS_BAR[v.status])}>
+              {STATUS_LABEL[v.status]}
+            </span>
+            <span
+              className="rounded-full bg-violet-500 px-2 py-0.5 text-[10px] font-bold text-white"
+              title={v.lastUpdate ? `Last sample ${fmtClock(v.lastUpdate)}` : "No sample ever received"}
+            >
+              {fmtAge(v.lastUpdate, now)}
+            </span>
+          </div>
         </div>
       </header>
 
@@ -835,18 +814,24 @@ function DetailCard({
         </Section>
       )}
 
-      <div className="grid grid-cols-2 gap-2 border-t border-slate-100 px-3.5 py-3">
+      <div className="grid grid-cols-3 gap-2 border-t border-slate-100 px-3.5 py-3">
         <button
           onClick={onPlayback}
           className="rounded-lg border border-slate-200 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-brand-300 hover:text-brand-600"
         >
           <Route className="mr-1 inline h-3.5 w-3.5" /> Track Route
         </button>
+        <Link
+          href={`/fleet/${v.id}`}
+          className="inline-flex items-center justify-center rounded-lg border border-slate-200 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-brand-300 hover:text-brand-600"
+        >
+          <ExternalLink className="mr-1 h-3.5 w-3.5" /> Full Page
+        </Link>
         <button
           onClick={onOpenGlass}
           className="rounded-lg bg-brand-600 py-2 text-xs font-semibold text-white transition-colors hover:bg-brand-700"
         >
-          <Info className="mr-1 inline h-3.5 w-3.5" /> Full Detail
+          <Info className="mr-1 inline h-3.5 w-3.5" /> Details
         </button>
       </div>
     </div>

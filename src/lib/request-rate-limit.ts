@@ -1,0 +1,100 @@
+/**
+ * Shared rolling-window limiter for authenticated, expensive operations.
+ *
+ * The state is stored in `Setting`, rather than a process-local map, because
+ * route handlers may run in multiple serverless instances. A local counter
+ * would give every warm instance its own full allowance.
+ */
+import { db } from "@/lib/db";
+
+type Window = { requests: number[] };
+
+export type RateLimitVerdict =
+  | { ok: true; remaining: number }
+  | { ok: false; remaining: 0; retryInSeconds: number };
+
+export type RateLimitInput = {
+  /** Stable, internal operation name; do not put user-supplied text here. */
+  scope: string;
+  /** A stable authenticated principal id, normally `session.id`. */
+  subject: string;
+  limit: number;
+  windowMs: number;
+};
+
+function keyFor({ scope, subject }: Pick<RateLimitInput, "scope" | "subject">): string {
+  return `rate-limit:${scope}:${subject}`;
+}
+
+function timestamps(raw: string | undefined): number[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as Window;
+    return Array.isArray(parsed?.requests)
+      ? parsed.requests.filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+      : [];
+  } catch {
+    // Corrupt limiter state must never make an endpoint permanently unusable.
+    return [];
+  }
+}
+
+/** Pure rolling-window decision, exported so the boundary arithmetic is testable. */
+export function rateLimitDecision(
+  previous: number[],
+  { limit, windowMs }: Pick<RateLimitInput, "limit" | "windowMs">,
+  now: number = Date.now(),
+): { verdict: RateLimitVerdict; requests: number[] } {
+  if (!Number.isSafeInteger(limit) || limit < 1) throw new Error("Rate limit must be a positive integer.");
+  if (!Number.isFinite(windowMs) || windowMs <= 0) throw new Error("Rate-limit window must be positive.");
+
+  const requests = previous.filter((at) => at <= now && now - at < windowMs).sort((a, b) => a - b);
+  if (requests.length >= limit) {
+    const oldest = requests[0] ?? now;
+    return {
+      verdict: {
+        ok: false,
+        remaining: 0,
+        retryInSeconds: Math.max(1, Math.ceil((oldest + windowMs - now) / 1000)),
+      },
+      requests,
+    };
+  }
+
+  requests.push(now);
+  return { verdict: { ok: true, remaining: limit - requests.length }, requests };
+}
+
+/**
+ * Reserves a slot before an expensive provider call.
+ *
+ * Serializable transactions prevent concurrent requests for the same user
+ * from all observing the same remaining slot. Prisma reports serialization
+ * conflicts as P2034, so retrying is safe: the losing request rechecks the
+ * just-written timestamp instead of overspending the limit.
+ */
+export async function reserveRateLimit(input: RateLimitInput): Promise<RateLimitVerdict> {
+  const key = keyFor(input);
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await db.$transaction(async (tx) => {
+        const row = await tx.setting.findUnique({ where: { key } });
+        const decision = rateLimitDecision(timestamps(row?.value), input);
+        if (!decision.verdict.ok) return decision.verdict;
+
+        const value = JSON.stringify({ requests: decision.requests } satisfies Window);
+        await tx.setting.upsert({ where: { key }, update: { value }, create: { key, value } });
+        return decision.verdict;
+      }, { isolationLevel: "Serializable" });
+    } catch (error) {
+      // Postgres asks the caller to retry a serializable transaction. Do not
+      // retry arbitrary database errors, which could conceal an outage.
+      if (!(typeof error === "object" && error !== null && "code" in error && error.code === "P2034") || attempt === 2) {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error("Unreachable rate-limit retry state.");
+}

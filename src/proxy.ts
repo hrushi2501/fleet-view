@@ -10,7 +10,10 @@ import { NextRequest, NextResponse } from "next/server";
  * Treat this as a redirect for humans, not as an access control.
  */
 export function proxy(req: NextRequest) {
-  const session = req.cookies.get("fv_session")?.value;
+  // Must stay aligned with `src/lib/auth.ts`. Proxy runs in a separate,
+  // edge-oriented bundle, so it cannot import the bcrypt/Prisma auth module.
+  const sessionCookie = process.env.NODE_ENV === "production" ? "__Host-fv_session" : "fv_session";
+  const session = req.cookies.get(sessionCookie)?.value;
   const { pathname } = req.nextUrl;
 
   // Only guard non-login routes. Whether a session is *valid* is decided by the

@@ -40,7 +40,6 @@
  * the lock its successor is holding.
  * ─────────────────────────────────────────────────────────────────────────────
  */
-import { randomUUID } from "node:crypto";
 import { db } from "@/lib/db";
 
 const key = (name: string) => `lock:${name}`;
@@ -70,7 +69,7 @@ export async function withPollLock<T>(
   fn: () => Promise<T>,
 ): Promise<{ ran: true; result: T } | { ran: false; heldBy: string | null }> {
   const k = key(name);
-  const owner = randomUUID();
+  const owner = typeof globalThis.crypto?.randomUUID === "function" ? globalThis.crypto.randomUUID() : `${Math.random().toString(36).slice(2)}-${Date.now()}`;
   const now = Date.now();
   const mine = JSON.stringify({ owner, expiresAt: now + ttlMs } satisfies Lease);
 

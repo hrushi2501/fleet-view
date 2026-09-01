@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
 const db = new PrismaClient();
 
 const rand = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
@@ -22,6 +23,27 @@ async function main() {
     process.exit(1);
   }
 
+  // Demo data is often copied into a long-lived environment. Do not write
+  // published credentials (or plaintext passwords) even in this destructive
+  // development-only seed path.
+  const demoAdminPassword = process.env.DEMO_ADMIN_PASSWORD ?? "";
+  const demoSecondaryAdminPassword = process.env.DEMO_SECONDARY_ADMIN_PASSWORD ?? "";
+  const isStrongPassword = (value) =>
+    value.length >= 12 && /[A-Za-z]/.test(value) && /\d/.test(value) && /[^A-Za-z0-9]/.test(value);
+  if (!isStrongPassword(demoAdminPassword) || !isStrongPassword(demoSecondaryAdminPassword)) {
+    console.error(
+      "\nRefusing to seed: set distinct DEMO_ADMIN_PASSWORD and DEMO_SECONDARY_ADMIN_PASSWORD values.\n" +
+        "Each must be at least 12 characters with a letter, number, and symbol; never use a published password.\n",
+    );
+    process.exit(1);
+  }
+  if (demoAdminPassword === demoSecondaryAdminPassword) {
+    console.error("\nRefusing to seed: demo administrator accounts must not share a password.\n");
+    process.exit(1);
+  }
+  const adminPasswordHash = await bcrypt.hash(demoAdminPassword, 10);
+  const secondaryAdminPasswordHash = await bcrypt.hash(demoSecondaryAdminPassword, 10);
+
   console.log("Clearing existing database tables...");
   await db.inventoryTransaction.deleteMany();
   await db.inventoryStock.deleteMany();
@@ -44,10 +66,10 @@ async function main() {
 
   console.log("Creating Admin Users...");
   await db.user.create({
-    data: { email: "admin@mahadev.com", name: "Rohit Jangid", role: "Admin", password: "admin123" },
+    data: { email: "admin@mahadev.com", name: "Rohit Jangid", role: "Admin", password: adminPasswordHash },
   });
   await db.user.create({
-    data: { email: "administrator@madevcons.com", name: "Administrator", role: "Admin", password: "iiuk9vUicZdko5hw" },
+    data: { email: "administrator@madevcons.com", name: "Administrator", role: "Admin", password: secondaryAdminPasswordHash },
   });
 
   console.log("Creating Projects...");

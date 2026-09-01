@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useTransition, useEffect } from "react";
-import { AlertTriangle, Loader2, X, Trash2, ShieldAlert } from "lucide-react";
+import { AlertTriangle, Loader2, X, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface ConfirmDialogProps {

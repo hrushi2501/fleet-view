@@ -7,7 +7,7 @@ import { audit } from "@/lib/audit";
 import { sweepAlerts, dueForEscalation, DEFAULT_ALERT_RULES, type AlertRuleLite, type SweepInput } from "@/lib/alerts";
 import { pmDue, type ScheduleLite } from "@/lib/maintenance";
 import { allocationConflicts, mobilizationStats, type AllocationLite, type MobLite } from "@/lib/operations";
-import { requireAction, ActionError, safe } from "@/lib/guard";
+import { requireAction, safe } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;

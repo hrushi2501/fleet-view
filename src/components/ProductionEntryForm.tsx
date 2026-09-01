@@ -1,96 +1,112 @@
 "use client";
 
-import React, { useState } from "react";
-import { Card, SectionTitle, Badge } from "@/components/ui";
+import React, { useState, useTransition } from "react";
+import { Card, SectionTitle } from "@/components/ui";
 import {
   Boxes,
   Truck,
   FolderKanban,
-  MapPin,
-  Clock,
-  Fuel,
-  Sun,
-  CloudRain,
-  Upload,
-  CheckCircle2,
-  FileText,
   User,
+  CheckCircle2,
   AlertCircle,
+  Loader2,
 } from "lucide-react";
-import mockData from "@/lib/mock-data.json";
+import { saveProduction } from "@/app/(app)/production/actions";
+import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { invalidateProductionQueries } from "@/lib/query-invalidation";
 
-export function ProductionEntryForm() {
-  const [projectId, setProjectId] = useState(mockData.projects[0].id);
-  const [siteId, setSiteId] = useState(mockData.sites[0].id);
-  const [vehicleId, setVehicleId] = useState(mockData.vehicles[0].id);
-  const [operatorId, setOperatorId] = useState(mockData.drivers[1].id);
-  const [outputType, setOutputType] = useState("TONNES");
-  const [quantity, setQuantity] = useState<number | "">(450);
-  const [hours, setHours] = useState<number | "">(8.5);
-  const [fuelUsed, setFuelUsed] = useState<number | "">(120);
-  const [weather, setWeather] = useState("SUNNY");
-  const [status, setStatus] = useState("COMPLETED");
-  const [remarks, setRemarks] = useState("");
+interface Option {
+  id: string;
+  label: string;
+}
 
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+const MATERIALS = ["Earth", "GSB", "WMM", "Aggregate", "Sand", "Bitumen", "Debris", "Concrete", "Other"];
+
+export function ProductionEntryForm({
+  assets = [],
+  projects = [],
+  drivers = [],
+}: {
+  assets?: Option[];
+  projects?: Option[];
+  drivers?: Option[];
+}) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [pending, startTransition] = useTransition();
+
+  const [assetId, setAssetId] = useState(assets[0]?.id || "");
+  const [projectId, setProjectId] = useState(projects[0]?.id || "");
+  const [driverId, setDriverId] = useState(drivers[0]?.id || "");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [shift, setShift] = useState("DAY");
+  const [material, setMaterial] = useState("Aggregate");
+
+  const [trips, setTrips] = useState<number | "">("");
+  const [tonnage, setTonnage] = useState<number | "">("");
+  const [volumeM3, setVolumeM3] = useState<number | "">("");
+  const [cycles, setCycles] = useState<number | "">("");
+  const [workedHours, setWorkedHours] = useState<number | "">("");
+  const [idleHours, setIdleHours] = useState<number | "">("");
+  const [distanceKm, setDistanceKm] = useState<number | "">("");
+  const [leadKm, setLeadKm] = useState<number | "">("");
+  const [note, setNote] = useState("");
+
   const [submitted, setSubmitted] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      if (file.size > 5 * 1024 * 1024) {
-        setErrors((prev) => ({ ...prev, image: "Image size must be under 5MB." }));
-        return;
-      }
-      const previewUrl = URL.createObjectURL(file);
-      setImagePreview(previewUrl);
-      setErrors((prev) => ({ ...prev, image: "" }));
-    }
-  };
-
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubmitting) return;
+    if (pending) return;
+    setErrorMsg(null);
 
-    const newErrors: Record<string, string> = {};
-
-    const qty = Number(quantity);
-    const hrs = Number(hours);
-    const fuel = Number(fuelUsed);
-
-    if (!quantity || isNaN(qty) || qty <= 0) {
-      newErrors.quantity = "Please enter a valid output quantity greater than 0.";
-    } else if (qty > 100000) {
-      newErrors.quantity = "Quantity exceeds maximum single-day threshold (100,000).";
-    }
-
-    if (!hours || isNaN(hrs) || hrs <= 0) {
-      newErrors.hours = "Working hours must be greater than 0.";
-    } else if (hrs > 24) {
-      newErrors.hours = "Daily working hours cannot exceed 24 hours.";
-    }
-
-    if (fuelUsed !== "" && (isNaN(fuel) || fuel < 0)) {
-      newErrors.fuelUsed = "Fuel used cannot be negative.";
-    } else if (fuel > 1000) {
-      newErrors.fuelUsed = "Fuel consumption exceeds maximum single-day tank threshold (1,000 L).";
-    }
-
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
+    if (!assetId) {
+      setErrorMsg("Please select a machine.");
       return;
     }
 
-    setIsSubmitting(true);
-    setErrors({});
-    
-    setTimeout(() => {
-      setIsSubmitting(false);
-      setSubmitted(true);
-    }, 400);
+    const fd = new FormData();
+    fd.append("assetId", assetId);
+    fd.append("date", date);
+    fd.append("shift", shift);
+    if (projectId) fd.append("projectId", projectId);
+    if (driverId) fd.append("driverId", driverId);
+    if (material) fd.append("material", material);
+    if (trips !== "") fd.append("trips", String(trips));
+    if (tonnage !== "") fd.append("tonnage", String(tonnage));
+    if (volumeM3 !== "") fd.append("volumeM3", String(volumeM3));
+    if (cycles !== "") fd.append("cycles", String(cycles));
+    if (workedHours !== "") fd.append("workedHours", String(workedHours));
+    if (idleHours !== "") fd.append("idleHours", String(idleHours));
+    if (distanceKm !== "") fd.append("distanceKm", String(distanceKm));
+    if (leadKm !== "") fd.append("leadKm", String(leadKm));
+    if (note) fd.append("note", note);
+    fd.append("source", "MANUAL");
+
+    startTransition(async () => {
+      const res = await saveProduction(fd);
+      if (res && "error" in res && res.error) {
+        setErrorMsg(res.error);
+      } else {
+        setSubmitted(true);
+        await invalidateProductionQueries(queryClient, assetId);
+        router.refresh();
+      }
+    });
+  };
+
+  const handleReset = () => {
+    setSubmitted(false);
+    setTrips("");
+    setTonnage("");
+    setVolumeM3("");
+    setCycles("");
+    setWorkedHours("");
+    setIdleHours("");
+    setDistanceKm("");
+    setLeadKm("");
+    setNote("");
   };
 
   return (
@@ -111,231 +127,297 @@ export function ProductionEntryForm() {
               The entry has been appended to the daily productivity dashboard and site ledger.
             </p>
             <button
-              onClick={() => setSubmitted(false)}
-              className="mt-2 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 shadow-md"
+              onClick={handleReset}
+              className="mt-2 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 shadow-md transition-all active:scale-95"
             >
               Log Another Entry
             </button>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-6 mt-6">
-            {/* Section 1: Project & Site */}
+            {errorMsg && (
+              <div className="flex items-center gap-2 rounded-xl bg-rose-50 p-4 text-sm text-rose-700 border border-rose-200">
+                <AlertCircle className="h-5 w-5 shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
+
+            {/* Grid Form Fields */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {/* Machine Selection */}
               <div>
-                <label className="block text-xs font-semibold uppercase text-slate-600 mb-1.5 flex items-center gap-1.5">
-                  <FolderKanban className="h-4 w-4 text-brand-600" /> Project
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                  <span className="flex items-center gap-1.5">
+                    <Truck className="h-3.5 w-3.5 text-brand-600" /> Machine / Equipment *
+                  </span>
+                </label>
+                <select
+                  value={assetId}
+                  onChange={(e) => setAssetId(e.target.value)}
+                  required
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-800 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                >
+                  <option value="" disabled>Select Machine</option>
+                  {assets.map((a) => (
+                    <option key={a.id} value={a.id}>{a.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Date & Shift */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                    Date *
+                  </label>
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    required
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-800 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                    Shift *
+                  </label>
+                  <select
+                    value={shift}
+                    onChange={(e) => setShift(e.target.value)}
+                    required
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-800 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                  >
+                    <option value="DAY">Day Shift</option>
+                    <option value="NIGHT">Night Shift</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Project / Site */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                  <span className="flex items-center gap-1.5">
+                    <FolderKanban className="h-3.5 w-3.5 text-brand-600" /> Project / Site
+                  </span>
                 </label>
                 <select
                   value={projectId}
                   onChange={(e) => setProjectId(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 p-3 text-sm font-medium text-slate-900 focus:border-brand-500 focus:outline-none"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-800 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                 >
-                  {mockData.projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.code})
-                    </option>
+                  <option value="">— Unassigned / General —</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.label}</option>
                   ))}
                 </select>
               </div>
 
+              {/* Operator / Driver */}
               <div>
-                <label className="block text-xs font-semibold uppercase text-slate-600 mb-1.5 flex items-center gap-1.5">
-                  <MapPin className="h-4 w-4 text-brand-600" /> Construction Site Location
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                  <span className="flex items-center gap-1.5">
+                    <User className="h-3.5 w-3.5 text-brand-600" /> Operator / Driver
+                  </span>
                 </label>
                 <select
-                  value={siteId}
-                  onChange={(e) => setSiteId(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 p-3 text-sm font-medium text-slate-900 focus:border-brand-500 focus:outline-none"
+                  value={driverId}
+                  onChange={(e) => setDriverId(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-800 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                 >
-                  {mockData.sites.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.code})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Section 2: Vehicle & Operator */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-600 mb-1.5 flex items-center gap-1.5">
-                  <Truck className="h-4 w-4 text-brand-600" /> Vehicle / Equipment
-                </label>
-                <select
-                  value={vehicleId}
-                  onChange={(e) => setVehicleId(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 p-3 text-sm font-medium text-slate-900 focus:border-brand-500 focus:outline-none"
-                >
-                  {mockData.vehicles.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.code} - {v.name} ({v.assetClass})
-                    </option>
+                  <option value="">— None / Unassigned —</option>
+                  {drivers.map((d) => (
+                    <option key={d.id} value={d.id}>{d.label}</option>
                   ))}
                 </select>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-600 mb-1.5 flex items-center gap-1.5">
-                  <User className="h-4 w-4 text-brand-600" /> Operator / Driver
+              {/* Material */}
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                  <span className="flex items-center gap-1.5">
+                    <Boxes className="h-3.5 w-3.5 text-brand-600" /> Material Moved / Handled
+                  </span>
                 </label>
                 <select
-                  value={operatorId}
-                  onChange={(e) => setOperatorId(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 p-3 text-sm font-medium text-slate-900 focus:border-brand-500 focus:outline-none"
+                  value={material}
+                  onChange={(e) => setMaterial(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-800 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                 >
-                  {mockData.drivers.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name} ({d.empCode})
-                    </option>
+                  {MATERIALS.map((m) => (
+                    <option key={m} value={m}>{m}</option>
                   ))}
                 </select>
               </div>
             </div>
 
-            {/* Section 3: Output Type & Quantity */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-600 mb-1.5">Output Unit Type</label>
-                <select
-                  value={outputType}
-                  onChange={(e) => setOutputType(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 p-3 text-sm font-medium text-slate-900 focus:border-brand-500 focus:outline-none"
-                >
-                  <option value="TONNES">Tonnes (t)</option>
-                  <option value="CUBIC_METRES">Cubic Metres (m³)</option>
-                  <option value="TRIPS">Total Trips</option>
-                  <option value="COMPACTED_SQM">Compacted Area (m²)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-600 mb-1.5">Output Quantity</label>
-                <input
-                  type="number"
-                  placeholder="e.g. 450"
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value ? Number(e.target.value) : "")}
-                  className={`w-full rounded-xl border p-3 text-sm font-semibold focus:outline-none ${
-                    errors.quantity ? "border-rose-500 bg-rose-50" : "border-slate-300"
-                  }`}
-                />
-                {errors.quantity && <p className="mt-1 text-xs text-rose-600">{errors.quantity}</p>}
-              </div>
-            </div>
-
-            {/* Section 4: Working Hours & Fuel Used */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-600 mb-1.5 flex items-center gap-1.5">
-                  <Clock className="h-4 w-4 text-brand-600" /> Working Hours (hrs)
-                </label>
-                <input
-                  type="number"
-                  step="0.5"
-                  placeholder="e.g. 8.5"
-                  value={hours}
-                  onChange={(e) => setHours(e.target.value ? Number(e.target.value) : "")}
-                  className={`w-full rounded-xl border p-3 text-sm font-semibold focus:outline-none ${
-                    errors.hours ? "border-rose-500 bg-rose-50" : "border-slate-300"
-                  }`}
-                />
-                {errors.hours && <p className="mt-1 text-xs text-rose-600">{errors.hours}</p>}
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-600 mb-1.5 flex items-center gap-1.5">
-                  <Fuel className="h-4 w-4 text-brand-600" /> Diesel Fuel Consumed (Litres)
-                </label>
-                <input
-                  type="number"
-                  placeholder="e.g. 120"
-                  value={fuelUsed}
-                  onChange={(e) => setFuelUsed(e.target.value ? Number(e.target.value) : "")}
-                  className={`w-full rounded-xl border p-3 text-sm font-semibold focus:outline-none ${
-                    errors.fuelUsed ? "border-rose-500 bg-rose-50" : "border-slate-300"
-                  }`}
-                />
-                {errors.fuelUsed && <p className="mt-1 text-xs text-rose-600">{errors.fuelUsed}</p>}
-              </div>
-            </div>
-
-            {/* Section 5: Weather & Status */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-600 mb-1.5">Weather Conditions</label>
-                <select
-                  value={weather}
-                  onChange={(e) => setWeather(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 p-3 text-sm font-medium text-slate-900 focus:border-brand-500 focus:outline-none"
-                >
-                  <option value="SUNNY">☀️ Clear / Sunny</option>
-                  <option value="CLOUDY">⛅ Overcast / Cloudy</option>
-                  <option value="RAINY">🌧️ Rain Interrupted</option>
-                  <option value="HOT">🔥 Extreme Heat</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-600 mb-1.5">Work Status</label>
-                <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 p-3 text-sm font-medium text-slate-900 focus:border-brand-500 focus:outline-none"
-                >
-                  <option value="COMPLETED">Completed Shift Output</option>
-                  <option value="PARTIAL">Partial Output (Breakdown/Rain)</option>
-                  <option value="IDLE">Idle Shift (No Material)</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Section 6: Image Upload */}
-            <div>
-              <label className="block text-xs font-semibold uppercase text-slate-600 mb-1.5 flex items-center gap-1.5">
-                <Upload className="h-4 w-4 text-brand-600" /> Upload Site Work Proof / Slip Photo
-              </label>
-              <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 p-4 text-center hover:bg-slate-50 transition-colors">
-                {imagePreview ? (
-                  <div className="relative">
-                    <img src={imagePreview} alt="Preview" className="h-32 object-cover rounded-xl shadow-md" />
-                    <button
-                      type="button"
-                      onClick={() => setImagePreview(null)}
-                      className="mt-2 text-xs font-semibold text-rose-600 hover:underline"
-                    >
-                      Remove Photo
-                    </button>
-                  </div>
-                ) : (
-                  <label className="cursor-pointer">
-                    <Upload className="mx-auto h-8 w-8 text-slate-400 mb-1" />
-                    <span className="text-xs font-semibold text-brand-600">Click to upload photo</span>
-                    <span className="text-xs text-slate-400 block">PNG, JPG up to 5MB</span>
-                    <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+            {/* Output Metric Inputs */}
+            <div className="border-t border-slate-100 pt-5">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 mb-3">
+                Production Output & Working Hours (Fill whichever apply)
+              </h4>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Trips (Count)
                   </label>
-                )}
+                  <input
+                    type="number"
+                    step="1"
+                    min="0"
+                    placeholder="e.g. 18"
+                    value={trips}
+                    onChange={(e) => setTrips(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 focus:border-brand-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Tonnage (Tonnes)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="e.g. 450.5"
+                    value={tonnage}
+                    onChange={(e) => setTonnage(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 focus:border-brand-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Volume (m³ / BCM)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="e.g. 320"
+                    value={volumeM3}
+                    onChange={(e) => setVolumeM3(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 focus:border-brand-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Cycles (Count)
+                  </label>
+                  <input
+                    type="number"
+                    step="1"
+                    min="0"
+                    placeholder="e.g. 140"
+                    value={cycles}
+                    onChange={(e) => setCycles(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 focus:border-brand-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Worked Hours
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="24"
+                    placeholder="e.g. 8.5"
+                    value={workedHours}
+                    onChange={(e) => setWorkedHours(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 focus:border-brand-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Idle Hours
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="24"
+                    placeholder="e.g. 1.2"
+                    value={idleHours}
+                    onChange={(e) => setIdleHours(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 focus:border-brand-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Distance (km)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    placeholder="e.g. 145"
+                    value={distanceKm}
+                    onChange={(e) => setDistanceKm(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 focus:border-brand-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Lead (km one-way)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    placeholder="e.g. 6.5"
+                    value={leadKm}
+                    onChange={(e) => setLeadKm(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 focus:border-brand-500 focus:outline-none"
+                  />
+                </div>
               </div>
             </div>
 
-            {/* Section 7: Remarks */}
+            {/* Supervisor Remarks */}
             <div>
-              <label className="block text-xs font-semibold uppercase text-slate-600 mb-1.5">Supervisor Remarks</label>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                Remarks / Site Notes
+              </label>
               <textarea
-                rows={3}
-                placeholder="Notes on lead distance, quarry source, material grade..."
-                value={remarks}
-                onChange={(e) => setRemarks(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 p-3 text-sm focus:border-brand-500 focus:outline-none"
+                rows={2}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="e.g. Quarry blasted rock haulage, minor waiting time at crusher hopper..."
+                className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-medium text-slate-800 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
               />
             </div>
 
-            <button
-              type="submit"
-              className="w-full py-4 rounded-xl bg-brand-500 text-white font-bold text-lg hover:bg-brand-600 shadow-xl shadow-brand-500/30 transition-all"
-            >
-              Submit Daily Production Log
-            </button>
+            {/* Submit Bar */}
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={handleReset}
+                className="rounded-xl px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
+              >
+                Clear Form
+              </button>
+              <button
+                type="submit"
+                disabled={pending}
+                className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-6 py-2.5 text-sm font-bold text-white shadow-md hover:bg-brand-700 transition-all disabled:opacity-60 active:scale-95"
+              >
+                {pending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Saving...
+                  </>
+                ) : (
+                  "Save Production Log"
+                )}
+              </button>
+            </div>
           </form>
         )}
       </Card>

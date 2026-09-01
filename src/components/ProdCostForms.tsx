@@ -4,8 +4,13 @@ import { useState, useTransition, ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { X, Plus, Loader2, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/Toast";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { useQueryClient } from "@tanstack/react-query";
+import { invalidateAllQueries, invalidateProductionQueries } from "@/lib/query-invalidation";
 import { saveProduction, deleteProduction, saveProdNorm, seedProdNorms } from "@/app/(app)/production/actions";
 import { saveCost, deleteCost, saveRevenue, deleteRevenue, saveDepreciation } from "@/app/(app)/costs/actions";
+import { isActionError } from "@/lib/action-result";
 
 type Opt = { id: string; label: string };
 
@@ -78,11 +83,25 @@ export function ProductionForm({ assets, projects, drivers }: { assets: Opt[]; p
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+
   return (
     <>
       <Trigger onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Log Production</Trigger>
       <Modal open={open} onClose={() => setOpen(false)} title="Log a Shift's Output" subtitle="Fill in whichever units apply to the machine — trips for tippers, m³ for excavators, tonnes for crushers.">
-        <form action={(fd) => start(async () => { await saveProduction(fd); setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
+        <form
+          action={(fd) =>
+            start(async () => {
+              const result = await saveProduction(fd);
+              if (isActionError(result)) { toast.error("Production not saved", result.error); return; }
+              setOpen(false);
+              await invalidateProductionQueries(queryClient);
+              router.refresh();
+            })
+          }
+          className="grid gap-4 sm:grid-cols-2"
+        >
           <Sel label="Machine" name="assetId" required options={assets.map((a) => ({ value: a.id, label: a.label }))} />
           <Inp label="Date" name="date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
           <Sel label="Shift" name="shift" required options={[{ value: "DAY", label: "Day" }, { value: "NIGHT", label: "Night" }]} />
@@ -117,11 +136,25 @@ export function ProdNormForm({ classes }: { classes: { value: string; label: str
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+
   return (
     <>
       <Trigger onClick={() => setOpen(true)} tone="ghost"><Plus className="h-4 w-4" /> Set Target</Trigger>
       <Modal open={open} onClose={() => setOpen(false)} title="Production Target" subtitle="The band a machine class is expected to deliver. Output below the band is flagged.">
-        <form action={(fd) => start(async () => { await saveProdNorm(fd); setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
+        <form
+          action={(fd) =>
+            start(async () => {
+              const result = await saveProdNorm(fd);
+              if (isActionError(result)) { toast.error("Target not saved", result.error); return; }
+              setOpen(false);
+              await invalidateProductionQueries(queryClient);
+              router.refresh();
+            })
+          }
+          className="grid gap-4 sm:grid-cols-2"
+        >
           <Sel label="Asset Class" name="assetClass" required options={classes} />
           <Sel label="Unit" name="unit" required options={[
             { value: "TRIPS_PER_DAY", label: "Trips per day" }, { value: "M3_PER_HOUR", label: "m³ per hour" },
@@ -139,9 +172,22 @@ export function ProdNormForm({ classes }: { classes: { value: string; label: str
 export function SeedProdNormsButton() {
   const [pending, start] = useTransition();
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+
   return (
-    <button onClick={() => start(async () => { await seedProdNorms(); router.refresh(); })} disabled={pending}
-      className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 disabled:opacity-60">
+    <button
+      onClick={() =>
+        start(async () => {
+          const result = await seedProdNorms();
+          if (isActionError(result)) { toast.error("Defaults not installed", result.error); return; }
+          await invalidateProductionQueries(queryClient);
+          router.refresh();
+        })
+      }
+      disabled={pending}
+      className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 disabled:opacity-60"
+    >
       {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Install Default Targets
     </button>
   );
@@ -153,11 +199,25 @@ export function CostForm({ assets, projects }: { assets: Opt[]; projects: Opt[] 
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+
   return (
     <>
       <Trigger onClick={() => setOpen(true)} tone="ghost"><Plus className="h-4 w-4" /> Add Cost</Trigger>
       <Modal open={open} onClose={() => setOpen(false)} title="Add a Cost Line" subtitle="For costs not already captured automatically. Fuel, maintenance and hire flow in from their own modules — don't double-enter them.">
-        <form action={(fd) => start(async () => { await saveCost(fd); setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
+        <form
+          action={(fd) =>
+            start(async () => {
+              const result = await saveCost(fd);
+              if (isActionError(result)) { toast.error("Cost not saved", result.error); return; }
+              setOpen(false);
+              await invalidateAllQueries(queryClient);
+              router.refresh();
+            })
+          }
+          className="grid gap-4 sm:grid-cols-2"
+        >
           <Sel label="Cost Head" name="costHead" required options={[
             { value: "TYRE", label: "Tyres" }, { value: "OPERATOR", label: "Operator wages" }, { value: "INSURANCE", label: "Insurance" },
             { value: "EMI", label: "EMI / lease" }, { value: "TOLL", label: "Tolls & permits" }, { value: "OTHER", label: "Other" },
@@ -177,11 +237,25 @@ export function RevenueForm({ projects }: { projects: Opt[] }) {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+
   return (
     <>
       <Trigger onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Add Revenue</Trigger>
       <Modal open={open} onClose={() => setOpen(false)} title="Record Project Revenue" subtitle="RA bills and advances, so profitability is revenue minus true cost rather than cost alone.">
-        <form action={(fd) => start(async () => { await saveRevenue(fd); setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
+        <form
+          action={(fd) =>
+            start(async () => {
+              const result = await saveRevenue(fd);
+              if (isActionError(result)) { toast.error("Revenue not saved", result.error); return; }
+              setOpen(false);
+              await invalidateAllQueries(queryClient);
+              router.refresh();
+            })
+          }
+          className="grid gap-4 sm:grid-cols-2"
+        >
           <Sel label="Project" name="projectId" required options={projects.map((p) => ({ value: p.id, label: p.label }))} />
           <Sel label="Type" name="billType" required options={[
             { value: "RA_BILL", label: "RA bill" }, { value: "ADVANCE", label: "Advance" },
@@ -204,11 +278,25 @@ export function DepreciationForm({ asset }: { asset: { id: string; code: string;
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+
   return (
     <>
       <button onClick={() => setOpen(true)} className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">Set Basis</button>
       <Modal open={open} onClose={() => setOpen(false)} title={`Depreciation Basis — ${asset.code}`} subtitle="Drives book value, TCO and the replace-vs-repair call.">
-        <form action={(fd) => start(async () => { await saveDepreciation(asset.id, fd); setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
+        <form
+          action={(fd) =>
+            start(async () => {
+              const result = await saveDepreciation(asset.id, fd);
+              if (isActionError(result)) { toast.error("Depreciation basis not saved", result.error); return; }
+              setOpen(false);
+              await invalidateAllQueries(queryClient);
+              router.refresh();
+            })
+          }
+          className="grid gap-4 sm:grid-cols-2"
+        >
           <Inp label="Acquisition Cost ₹" name="acquisitionCost" type="number" step="0.01" required defaultValue={asset.acquisitionCost} />
           <Inp label="Salvage / Residual Value ₹" name="salvageValue" type="number" step="0.01" defaultValue={asset.salvageValue} />
           <Inp label="Useful Life (years)" name="usefulLifeYears" type="number" step="1" required defaultValue={asset.usefulLifeYears} />
@@ -223,13 +311,11 @@ export function DepreciationForm({ asset }: { asset: { id: string; code: string;
   );
 }
 
-import { useToast } from "@/components/Toast";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
-
 export function DeleteRow({ id, kind }: { id: string; kind: "production" | "cost" | "revenue" }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   const labels = {
     production: "Production Log",
@@ -238,11 +324,17 @@ export function DeleteRow({ id, kind }: { id: string; kind: "production" | "cost
   };
 
   async function handleDelete() {
-    if (kind === "production") await deleteProduction(id);
-    else if (kind === "cost") await deleteCost(id);
-    else await deleteRevenue(id);
+    const result = kind === "production" ? await deleteProduction(id)
+      : kind === "cost" ? await deleteCost(id)
+      : await deleteRevenue(id);
+    if (isActionError(result)) { toast.error("Delete failed", result.error); return; }
 
     toast.success(`✓ ${labels[kind]} deleted successfully`);
+    if (kind === "production") {
+      await invalidateProductionQueries(queryClient);
+    } else {
+      await invalidateAllQueries(queryClient);
+    }
     router.refresh();
   }
 

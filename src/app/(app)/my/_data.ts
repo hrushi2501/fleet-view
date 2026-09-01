@@ -11,8 +11,9 @@
  * caller's `Access` and starts from `access.driverId`; nothing in this file can
  * be called in a way that returns another person's rows.
  *
- * The one rule that matters: a null `driverId` means the login was never linked
- * to a person record. That is an empty state, never a reason to widen the query.
+ * The one rule that matters: a null `driverId` means an administrator has not
+ * assigned this login to a driver. That is an empty state, never a reason to
+ * widen the query or create a driver from a login name.
  * `assetScope()` in `lib/access.ts` encodes the same rule with `"__none__"`, and
  * the loaders below mirror it by returning nothing rather than everything.
  * ─────────────────────────────────────────────────────────────────────────────
@@ -65,8 +66,8 @@ export type MyBasics = { driver: MyDriver | null; vehicle: MyVehicle | null };
 /**
  * The driver behind this login and the vehicle assigned to them.
  *
- * Both come back null-able on purpose. "Not linked to a person" and "linked but
- * no vehicle handed over yet" are two different, ordinary situations on a real
+ * Both come back null-able on purpose. "No driver assigned to this login" and
+ * "driver assigned but no vehicle handed over yet" are two different, ordinary situations on a real
  * site, and each needs its own message rather than a crash or a blank screen.
  *
  * A driver can in principle hold more than one machine. The app shows one,
@@ -75,10 +76,11 @@ export type MyBasics = { driver: MyDriver | null; vehicle: MyVehicle | null };
  * between page loads.
  */
 export async function myBasics(access: Access): Promise<MyBasics> {
-  if (!access.driverId) return { driver: null, vehicle: null };
+  const driverId = access.driverId;
+  if (!driverId) return { driver: null, vehicle: null };
 
   const driver = await db.driver.findUnique({
-    where: { id: access.driverId },
+    where: { id: driverId },
     select: {
       id: true, name: true, empCode: true, phone: true, type: true,
       licenseNo: true, licenseExpiry: true, status: true,
@@ -277,6 +279,8 @@ export function todaysTrips(rows: TripRow[], now: Date = new Date()): TripRow[] 
 
 export type ShiftState = {
   onDuty: boolean;
+  /** An actual open QR trip, as distinct from attendance marked present. */
+  hasActiveTrip: boolean;
   label: string;
   detail: string;
   tone: Tone;
@@ -309,7 +313,7 @@ export async function myShift(driverId: string, now: Date = new Date()): Promise
     const since = session.startedAt.toLocaleTimeString("en-IN", {
       timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: true,
     });
-    return { onDuty: true, label: "On duty", detail: `Shift ${since} se chalu hai`, tone: "ok" };
+    return { onDuty: true, hasActiveTrip: true, label: "On duty", detail: `Shift ${since} se chalu hai`, tone: "ok" };
   }
 
   if (attendance) {
@@ -317,13 +321,14 @@ export async function myShift(driverId: string, now: Date = new Date()): Promise
     const shift = attendance.shift === "NIGHT" ? "Night shift" : "Day shift";
     return {
       onDuty: present,
+      hasActiveTrip: false,
       label: present ? "Marked present" : attendance.status.replace("_", " ").toLowerCase(),
       detail: present ? `${shift} · ${attendance.hours} hours` : shift,
       tone: present ? "ok" : "muted",
     };
   }
 
-  return { onDuty: false, label: "Not started", detail: "Aaj ki haziri abhi mark nahi hui", tone: "muted" };
+  return { onDuty: false, hasActiveTrip: false, label: "Not started", detail: "Aaj ki haziri abhi mark nahi hui", tone: "muted" };
 }
 
 /* ----------------------------------------------------------------- service */
@@ -380,6 +385,7 @@ function rank(s: ServiceItem["status"]): number {
  * marks the ones that decide priority even when the vehicle is still moving.
  */
 export const PROBLEM_KINDS: { value: string; label: string; blocking: boolean }[] = [
+  { value: "ACCIDENT", label: "Accident / collision", blocking: true },
   { value: "ENGINE", label: "Engine problem", blocking: true },
   { value: "BRAKE", label: "Brake / steering problem", blocking: true },
   { value: "TYRE", label: "Tyre problem", blocking: false },

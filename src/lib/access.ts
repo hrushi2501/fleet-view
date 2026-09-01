@@ -21,8 +21,9 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { db } from "@/lib/db";
-import { getSession, permissionsFor, type Session } from "@/lib/auth";
+import { getSession, type Session } from "@/lib/auth";
 import { can, type RoleLite } from "@/lib/rbac";
 
 /**
@@ -126,27 +127,33 @@ export async function setProjectScope(userId: string, projectIds: string[] | nul
  * Everything downstream — page guards, navigation, query scoping — reads this
  * one function, so there is a single definition of what a user may reach.
  */
-export async function getAccess(): Promise<Access | null> {
+async function resolveAccess(): Promise<Access | null> {
   const session = await getSession();
   if (!session) return null;
 
-  const held = await permissionsFor(session.id);
-  if (!held) return null;
+  // This used to make one query for permissions and a second one for driverId.
+  // Keeping them together matters because access is resolved for every RSC/API
+  // request and a transaction-pooler can have only a few database connections.
+  const user = await db.user.findUnique({
+    where: { id: session.id },
+    select: {
+      role: true,
+      active: true,
+      driverId: true,
+      roleRef: { select: { permissions: true } },
+    },
+  });
+  if (!user || user.active === false) return null;
 
-  const codes = held.codes;
-  const group = groupFor(held.legacyRole, codes);
+  const codes = user.roleRef?.permissions.split("\n").map((c) => c.trim()).filter(Boolean) ?? [];
+  const group = groupFor(user.role, codes);
 
   // An account created before roles became data still needs to work. The legacy
   // Admin string is the only fallback that grants anything, matching the
   // allowance `requirePermission` already makes.
-  const role: RoleLite = { name: session.role, label: session.role, permissions: codes, approvalLimit: 0 };
+  const role: RoleLite = { name: user.role, label: user.role, permissions: codes, approvalLimit: 0 };
   const allow = (code: string) =>
-    codes.length === 0 ? held.legacyRole === "Admin" : can(role, code);
-
-  const user = await db.user.findUnique({
-    where: { id: session.id },
-    select: { driverId: true },
-  });
+    codes.length === 0 ? user.role === "Admin" : can(role, code);
 
   // Admins are never scoped; drivers are scoped to themselves, not to projects.
   const projectIds = group === "ADMIN" ? null : await loadProjectScope(session.id);
@@ -160,6 +167,12 @@ export async function getAccess(): Promise<Access | null> {
     projectIds,
   };
 }
+
+// Layouts cannot pass data into their page children. Next 16's documented
+// pattern for ORM-backed identity is React.cache: it is request-scoped, so the
+// layout and page share one authorization lookup without sharing one user's
+// result with another request.
+export const getAccess = cache(resolveAccess);
 
 // ---------------------------------------------------------------------------
 // Page guards

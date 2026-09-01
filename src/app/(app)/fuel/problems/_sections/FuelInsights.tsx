@@ -5,7 +5,7 @@ import { resolveTankThresholds, reconcileTankDynamic, calculateSupplierScorecard
 import { analyzeFleet } from "@/lib/fuel";
 import { getDieselRate } from "@/lib/settings";
 import { NormForm, DipForm, TankForm } from "@/components/FuelForms";
-import { ShieldAlert, IndianRupee, Fuel, HandCoins, ArrowRight, Scale, Sparkles, TrendingUp, TrendingDown } from "lucide-react";
+import { ShieldAlert, IndianRupee, Fuel, HandCoins, ArrowRight, Scale, TrendingUp, TrendingDown } from "lucide-react";
 import Link from "next/link";
 
 import { requirePage, assetScope, projectScope } from "@/lib/access";
@@ -27,7 +27,7 @@ export async function FuelInsights() {
   const access = await requirePage("fuel.view");
   // Rows, not just the page: a scoped supervisor sees their own sites.
   const visible = assetScope(access);
-  const visibleProjects = projectScope(access);
+  const _visibleProjects = projectScope(access);
   const [tanks, issues, receipts, assets, norms, dieselRate] = await Promise.all([
     db.fuelTank.findMany({
       include: {
@@ -78,7 +78,7 @@ export async function FuelInsights() {
 
   const supplierScorecard = calculateSupplierScorecard(receipts);
 
-  const effColor = (s: string) => s === "good" ? "text-emerald-600" : s === "low" ? "text-rose-600" : s === "high" ? "text-amber-600" : "text-slate-400";
+  const _effColor = (s: string) => s === "good" ? "text-emerald-600" : s === "low" ? "text-rose-600" : s === "high" ? "text-amber-600" : "text-slate-400";
 
   return (
     <div className="space-y-6">

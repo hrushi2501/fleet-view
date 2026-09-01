@@ -2,12 +2,12 @@
 
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { put } from "@vercel/blob";
 import { getSession } from "@/lib/auth";
 import { getDieselRate } from "@/lib/settings";
 import { reconcileTank, scoreTankRecon, type TankLite } from "@/lib/fuel-recon";
 import { requireAction, ActionError, safe } from "@/lib/guard";
 import { transition } from "@/lib/transition";
+import { uploadPrivateFile } from "@/lib/private-upload";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -17,9 +17,7 @@ async function uploadPhoto(file: FormDataEntryValue | null, prefix: string): Pro
   if (!file || typeof file === "string") return null;
   const f = file as File;
   if (!f.size) return null;
-  const ext = (f.name.split(".").pop() || "jpg").toLowerCase();
-  const blob = await put(`fuel/${prefix}-${Date.now()}.${ext}`, f, { access: "public", addRandomSuffix: true });
-  return blob.url;
+  return uploadPrivateFile(f, { folder: `fuel-${prefix}`, kind: "image" });
 }
 
 function refresh() {

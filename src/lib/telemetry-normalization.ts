@@ -63,7 +63,14 @@ export type TelemetryLimits = {
   maxClockSkewMinutes: number;
   /** Older than this and the sample is history being replayed, not news. */
   maxSampleAgeDays: number;
+  /** Raw provider JSON retained beside one reading, in bytes. */
+  maxRawPayloadBytes: number;
 };
+
+/** A retained raw payload is diagnostic context, not an unbounded document store. */
+export const MAX_RAW_TELEMETRY_PAYLOAD_BYTES = 64 * 1024;
+/** Batch endpoints need room for several valid readings, but still stream-cap input. */
+export const MAX_TELEMETRY_REQUEST_BYTES = 1024 * 1024;
 
 export const DEFAULT_LIMITS: TelemetryLimits = {
   // Governed Indian commercial vehicles sit far below this; it is here to catch
@@ -77,6 +84,7 @@ export const DEFAULT_LIMITS: TelemetryLimits = {
   tankOverfillFactor: 1.05,
   maxClockSkewMinutes: 60,
   maxSampleAgeDays: 400,
+  maxRawPayloadBytes: MAX_RAW_TELEMETRY_PAYLOAD_BYTES,
 };
 
 // ---------------------------------------------------------------------------
@@ -137,6 +145,69 @@ const finite = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
+/** Returns the UTF-8 storage size of JSON, or null when it cannot be represented as JSON. */
+export function rawPayloadSizeBytes(payload: unknown): number | null {
+  try {
+    const json = JSON.stringify(payload);
+    return json == null ? null : new TextEncoder().encode(json).byteLength;
+  } catch {
+    // Circular values are not valid Prisma JSON either. Reject before a route
+    // reaches persistence and accidentally turns a validation failure into 500.
+    return null;
+  }
+}
+
+/**
+ * Reads a webhook body incrementally, stopping before a provider can make the
+ * route buffer an arbitrary amount of JSON. Individual readings are then held
+ * to the stricter 64 KiB raw-payload ceiling in `normaliseReading`.
+ */
+export async function readTelemetryJson(
+  req: Request,
+  maximumBytes = MAX_TELEMETRY_REQUEST_BYTES,
+): Promise<{ ok: true; value: unknown } | { ok: false; status: 400 | 413; error: string }> {
+  const declared = req.headers.get("content-length");
+  if (declared != null) {
+    const length = Number(declared);
+    if (Number.isFinite(length) && length > maximumBytes) {
+      return { ok: false, status: 413, error: `Telemetry request exceeds the ${maximumBytes / 1024 / 1024} MB limit.` };
+    }
+  }
+
+  if (!req.body) return { ok: true, value: null };
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maximumBytes) {
+        await reader.cancel();
+        return { ok: false, status: 413, error: `Telemetry request exceeds the ${maximumBytes / 1024 / 1024} MB limit.` };
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const text = new TextDecoder().decode(bytes).trim();
+  if (!text) return { ok: true, value: null };
+  try {
+    return { ok: true, value: JSON.parse(text) };
+  } catch {
+    return { ok: false, status: 400, error: "Invalid JSON telemetry payload." };
+  }
+}
+
 /**
  * Validates and normalises one provider ping.
  *
@@ -162,6 +233,18 @@ export function normaliseReading(
   const warn = (field: string, received: unknown, reason: string) => {
     issues.push({ field, severity: "WARN", received, reason });
   };
+
+  const rawBytes = rawPayloadSizeBytes(ping.rawPayload);
+  if (rawBytes == null) {
+    return reject("rawPayload", null, "Provider payload is not valid JSON and cannot be retained safely.");
+  }
+  if (rawBytes > limits.maxRawPayloadBytes) {
+    return reject(
+      "rawPayload",
+      `${rawBytes} bytes`,
+      `Provider payload exceeds the ${limits.maxRawPayloadBytes / 1024} KiB retained-raw limit.`,
+    );
+  }
 
   // --- timestamp: the one field a reading cannot survive without ---
   const recordedAt = ping.timestamp;

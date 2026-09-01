@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, KeyRound, CheckCircle2 } from "lucide-react";
 import { changeOwnPassword, adminResetUserPassword } from "@/app/(app)/entry-actions";
+import { isActionError } from "@/lib/action-result";
 
 const inp = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
 
@@ -18,7 +19,7 @@ export function ChangePasswordForm() {
     const fd = new FormData(form);
     setErr(""); setDone(false);
     start(async () => {
-      try { await changeOwnPassword(fd); setDone(true); form.reset(); }
+      try { const result = await changeOwnPassword(fd); if (isActionError(result)) { setErr(result.error); return; } setDone(true); form.reset(); }
       catch (e) { setErr(e instanceof Error ? e.message : "Could not change password."); }
     });
   }
@@ -31,11 +32,11 @@ export function ChangePasswordForm() {
       </div>
       <div>
         <label className="mb-1 block text-sm font-medium text-slate-700">New password</label>
-        <input name="next" type="password" required minLength={6} placeholder="at least 6 characters" className={inp} />
+        <input name="next" type="password" required minLength={12} placeholder="12+ chars, letter, number, symbol" className={inp} />
       </div>
       <div>
         <label className="mb-1 block text-sm font-medium text-slate-700">Confirm new password</label>
-        <input name="confirm" type="password" required minLength={6} className={inp} />
+        <input name="confirm" type="password" required minLength={12} className={inp} />
       </div>
       {err && <p className="text-sm text-rose-600">{err}</p>}
       {done && <p className="flex items-center gap-1.5 text-sm font-medium text-emerald-600"><CheckCircle2 className="h-4 w-4" /> Password changed successfully.</p>}
@@ -50,10 +51,10 @@ export function ResetPwButton({ userId, name }: { userId: string; name: string }
   const [pending, start] = useTransition();
   const router = useRouter();
   function go() {
-    const pw = window.prompt(`Set a new password for ${name} (min 6 characters):`);
+    const pw = window.prompt(`Set a new password for ${name} (12+ characters; include a letter, number, and symbol):`);
     if (!pw) return;
     start(async () => {
-      try { await adminResetUserPassword(userId, pw); router.refresh(); alert("Password updated."); }
+      try { const result = await adminResetUserPassword(userId, pw); if (isActionError(result)) { alert(result.error); return; } router.refresh(); alert("Password updated."); }
       catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
     });
   }

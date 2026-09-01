@@ -77,6 +77,7 @@ export function ReadingForm({ assets }: { assets: Opt[] }) {
   const [pending, start] = useTransition();
   const [warn, setWarn] = useState<string | null>(null);
   const router = useRouter();
+  const toast = useToast();
   return (
     <>
       <Trigger onClick={() => { setWarn(null); setOpen(true); }}><Plus className="h-4 w-4" /> Record Reading</Trigger>
@@ -84,7 +85,7 @@ export function ReadingForm({ assets }: { assets: Opt[] }) {
         <form
           action={(fd) => start(async () => {
             const r = await saveReading(fd);
-            if (isActionError(r)) {  return; }
+            if (isActionError(r)) { setWarn(r.error); toast.error("Reading not saved", r.error); return; }
             router.refresh();
             if (r.ok) { setOpen(false); setWarn(null); } else setWarn(r.message ?? "Reading flagged.");
           })}
@@ -120,11 +121,12 @@ export function AssetMasterForm({ asset }: { asset: { id: string; code: string; 
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
   return (
     <>
       <button onClick={() => setOpen(true)} className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">Complete</button>
       <Modal open={open} onClose={() => setOpen(false)} title={`Master Data — ${asset.code}`} subtitle="Fields the original asset form never captured. Every downstream number is only as good as this record.">
-        <form action={(fd) => start(async () => { await saveAssetMaster(asset.id, fd); setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
+        <form action={(fd) => start(async () => { const result = await saveAssetMaster(asset.id, fd); if (isActionError(result)) { toast.error("Master data not saved", result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
           <Inp label="Chassis Number" name="chassisNo" defaultValue={asset.chassisNo ?? ""} hint="The identity that survives a re-registration" />
           <Inp label="Engine Number" name="engineNo" defaultValue={asset.engineNo ?? ""} />
           <Inp label="Insured Value ₹" name="insuredValue" type="number" step="0.01" defaultValue={asset.insuredValue} />
@@ -141,11 +143,12 @@ export function LifecycleForm({ assets }: { assets: Opt[] }) {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
   return (
     <>
       <Trigger onClick={() => setOpen(true)} tone="ghost"><Plus className="h-4 w-4" /> Lifecycle Event</Trigger>
       <Modal open={open} onClose={() => setOpen(false)} title="Record Lifecycle Event" subtitle="Commissioning, transfers and disposal — the asset's own history. Decommissioning also updates its status.">
-        <form action={(fd) => start(async () => { await saveLifecycleEvent(fd); setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
+        <form action={(fd) => start(async () => { const result = await saveLifecycleEvent(fd); if (isActionError(result)) { toast.error("Event not saved", result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
           <Sel label="Asset" name="assetId" required options={assets.map((a) => ({ value: a.id, label: a.label }))} />
           <Sel label="Event" name="kind" required options={[
             { value: "COMMISSIONED", label: "Commissioned" }, { value: "TRANSFERRED", label: "Transferred" },
@@ -173,11 +176,12 @@ export function AttendanceForm({ drivers, projects }: { drivers: Opt[]; projects
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
   return (
     <>
       <Trigger onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Mark Attendance</Trigger>
       <Modal open={open} onClose={() => setOpen(false)} title="Mark Attendance" subtitle="Re-entering a date and shift corrects it rather than duplicating.">
-        <form action={(fd) => start(async () => { await saveAttendance(fd); setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
+        <form action={(fd) => start(async () => { const result = await saveAttendance(fd); if (isActionError(result)) { toast.error("Attendance not saved", result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
           <Sel label="Person" name="driverId" required options={drivers.map((d) => ({ value: d.id, label: d.label }))} />
           <Inp label="Date" name="date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
           <Sel label="Status" name="status" required options={[
@@ -202,11 +206,12 @@ export function PersonDocForm({ drivers }: { drivers: Opt[] }) {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
   return (
     <>
       <Trigger onClick={() => setOpen(true)} tone="ghost"><Plus className="h-4 w-4" /> Add Document</Trigger>
       <Modal open={open} onClose={() => setOpen(false)} title="Add Personal Document" subtitle="Licence, Aadhaar and medical fitness are expected for everyone — missing ones are reported.">
-        <form action={(fd) => start(async () => { await savePersonDoc(fd); setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
+        <form action={(fd) => start(async () => { const result = await savePersonDoc(fd); if (isActionError(result)) { toast.error("Document not saved", result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
           <Sel label="Person" name="driverId" required options={drivers.map((d) => ({ value: d.id, label: d.label }))} />
           <Sel label="Document" name="docType" required options={Object.entries(PERSON_DOC_LABEL).map(([value, label]) => ({ value, label }))} />
           <Inp label="Number" name="number" />
@@ -231,11 +236,12 @@ export function PersonMasterForm({ person }: { person: { id: string; name: strin
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
   return (
     <>
       <button onClick={() => setOpen(true)} className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">Complete</button>
       <Modal open={open} onClose={() => setOpen(false)} title={`Master Data — ${person.name}`} subtitle="Employment and emergency details.">
-        <form action={(fd) => start(async () => { await savePersonMaster(person.id, fd); setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
+        <form action={(fd) => start(async () => { const result = await savePersonMaster(person.id, fd); if (isActionError(result)) { toast.error("Master data not saved", result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
           <Sel label="Employment Type" name="employmentType" required defaultValue={person.employmentType} options={[
             { value: "OWN", label: "Own employee" }, { value: "CONTRACTOR", label: "Contractor supplied" },
           ]} />
@@ -266,9 +272,10 @@ export function DeleteRow({ id, kind }: { id: string; kind: "reading" | "attenda
   };
 
   async function handleDelete() {
-    if (kind === "reading") await deleteReading(id);
-    else if (kind === "attendance") await deleteAttendance(id);
-    else await deletePersonDoc(id);
+    const result = kind === "reading" ? await deleteReading(id)
+      : kind === "attendance" ? await deleteAttendance(id)
+      : await deletePersonDoc(id);
+    if (isActionError(result)) { toast.error("Delete failed", result.error); return; }
 
     toast.success(`✓ ${labels[kind]} deleted successfully`);
     router.refresh();

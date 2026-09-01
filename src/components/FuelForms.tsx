@@ -2,7 +2,7 @@
 
 import { useState, useTransition, ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { X, Plus, Loader2, Play, Trash2, Fuel, AlertTriangle, CheckCircle2, Calculator } from "lucide-react";
+import { X, Plus, Loader2, Play, Trash2, Fuel, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { cn, inr, num } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -128,7 +128,11 @@ export function TankForm({ projects, tank }: { projects: Opt[]; tank?: { id: str
         <form
           action={(fd) => start(async () => {
             try {
-              await saveTank(tank?.id ?? null, fd);
+              const res = await saveTank(tank?.id ?? null, fd);
+              if (isActionError(res)) {
+                toast.error("Failed to save tank", res.error);
+                return;
+              }
               setOpen(false);
               toast.success(tank ? `✓ Tank ${tank.name} updated` : "✓ Site diesel tank created");
               router.refresh();
@@ -185,19 +189,23 @@ export function ReceiptForm({ tanks, defaultRate }: { tanks: Opt[]; defaultRate:
 
   return (
     <>
-      <TriggerBtn onClick={() => { resetForm(); setOpen(true); }}>
+      <TriggerBtn onClick={() => { resetForm(); setOpen(true); }} tone="ghost">
         <Plus className="h-4 w-4" /> Record Delivery
       </TriggerBtn>
       <Modal
         open={open}
         onClose={() => setOpen(false)}
         title="Record Diesel Delivery (GRN)"
-        subtitle="Enter what the supplier invoiced AND what actually went into the tank. The difference is flagged automatically."
+        subtitle="Enter supplier bill vs actual physical dip. Shortfall & transit risks are computed live."
       >
         <form
           action={(fd) => start(async () => {
             try {
-              await saveReceipt(fd);
+              const res = await saveReceipt(fd);
+              if (isActionError(res)) {
+                toast.error("Failed to record delivery", res.error);
+                return;
+              }
               setOpen(false);
               toast.success("✓ Diesel delivery recorded", `${num(recVal || invVal)} L into tank`);
               router.refresh();
@@ -322,7 +330,11 @@ export function DipForm({ tanks }: { tanks: Opt[] }) {
       <Modal open={open} onClose={() => setOpen(false)} title="Record Physical Dip" subtitle="The dipstick reading is the ground truth. Reconciliation measures the book against this.">
         <form action={(fd) => start(async () => {
           try {
-            await saveDip(fd);
+            const res = await saveDip(fd);
+            if (isActionError(res)) {
+              toast.error("Failed to save dip reading", res.error);
+              return;
+            }
             setOpen(false);
             toast.success("✓ Physical tank dip recorded successfully");
             router.refresh();
@@ -404,11 +416,15 @@ export function AnomalyTriage({ anomaly }: { anomaly: { id: string; status: stri
       <Modal open={open} onClose={() => setOpen(false)} title="Investigate Anomaly" subtitle="Record the outcome and any amount recovered. Recovered value rolls up to the loss-prevention scorecard.">
         <form action={(fd) => start(async () => {
           try {
-            await updateAnomaly(anomaly.id, fd);
+            const res = await updateAnomaly(anomaly.id, fd);
+            if (isActionError(res)) {
+              toast.error("Failed to update outcome", res.error);
+              return;
+            }
             setOpen(false);
             toast.success("✓ Anomaly investigation outcome saved");
             router.refresh();
-          } catch (err) {
+          } catch (_err) {
             toast.error("Failed to update outcome");
           }
         })} className="grid gap-4 sm:grid-cols-2">
@@ -456,11 +472,15 @@ export function NormForm({ classes }: { classes: { value: string; label: string 
       <Modal open={open} onClose={() => setOpen(false)} title="Consumption Norm" subtitle="Expected fuel burn for an asset class. Issues outside the tolerance band raise an anomaly.">
         <form action={(fd) => start(async () => {
           try {
-            await saveNorm(fd);
+            const res = await saveNorm(fd);
+            if (isActionError(res)) {
+              toast.error("Failed to save norm", res.error);
+              return;
+            }
             setOpen(false);
             toast.success("✓ Consumption norm configured successfully");
             router.refresh();
-          } catch (err) {
+          } catch (_err) {
             toast.error("Failed to save norm");
           }
         })} className="grid gap-4 sm:grid-cols-2">
@@ -486,10 +506,17 @@ export function DeleteRow({ id, kind }: { id: string; kind: "receipt" | "dip" })
   const toast = useToast();
 
   async function handleDelete() {
-    if (kind === "receipt") await deleteReceipt(id);
-    else await deleteDip(id);
-    toast.success(`✓ ${kind === "receipt" ? "Delivery receipt" : "Physical dip"} deleted`);
-    router.refresh();
+    try {
+      const res = kind === "receipt" ? await deleteReceipt(id) : await deleteDip(id);
+      if (isActionError(res)) {
+        toast.error("Delete failed", res.error);
+        return;
+      }
+      toast.success(`✓ ${kind === "receipt" ? "Delivery receipt" : "Physical dip"} deleted`);
+      router.refresh();
+    } catch (e) {
+      toast.error("Delete failed", e instanceof Error ? e.message : "Error");
+    }
   }
 
   return (

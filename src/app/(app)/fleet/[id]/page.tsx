@@ -89,7 +89,7 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
   });
   if (!asset) notFound();
 
-  // eslint-disable-next-line react-hooks/purity
+   
   const now = new Date();
   const since = new Date(now.getTime() - 30 * 86_400_000);
 

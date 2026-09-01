@@ -15,6 +15,8 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/query-keys";
 import { Pause, Play, X, TriangleAlert, Loader2, Gauge, Fuel, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { LiveVehicle } from "@/lib/fleet-edge-live";
@@ -53,90 +55,58 @@ export type TrackState = {
 /** Cursor advances one sample per tick — a day of 2-minute polling in ~30 s. */
 const TICK_MS = 250;
 
-/** A loaded track, tagged with the vehicle it belongs to. */
-type Loaded = { assetId: string; points: TrackPoint[]; meta: TrackMeta };
-
 export function useTrack(assetId: string | null): TrackState {
-  const [loaded, setLoaded] = useState<Loaded | null>(null);
-  const [failure, setFailure] = useState<{ assetId: string; message: string } | null>(null);
-  const [cursor, setCursorState] = useState(0);
+  const [userCursor, setUserCursor] = useState<{ assetId: string; index: number } | null>(null);
   const [playing, setPlaying] = useState(false);
 
-  /**
-   * `loading` and the visible track are *derived* from which vehicle the loaded
-   * data belongs to, not stored in their own state.
-   *
-   * The obvious version — clear the arrays and set a loading flag when the id
-   * changes — writes state synchronously inside an effect, which under React 19
-   * costs a cascading render and is what the `set-state-in-effect` rule exists
-   * to stop. Tagging the payload with its vehicle removes the need for the reset
-   * entirely: the moment `assetId` changes, the old track stops matching and
-   * simply is not returned. It also closes the race the reset was papering
-   * over, where a slow response for the previous vehicle lands after the switch.
-   */
-  const isCurrent = assetId != null && loaded?.assetId === assetId;
-  const points = useMemo(() => (isCurrent && loaded ? loaded.points : []), [isCurrent, loaded]);
-  const meta = isCurrent && loaded ? loaded.meta : null;
-  const error = assetId != null && failure?.assetId === assetId ? failure.message : null;
-  const loading = assetId != null && !isCurrent && error == null;
+  const { data, isLoading, error: queryError } = useQuery({
+    queryKey: queryKeys.fleet.track(assetId ?? ""),
+    queryFn: async ({ signal }) => {
+      if (!assetId) return null;
+      const res = await fetch(`/api/telematics/track?assetId=${encodeURIComponent(assetId)}`, {
+        signal,
+      });
+      if (!res.ok) throw new Error(`Could not load track (${res.status})`);
+      return res.json();
+    },
+    enabled: Boolean(assetId),
+    staleTime: 60 * 1000,
+  });
 
-  useEffect(() => {
-    if (!assetId) return;
-    // Already answered for this vehicle, successfully or not. A day's track does
-    // not need re-fetching while the panel is open; the live layer above it is
-    // what stays current.
-    if (loaded?.assetId === assetId || failure?.assetId === assetId) return;
-
-    // Abort rather than guard on the response: switching vehicles quickly must
-    // not leave one truck's track drawn under another's label.
-    const ac = new AbortController();
-
-    fetch(`/api/telematics/track?assetId=${encodeURIComponent(assetId)}`, {
-      cache: "no-store",
-      signal: ac.signal,
-    })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`Could not load track (${res.status})`);
-        return res.json();
-      })
-      .then((data) => {
-        const next: TrackPoint[] = data.points ?? [];
-        setLoaded({
-          assetId,
-          points: next,
-          meta: {
+  const points = useMemo(() => (assetId && data?.points ? (data.points as TrackPoint[]) : []), [assetId, data]);
+  const meta = useMemo(
+    () =>
+      assetId && data
+        ? {
             sampleCount: data.sampleCount ?? 0,
             positionedCount: data.positionedCount ?? 0,
             gpsKm: data.gpsKm ?? 0,
             worstGapMinutes: data.worstGapMinutes ?? 0,
             truncated: Boolean(data.truncated),
-          },
-        });
-        // Open at the latest sample — where the vehicle is now — rather than at
-        // midnight, so the panel agrees with the marker on the map.
-        setCursorState(Math.max(0, next.length - 1));
-        setPlaying(false);
-      })
-      .catch((e: unknown) => {
-        if (e instanceof Error && e.name === "AbortError") return;
-        setFailure({ assetId, message: e instanceof Error ? e.message : "Could not load track" });
-      });
+          }
+        : null,
+    [assetId, data]
+  );
 
-    return () => ac.abort();
-  }, [assetId, loaded?.assetId, failure?.assetId]);
+  const defaultCursor = points.length > 0 ? points.length - 1 : 0;
+  const cursor =
+    userCursor && userCursor.assetId === assetId
+      ? Math.min(Math.max(0, userCursor.index), defaultCursor)
+      : defaultCursor;
 
-  // Clamped on read, so a cursor left over from a longer track cannot index past
-  // the end of a shorter one during the render that swaps them.
-  const safeCursor = points.length ? Math.min(cursor, points.length - 1) : 0;
+  const setCursor = (i: number) => {
+    if (assetId) {
+      setUserCursor({ assetId, index: i });
+    }
+  };
 
-  // The interval reads the cursor from a ref so that playing does not re-create
-  // the timer on every tick. The ref is written in an effect, never during
-  // render — reading a ref that render itself mutated is how a paused playback
-  // ends up resuming from the wrong sample.
-  const cursorRef = useRef(safeCursor);
+  const error = queryError ? (queryError instanceof Error ? queryError.message : "Could not load track") : null;
+  const loading = Boolean(assetId && isLoading);
+
+  const cursorRef = useRef(cursor);
   useEffect(() => {
-    cursorRef.current = safeCursor;
-  }, [safeCursor]);
+    cursorRef.current = cursor;
+  }, [cursor]);
 
   useEffect(() => {
     if (!playing || points.length === 0) return;
@@ -146,16 +116,18 @@ export function useTrack(assetId: string | null): TrackState {
         setPlaying(false);
         return;
       }
-      setCursorState(next);
+      if (assetId) {
+        setUserCursor({ assetId, index: next });
+      }
     }, TICK_MS);
     return () => clearInterval(t);
-  }, [playing, points.length]);
+  }, [playing, points.length, assetId]);
 
   return {
     points,
     meta,
-    cursor: safeCursor,
-    setCursor: setCursorState,
+    cursor,
+    setCursor,
     playing,
     setPlaying,
     loading,

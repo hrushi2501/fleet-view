@@ -5,7 +5,7 @@ import { scorecard, offenderProfiles, type CaseLite } from "@/lib/loss-preventio
 import { getFraudIntelligence } from "@/app/(app)/loss-prevention/actions";
 import { inr, num, fmtDate, timeAgo } from "@/lib/utils";
 import { LiveAiPoller } from "@/components/LiveAiPoller";
-import { ShieldAlert, HandCoins, IndianRupee, Clock, Repeat2, SlidersHorizontal, TriangleAlert, Fuel, Gauge } from "lucide-react";
+import { ShieldAlert, HandCoins, IndianRupee, Clock, Repeat2, Fuel, Gauge } from "lucide-react";
 import Link from "next/link";
 import { requirePage, assetScope, projectScope } from "@/lib/access";
 
@@ -39,7 +39,7 @@ export async function LossCases() {
   const access = await requirePage("loss.view");
   // Rows, not just the page: a scoped supervisor sees their own sites.
   const visible = assetScope(access);
-  const visibleProjects = projectScope(access);
+  const _visibleProjects = projectScope(access);
   const [cases, assets, drivers, fraudIntel] = await Promise.all([
     db.fraudCase.findMany({
       include: { asset: { select: { code: true } }, driver: { select: { name: true } }, _count: { select: { evidence: true, recoveries: true } } },

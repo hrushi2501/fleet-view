@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import Link from "next/link";
 import { X, Gauge, Fuel, Wrench, ShieldCheck, Loader2, ExternalLink, Activity, Radio, IdCard } from "lucide-react";
-import { inr, num, fmtDate, timeAgo, ASSET_CLASS_LABEL, STATUS_COLOR, healthColor } from "@/lib/utils";
+import { inr, num, fmtDate, timeAgo, ASSET_CLASS_LABEL, STATUS_COLOR } from "@/lib/utils";
 import { Panel, PanelTitle, DetailList, type Row } from "@/components/VehicleDetail";
 import { VehicleHero, type HeroSpec } from "@/components/VehicleHero";
 import { vehiclePhoto } from "@/lib/vehicle-photo";
+import { useAssetDetail } from "@/lib/query-hooks";
 
 type Detail = {
   id: string; code: string; name: string; registrationNo: string | null; assetClass: string; category: string;
@@ -107,19 +108,18 @@ const SEGMENT_STYLE: Record<string, string> = {
 };
 
 export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () => void }) {
-  const [data, setData] = useState<Detail | null>(null);
-  const [err, setErr] = useState("");
+  const { data, error: queryError } = useAssetDetail<Detail>(assetId);
+  const err = queryError ? (queryError instanceof Error ? queryError.message : "Failed to load") : "";
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
-    fetch(`/api/assets/${assetId}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("Failed to load"))))
-      .then(setData)
-      .catch((e) => setErr(e.message));
-    return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = ""; };
-  }, [assetId, onClose]);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [onClose]);
 
   const meterUnit = data?.primaryMeter === "SMU" ? "h" : "km";
 

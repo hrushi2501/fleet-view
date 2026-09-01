@@ -9,6 +9,7 @@
  * plumbing both it and the extension share.
  */
 import { rawDb } from "./db";
+import { sendSecurityAlert } from "./security-alerts";
 
 export type SystemAuditRow = {
   action: string;
@@ -44,6 +45,10 @@ export async function recordSystemAudit(row: SystemAuditRow): Promise<void> {
         ip: row.ip ?? null,
       },
     });
+    // Kept after the durable local write. An external receiver is useful for
+    // alerting, but it is never allowed to decide whether FleetView accepts a
+    // business operation or writes its own audit trail.
+    await sendSecurityAlert(row);
   } catch (err) {
     console.error("[audit] write failed:", row.action, row.module, err);
   }

@@ -87,6 +87,32 @@ export async function GET(_req: Request, ctx: { params: Promise<{ key: string }>
       }));
       break;
     }
+    case "notification_log": {
+      // Global alerts (for example, a tank without an assigned asset) are an
+      // admin-only concern. Scoped report users receive only alerts attached
+      // to an asset inside their normal visibility boundary.
+      const where = auth.access.group === "ADMIN" ? {} : { asset: visibleAssets };
+      const d = await db.alert.findMany({
+        where,
+        include: { asset: true, driver: true },
+        orderBy: { createdAt: "desc" },
+        take: MAX_ROWS,
+      });
+      rows = d.map((x) => ({
+        Reported: x.createdAt,
+        Category: x.category,
+        Severity: x.severity,
+        Status: x.status,
+        Title: x.title,
+        Message: x.message,
+        Asset: x.asset?.code ?? "",
+        Driver: x.driver?.name ?? "",
+        AcknowledgedBy: x.acknowledgedBy ?? "",
+        AcknowledgedAt: x.acknowledgedAt ?? "",
+        ResolvedAt: x.resolvedAt ?? "",
+      }));
+      break;
+    }
     case "weighbridge": {
       const d = await db.weighbridgeTicket.findMany({ include: { asset: true }, orderBy: { date: "desc" }, take: MAX_ROWS });
       rows = d.map((x) => ({

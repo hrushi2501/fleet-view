@@ -11,9 +11,11 @@ import { requirePage } from "@/lib/access";
 import { Progress } from "@/components/ui";
 import { TERMS } from "@/lib/navigation";
 import { ASSET_CLASS_LABEL, num, timeAgo } from "@/lib/utils";
-import { myBasics, latestIgnition, vehicleState, whereIsIt, PROBLEM_KINDS } from "../_data";
-import { MyHeader, NotLinked, NoVehicle, Screen, Hero, Fact, Notice } from "../_ui";
+import { myBasics, latestIgnition, myShift, vehicleState, whereIsIt, PROBLEM_KINDS } from "../_data";
+import { MyHeader, Screen, Hero, Fact, Notice, NotLinked } from "../_ui";
 import { reportProblem } from "../actions";
+import { DriverQrScanner } from "@/components/DriverQrScanner";
+import { DriverTripEndScanner } from "@/components/DriverTripEndScanner";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +32,7 @@ export default async function MyVehiclePage({
     return (
       <Screen>
         <MyHeader href="/my/vehicle" />
-        <NotLinked loginName={access.session.name} />
+        <NotLinked loginName={access.session.email} />
       </Screen>
     );
   }
@@ -39,13 +41,13 @@ export default async function MyVehiclePage({
     return (
       <Screen>
         <MyHeader href="/my/vehicle" />
-        <NoVehicle />
+        <DriverQrScanner triggerVariant="card" />
       </Screen>
     );
   }
 
   const now = new Date();
-  const [ignition, place] = await Promise.all([latestIgnition(vehicle.id), whereIsIt(vehicle)]);
+  const [ignition, place, shift] = await Promise.all([latestIgnition(vehicle.id), whereIsIt(vehicle), myShift(driver.id)]);
   const state = vehicleState(vehicle, ignition, now);
 
   const meterUnit = vehicle.primaryMeter === "SMU" ? "hours" : "km";
@@ -55,7 +57,12 @@ export default async function MyVehiclePage({
 
   return (
     <Screen>
-      <MyHeader href="/my/vehicle" note={vehicle.registrationNo ?? vehicle.code} />
+      <div className="flex items-center justify-between">
+        <MyHeader href="/my/vehicle" note={vehicle.registrationNo ?? vehicle.code} />
+        {shift.hasActiveTrip
+          ? <DriverTripEndScanner vehicleCode={vehicle.code} />
+          : <DriverQrScanner triggerVariant="button" />}
+      </div>
 
       {error && <Notice tone="warn" title="Problem save nahi hui — please pick one option and try again." />}
 

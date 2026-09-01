@@ -3,7 +3,7 @@ import { Card, SectionTitle, Badge, StatCard, Progress } from "@/components/ui";
 import { ProductionForm, ProdNormForm, SeedProdNormsButton, DeleteRow } from "@/components/ProdCostForms";
 import { assetProductivity, projectProduction, unitFor, UNIT_LABEL, type LogLite, type Norm, type ProdUnit } from "@/lib/production";
 import { inr, num, fmtDate, ASSET_CLASS_LABEL } from "@/lib/utils";
-import { Boxes, Gauge, Droplets, TriangleAlert, Timer, Layers } from "lucide-react";
+import { Boxes, Gauge, TriangleAlert, Timer, Layers } from "lucide-react";
 import Link from "next/link";
 import { ProductionContainer } from "@/components/ProductionContainer";
 import { projectIdScope, requirePage } from "@/lib/access";
@@ -99,7 +99,7 @@ export default async function SiteWorkPage() {
   const statusColor = (s: string) => s === "above" ? "text-emerald-600" : s === "on" ? "text-brand-700" : s === "below" ? "text-rose-600" : "text-slate-400";
 
   return (
-    <ProductionContainer>
+    <ProductionContainer assets={assetOpts} projects={projOpts} drivers={driverOpts}>
       <div className="space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>

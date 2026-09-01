@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { Badge, Progress } from "@/components/ui";
 import { AssetGlass } from "@/components/AssetGlass";
-import { ASSET_CLASS_LABEL, STATUS_COLOR, healthColor, num, inr, cn } from "@/lib/utils";
+import { ASSET_CLASS_LABEL, STATUS_COLOR, healthColor, num, cn } from "@/lib/utils";
 import { Search } from "lucide-react";
 
 type Row = {

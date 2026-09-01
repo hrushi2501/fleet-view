@@ -14,6 +14,7 @@ const ACTION_BADGE: Record<string, string> = {
   APPROVE: "bg-violet-100 text-violet-700 ring-violet-600/20",
   CONFIG: "bg-amber-100 text-amber-700 ring-amber-600/20",
   LOGIN: "bg-slate-100 text-slate-600 ring-slate-500/20",
+  LOGIN_FAILED: "bg-rose-50 text-rose-700 ring-rose-600/20",
   EXPORT: "bg-amber-100 text-amber-700 ring-amber-600/20",
 };
 

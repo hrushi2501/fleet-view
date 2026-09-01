@@ -4,6 +4,7 @@ import { generateObject } from "ai";
 import { z } from "zod";
 import { visionModelForOdometer, visionModelForPump, visionModelForGauge, ocrAvailable } from "@/lib/ai";
 import { validatePhotoVerification } from "@/lib/fuel-verification";
+import { reserveRateLimit } from "@/lib/request-rate-limit";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -67,7 +68,24 @@ const consistent = (o: { amount: number | null; volume: number | null; rate: num
   o.amount != null && o.volume != null && o.rate != null && Math.abs(o.amount - o.volume * o.rate) / o.amount <= 0.08;
 
 export async function POST(req: Request) {
-  if (!(await getSession())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // Each attempt can make one or two paid vision requests. Reserve before
+  // reading the multipart body so a caller cannot use large uploads to bypass
+  // the spend guard when the account is already over its allowance.
+  const limit = await reserveRateLimit({
+    scope: "ocr",
+    subject: session.id,
+    limit: 10,
+    windowMs: 60_000,
+  });
+  if (!limit.ok) {
+    return NextResponse.json(
+      { error: "Too many photo-reading requests. Please wait before trying again.", retryInSeconds: limit.retryInSeconds },
+      { status: 429, headers: { "Retry-After": String(limit.retryInSeconds) } },
+    );
+  }
 
   // Answered before touching the image: with no provider configured, every read
   // below would throw and the driver would be told to retake a photo that was
@@ -233,4 +251,3 @@ export async function POST(req: Request) {
     });
   }
 }
-

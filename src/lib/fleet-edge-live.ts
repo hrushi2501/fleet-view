@@ -395,6 +395,40 @@ function engineHoursToday(samples: TodaySample[]): number | null {
 
 export type LiveFleetScope = Prisma.AssetWhereInput | undefined;
 
+const LIVE_FLEET_CACHE_MS = 5_000;
+const liveFleetCache = new Map<string, { expiresAt: number; value: LiveFleet }>();
+const liveFleetInFlight = new Map<string, Promise<LiveFleet>>();
+
+function scopeCacheKey(scope: LiveFleetScope): string {
+  return JSON.stringify(scope ?? {});
+}
+
+/**
+ * Coalesce identical tracking reads within one server process. A page render,
+ * its hydration refresh, and a manually opened second tab otherwise run the
+ * same six read queries concurrently. Authorization happens before this is
+ * called, and the scope is part of the key, so this never share data across
+ * access scopes.
+ */
+export async function getLiveFleet(scope: LiveFleetScope = undefined): Promise<LiveFleet> {
+  const key = scopeCacheKey(scope);
+  const cached = liveFleetCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+
+  const existing = liveFleetInFlight.get(key);
+  if (existing) return existing;
+
+  const pending = buildLiveFleet(scope)
+    .then((value) => {
+      if (liveFleetCache.size >= 32) liveFleetCache.clear();
+      liveFleetCache.set(key, { value, expiresAt: Date.now() + LIVE_FLEET_CACHE_MS });
+      return value;
+    })
+    .finally(() => liveFleetInFlight.delete(key));
+  liveFleetInFlight.set(key, pending);
+  return pending;
+}
+
 /**
  * Builds the whole console view in a fixed number of queries.
  *
@@ -402,7 +436,7 @@ export type LiveFleetScope = Prisma.AssetWhereInput | undefined;
  * in one go and grouped in memory rather than issuing a query per vehicle. That
  * matters here because this screen polls.
  */
-export async function getLiveFleet(scope: LiveFleetScope = undefined): Promise<LiveFleet> {
+async function buildLiveFleet(scope: LiveFleetScope): Promise<LiveFleet> {
   const now = new Date();
   const dayStart = startOfBusinessDay(now);
 
@@ -433,7 +467,7 @@ export async function getLiveFleet(scope: LiveFleetScope = undefined): Promise<L
   const assetIds = assets.map((a) => a.id);
 
   const [todayReadings, latestReadings, schedules, activeSessions, norms, provider] =
-    await Promise.all([
+    await db.$transaction([
       db.telemetryReading.findMany({
         where: { assetId: { in: assetIds }, recordedAt: { gte: dayStart } },
         orderBy: { recordedAt: "asc" },

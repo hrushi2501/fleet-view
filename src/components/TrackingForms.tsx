@@ -3,7 +3,6 @@
 import { useState, useTransition, ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { X, Loader2, QrCode, Radar, Check, Plus } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { issueQrTokens, seedProviders, saveAssetTelematics, verifyGaugeReading, releaseSession, closeStaleSessions, scanFuelEvents } from "@/app/(app)/tracking/actions";
 import { isActionError } from "@/lib/action-result";
 

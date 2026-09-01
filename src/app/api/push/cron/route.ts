@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { checkSharedSecret } from "@/lib/auth";
-import { sendPushToAll } from "@/lib/push";
+import { sendPushToUsers } from "@/lib/push";
+import { runAutomaticAlertSweep } from "@/lib/automatic-alert-sweep";
+import { administratorNotificationUserIds } from "@/lib/notification-recipients";
 
 export const dynamic = "force-dynamic";
 
@@ -13,8 +15,12 @@ export async function GET(req: Request) {
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   try {
+    // Materialise PUC/compliance, PM, tyre, fuel, and allocation conditions as
+    // Alert rows before counting or pushing. The in-app bell then exposes the
+    // same durable record to each role under its own RBAC scope.
+    await runAutomaticAlertSweep();
     const soon = new Date(Date.now() + 15 * 86400000);
-    const [serviceDue, breakdowns, expiring] = await Promise.all([
+    const [serviceDue, breakdowns, expiring] = await db.$transaction([
       db.asset.count({ where: { serviceDueDate: { not: null, lte: soon } } }),
       db.workOrder.count({ where: { type: "BREAKDOWN", status: { in: ["Open", "In-Progress"] } } }),
       db.complianceDoc.count({ where: { status: { in: ["Expiring", "Expired"] } } }),
@@ -26,7 +32,7 @@ export async function GET(req: Request) {
     if (expiring) parts.push(`${expiring} docs expiring`);
     if (parts.length === 0) return NextResponse.json({ ok: true, skipped: "nothing due" });
 
-    const result = await sendPushToAll({
+    const result = await sendPushToUsers(await administratorNotificationUserIds(), {
       title: "FleetView — Fleet needs attention",
       body: parts.join(" · "),
       url: "/notifications",

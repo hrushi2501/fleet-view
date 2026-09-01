@@ -2,8 +2,9 @@
 
 import { useState, useTransition, ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { X, Plus, Loader2, RefreshCw, Trash2 } from "lucide-react";
+import { X, Plus, Loader2, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { isActionError } from "@/lib/action-result";
 import { saveContract, saveLog, deleteLog, deleteContract, saveHireInspection, saveContractAmendment, saveHirePayment, deleteInspection, deleteAmendment, deletePayment, approveHireLog } from "@/app/(app)/hire/actions";
 
 type Opt = { id: string; label: string };
@@ -103,6 +104,7 @@ export function ContractForm({ assets, contract }: {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
   const iso = (d?: Date | null) => (d ? new Date(d).toISOString().slice(0, 10) : "");
 
   return (
@@ -111,7 +113,7 @@ export function ContractForm({ assets, contract }: {
         {!contract && <Plus className="h-4 w-4" />}{contract ? "Edit" : "Add Contract"}
       </Trigger>
       <Modal open={open} onClose={() => setOpen(false)} title={contract ? "Edit Hire Contract" : "New Hire Contract"} subtitle="These terms drive invoice validation — nothing is approved that the contract and the logs don't both support.">
-        <form action={(fd) => start(async () => { await saveContract(contract?.id ?? null, fd); setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
+        <form action={(fd) => start(async () => { const result = await saveContract(contract?.id ?? null, fd); if (isActionError(result)) { toast.error("Contract not saved", result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
           <Sel label="Hired Asset" name="assetId" required defaultValue={contract?.assetId} options={assets.map((a) => ({ value: a.id, label: a.label }))} />
           <Inp label="Vendor" name="vendor" required defaultValue={contract?.vendor} placeholder="Sharma Earthmovers" />
           <Inp label="Contract No." name="contractNo" defaultValue={contract?.contractNo ?? ""} />
@@ -143,12 +145,13 @@ export function LogForm({ contracts }: { contracts: Opt[] }) {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
 
   return (
     <>
       <Trigger onClick={() => setOpen(true)} tone="ghost"><Plus className="h-4 w-4" /> Log Day</Trigger>
       <Modal open={open} onClose={() => setOpen(false)} title="Log a Working Day" subtitle="This is the evidence vendor invoices are checked against. Re-entering a date corrects it rather than duplicating.">
-        <form action={(fd) => start(async () => { await saveLog(fd); setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
+        <form action={(fd) => start(async () => { const result = await saveLog(fd); if (isActionError(result)) { toast.error("Log not saved", result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
           <Sel label="Contract" name="contractId" required options={contracts.map((c) => ({ value: c.id, label: c.label }))} />
           <Inp label="Date" name="date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
           <Sel label="Machine Present?" name="present" required options={[{ value: "true", label: "Yes — on site" }, { value: "false", label: "No — absent" }]} />
@@ -189,11 +192,12 @@ export function DeleteHire({ id, kind }: { id: string; kind: "log" | "contract" 
   };
 
   async function handleDelete() {
-    if (kind === "log") await deleteLog(id);
-    else if (kind === "contract") await deleteContract(id);
-    else if (kind === "inspection") await deleteInspection(id);
-    else if (kind === "amendment") await deleteAmendment(id);
-    else await deletePayment(id);
+    const result = kind === "log" ? await deleteLog(id)
+      : kind === "contract" ? await deleteContract(id)
+      : kind === "inspection" ? await deleteInspection(id)
+      : kind === "amendment" ? await deleteAmendment(id)
+      : await deletePayment(id);
+    if (isActionError(result)) { toast.error("Delete failed", result.error); return; }
 
     toast.success(`✓ ${labels[kind]} deleted successfully`);
     router.refresh();
@@ -228,12 +232,13 @@ export function HireInspectionForm({ contractId }: { contractId: string }) {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
 
   return (
     <>
       <Trigger onClick={() => setOpen(true)} tone="outline" size="sm"><Plus className="h-3.5 w-3.5" /> Inspection</Trigger>
       <Modal open={open} onClose={() => setOpen(false)} title="Record Inspection" subtitle="Log machine intake or release conditions.">
-        <form action={(fd) => start(async () => { await saveHireInspection(contractId, fd); setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
+        <form action={(fd) => start(async () => { const result = await saveHireInspection(contractId, fd); if (isActionError(result)) { toast.error("Inspection not saved", result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
           <Sel label="Type" name="type" required options={[{ value: "ON_HIRE", label: "On-Hire (Intake)" }, { value: "OFF_HIRE", label: "Off-Hire (Release)" }]} />
           <Inp label="Date" name="date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
           <Inp label="Meter Value" name="meterValue" type="number" step="0.1" required defaultValue={0} />
@@ -255,12 +260,13 @@ export function AmendmentForm({ contractId, currentRate }: { contractId: string,
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
 
   return (
     <>
       <Trigger onClick={() => setOpen(true)} tone="outline" size="sm"><Plus className="h-3.5 w-3.5" /> Revise Rate</Trigger>
       <Modal open={open} onClose={() => setOpen(false)} title="Revise Hire Rate" subtitle="Record a rate amendment over time so past invoices remain valid under the old rate.">
-        <form action={(fd) => start(async () => { await saveContractAmendment(contractId, fd); setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
+        <form action={(fd) => start(async () => { const result = await saveContractAmendment(contractId, fd); if (isActionError(result)) { toast.error("Revision not saved", result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
           <Inp label="Effective Date" name="effectiveDate" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
           <Inp label="Previous Rate ₹" name="previousRate" type="number" step="0.01" required defaultValue={currentRate} />
           <Inp label="New Rate ₹" name="newRate" type="number" step="0.01" required />
@@ -279,12 +285,13 @@ export function PaymentForm({ contractId, vendor }: { contractId?: string, vendo
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
 
   return (
     <>
       <Trigger onClick={() => setOpen(true)} tone="outline" size="sm"><Plus className="h-3.5 w-3.5" /> Advance / Payment</Trigger>
       <Modal open={open} onClose={() => setOpen(false)} title="Record Vendor Payment / Advance" subtitle="Track mobilization advances and payments to calculate outstanding balances.">
-        <form action={(fd) => start(async () => { await saveHirePayment(fd); setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
+        <form action={(fd) => start(async () => { const result = await saveHirePayment(fd); if (isActionError(result)) { toast.error("Payment not saved", result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
           <input type="hidden" name="contractId" value={contractId ?? ""} />
           <input type="hidden" name="vendor" value={vendor} />
           <Inp label="Date" name="date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
@@ -305,6 +312,7 @@ export function PaymentForm({ contractId, vendor }: { contractId?: string, vendo
 export function ApproveButton({ id, status }: { id: string; status: string }) {
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
   
   if (status === "APPROVED") {
     return <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-600 ring-1 ring-inset ring-emerald-600/20">Approved</span>;
@@ -313,7 +321,8 @@ export function ApproveButton({ id, status }: { id: string; status: string }) {
   return (
     <button
       onClick={() => start(async () => {
-        await approveHireLog(id, "APPROVED");
+        const result = await approveHireLog(id, "APPROVED");
+        if (isActionError(result)) { toast.error("Approval failed", result.error); return; }
         router.refresh();
       })}
       disabled={pending}

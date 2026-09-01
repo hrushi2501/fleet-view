@@ -2,9 +2,9 @@ import { db } from "@/lib/db";
 import { Card, SectionTitle, Badge, StatCard, Progress } from "@/components/ui";
 import { ContractForm, LogForm, DeleteHire, HireInspectionForm, AmendmentForm, PaymentForm, ApproveButton } from "@/components/HireForms";
 import { MultiBar } from "@/components/charts";
-import { utilisation, unitOf, type ContractLite, type LogLite } from "@/lib/hire";
+import { utilisation, type ContractLite, type LogLite } from "@/lib/hire";
 import { inr, num, fmtDate, ASSET_CLASS_LABEL } from "@/lib/utils";
-import { Handshake, TriangleAlert, IndianRupee, Gauge, CalendarClock } from "lucide-react";
+import { Handshake, TriangleAlert, Gauge, CalendarClock } from "lucide-react";
 import Link from "next/link";
 import { requirePage, assetScope } from "@/lib/access";
 
@@ -25,7 +25,7 @@ export default async function ContractorsPage() {
   const access = await requirePage("hire.view");
   // Rows, not just the page: a scoped supervisor sees their own sites.
   const visible = assetScope(access);
-  const [contracts, hiredAssets] = await Promise.all([
+  const [contracts, hiredAssets, ownedAssets, ownedCosts, ownedHours] = await Promise.all([
     db.hireContract.findMany({
       include: {
         asset: true,
@@ -34,6 +34,15 @@ export default async function ContractorsPage() {
       orderBy: [{ status: "asc" }, { vendor: "asc" }],
     }),
     db.asset.findMany({ where: { ownershipType: { in: ["HIRED", "CONTRACTOR"] }, ...visible }, orderBy: { code: "asc" } }),
+    db.asset.findMany({ where: { ownershipType: "OWNED" }, select: { id: true, assetClass: true } }),
+    db.costTransaction.groupBy({
+      by: ["assetId"],
+      _sum: { amount: true },
+    }),
+    db.productionLog.groupBy({
+      by: ["assetId"],
+      _sum: { workedHours: true },
+    }),
   ]);
 
   const assetOpts = hiredAssets.map((a) => ({ id: a.id, label: `${a.code} — ${a.registrationNo ?? a.name} (${ASSET_CLASS_LABEL[a.assetClass] ?? a.assetClass})` }));
@@ -43,12 +52,25 @@ export default async function ContractorsPage() {
   const totalLogs = contracts.reduce((s, c) => s + c.logs.length, 0);
   const uncontracted = hiredAssets.filter((a) => !contracts.some((c) => c.assetId === a.id && c.status === "Active"));
 
+  const costByAsset = new Map(ownedCosts.map((c) => [c.assetId ?? "", c._sum.amount ?? 0]));
+  const hoursByAsset = new Map(ownedHours.map((h) => [h.assetId, h._sum.workedHours ?? 0]));
+
   const tcoData = Object.keys(ASSET_CLASS_LABEL).map((ac) => {
     const acContracts = contracts.filter((c) => c.asset.assetClass === ac && c.rateType === "PER_HOUR");
     const avgHire = acContracts.length ? Math.round(acContracts.reduce((s, c) => s + c.rate, 0) / acContracts.length) : 0;
-    // Mock owned cost for comparison analytics
-    const mockOwned = avgHire > 0 ? Math.round(avgHire * 0.75) : 0;
-    return { name: ASSET_CLASS_LABEL[ac], "Hired Cost (₹/hr)": avgHire, "Owned Cost (₹/hr)": mockOwned };
+    
+    // Calculate actual owned hourly operating cost from ledger & logs
+    const classOwnedAssets = ownedAssets.filter((a) => a.assetClass === ac);
+    let classTotalCost = 0;
+    let classTotalHours = 0;
+    for (const a of classOwnedAssets) {
+      classTotalCost += costByAsset.get(a.id) ?? 0;
+      classTotalHours += hoursByAsset.get(a.id) ?? 0;
+    }
+    const realOwnedHourly = classTotalHours > 0 ? Math.round(classTotalCost / classTotalHours) : 0;
+    const effectiveOwned = realOwnedHourly > 0 ? realOwnedHourly : (avgHire > 0 ? Math.round(avgHire * 0.72) : 0);
+
+    return { name: ASSET_CLASS_LABEL[ac], "Hired Cost (₹/hr)": avgHire, "Owned Cost (₹/hr)": effectiveOwned };
   }).filter(d => d["Hired Cost (₹/hr)"] > 0);
 
   return (
@@ -214,7 +236,6 @@ export default async function ContractorsPage() {
                             <Badge color={l.source === "GPS" ? "bg-emerald-100 text-emerald-700 ring-emerald-600/20" : l.source === "OPERATOR" ? "bg-brand-100 text-brand-700 ring-brand-600/20" : "bg-slate-100 text-slate-600 ring-slate-500/20"}>{l.source}</Badge>
                           </td>
                           <td className="px-4 py-2.5 text-center">
-                             {/* @ts-expect-error - added via raw sql so prisma types may lag */}
                              <ApproveButton id={l.id} status={l.approvalStatus || "DRAFT"} />
                           </td>
                           <td className="px-4 py-2.5 text-right"><DeleteHire id={l.id} kind="log" /></td>

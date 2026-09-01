@@ -14,7 +14,8 @@
   --color-ink-900: #0b1220;
   --color-ink-800: #111a2e;
   --color-ink-700: #1b2742;
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  /* Keep builds self-contained: next/font/google fetches at build time. */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 :root {
