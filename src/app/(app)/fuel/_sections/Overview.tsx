@@ -13,6 +13,7 @@ import { businessMonth } from "@/lib/business-time";
 import { requirePage, assetScope } from "@/lib/access";
 import { detectFills } from "@/lib/fuel-fill-reconcile";
 import { dailyFillsByVehicle } from "@/lib/fuel-daily-fills";
+import { lastTheftScan } from "@/lib/theft-scan-status";
 
 /**
  * Diesel in, diesel out, and what it bought — the module's front page.
@@ -85,6 +86,10 @@ export async function Overview() {
   // `FuelTransaction` and so is blank for eleven trucks whose sender watched
   // the diesel go in.
   const daily = await dailyFillsByVehicle(visible, dieselRate, 14);
+
+  // Whether anything is actually watching for theft, so an empty list of
+  // findings cannot be mistaken for a clean fleet.
+  const scan = await lastTheftScan();
   const unloggedFills = detectedFills.filter((f) => !f.logged);
   const unloggedLitres = unloggedFills.reduce((s, f) => s + f.litresAdded, 0);
   const unloggedValue = unloggedFills.reduce((s, f) => s + f.estimatedValue, 0);
@@ -179,6 +184,32 @@ export async function Overview() {
           </div>
         </Card>
       </div>
+
+      {/* Is anything actually watching? */}
+      <Card
+        className={
+          "flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3 text-sm " +
+          (scan.stale ? "border-amber-300 bg-amber-50" : "")
+        }
+      >
+        <ShieldAlert className={"h-4 w-4 " + (scan.stale ? "text-amber-600" : "text-emerald-600")} />
+        {scan.neverRun ? (
+          <span className="font-medium text-amber-900">
+            The nightly fuel-theft check has not run yet. Nothing is watching for theft.
+          </span>
+        ) : scan.stale ? (
+          <span className="font-medium text-amber-900">
+            Last fuel-theft check was {scan.hoursAgo} hours ago — it should run every night. Please tell
+            support, because no one is watching for theft right now.
+          </span>
+        ) : (
+          <span className="text-slate-600">
+            Fuel-theft check last ran <span className="font-medium text-ink-900">{fmtDate(scan.lastRunAt!)}</span>
+            {scan.scanned != null ? ` · ${scan.scanned} vehicles checked` : ""}
+            {scan.raised === 0 ? " · nothing found" : scan.raised != null ? ` · ${scan.raised} raised` : ""}
+          </span>
+        )}
+      </Card>
 
       {/* Theft / Fraud */}
       {fleet.allFlags.length > 0 && (

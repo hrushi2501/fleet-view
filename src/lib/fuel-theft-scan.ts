@@ -38,6 +38,7 @@ import { db } from "@/lib/db";
 import { analyseUsage, type AnalyticsReading, type Segment } from "@/lib/fleet-analytics";
 import { senderContradictsItself } from "@/lib/fuel-cache";
 import { getDieselRate } from "@/lib/settings";
+import { recordSystemAudit } from "@/lib/audit-writer";
 
 /** Events worth raising. IMPLAUSIBLE_DROP is deliberately absent — see above. */
 const ACCUSABLE = new Set(["STATIONARY_DROP", "EXCESS_CONSUMPTION"]);
@@ -189,6 +190,35 @@ export async function scanForFuelTheft(sinceHours = 30): Promise<ScanOutcome> {
       });
     }
   }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Say that the scan ran, even — especially — when it found nothing.
+  //
+  // A theft scan that finds nothing and a theft scan that never ran look
+  // identical from the outside: an empty table. That is the worst possible
+  // failure for this feature, because the empty screen reads as "all clear"
+  // either way, and nobody goes looking. If the nightly job starts erroring,
+  // the fleet would appear watched while nothing watched it.
+  //
+  // One audit row per run makes the difference visible: the Fuel screen can
+  // show when the last check happened, and say so loudly when that was too
+  // long ago. It is written whatever the outcome, and never allowed to fail
+  // the scan itself.
+  // ───────────────────────────────────────────────────────────────────────────
+  await recordSystemAudit({
+    action: "SCAN",
+    module: "FUEL",
+    summary:
+      out.raised > 0
+        ? `Fuel theft scan: ${out.raised} raised from ${out.scanned} vehicles`
+        : `Fuel theft scan: nothing found across ${out.scanned} vehicles`,
+    changes: JSON.stringify({
+      scanned: out.scanned,
+      raised: out.raised,
+      duplicates: out.duplicates,
+      notAssessed: out.notAssessed,
+    }),
+  }).catch(() => {});
 
   return out;
 }
