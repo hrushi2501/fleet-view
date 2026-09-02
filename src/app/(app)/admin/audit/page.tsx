@@ -42,7 +42,7 @@ export default async function AuditPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         <StatCard label="Events Recorded" value={num(total)} sub="all time" accent="brand" icon={<Activity className="h-5 w-5" />} />
         <StatCard label="Sensitive Actions" value={num(sensitive)} sub="deletes, config, exports" accent="amber" icon={<ShieldCheck className="h-5 w-5" />} />
         <StatCard label="Active Users" value={num(actors.length)} sub="last 90 days" accent="violet" icon={<Users className="h-5 w-5" />} />

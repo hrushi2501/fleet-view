@@ -45,7 +45,7 @@ export default async function RolesPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         <StatCard label="Roles" value={num(roles.length)} sub={`${num(PERMISSIONS.length)} permissions available`} accent="brand" icon={<ShieldCheck className="h-5 w-5" />} />
         <StatCard label="Users" value={num(users.length)} sub={`${num(unassigned)} without a role`} accent={unassigned > 0 ? "amber" : "emerald"} icon={<Users className="h-5 w-5" />} />
         <StatCard label="SoD Conflicts" value={num(sod.length)} sub="segregation-of-duties" accent={sod.length > 0 ? "rose" : "emerald"} icon={<TriangleAlert className="h-5 w-5" />} />
@@ -68,7 +68,7 @@ export default async function RolesPage() {
         <Card className="border-rose-200 p-0">
           <div className="flex items-center gap-2 p-5 pb-3">
             <TriangleAlert className="h-5 w-5 text-rose-600" />
-            <SectionTitle title="Segregation of Duties Conflicts" subtitle="One role holding both halves of a control — the first thing an auditor looks for" />
+            <SectionTitle title="Segregation of Duties Conflicts" subtitle="One role that can both do a thing and approve it — this should not happen" />
           </div>
           <div className="divide-y divide-slate-100">
             {sod.map((c, i) => (
@@ -88,7 +88,7 @@ export default async function RolesPage() {
 
       {roles.length > 0 && (
         <Card className="p-0">
-          <div className="p-5 pb-3"><SectionTitle title="Roles" subtitle="Full access is shown as * rather than being special-cased on a name" /></div>
+          <div className="p-5 pb-3"><SectionTitle title="Roles" subtitle="A * means full access to everything" /></div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
@@ -142,7 +142,7 @@ export default async function RolesPage() {
       )}
 
       <Card className="p-0">
-        <div className="p-5 pb-3"><SectionTitle title="User Assignments" subtitle="Change a role here and the switch is written to the audit log" /></div>
+        <div className="p-5 pb-3"><SectionTitle title="User Assignments" subtitle="Any role change here is recorded, with who changed it" /></div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">

@@ -96,7 +96,7 @@ export default async function MaterialsPage() {
         <TicketForm assets={assetOpts} drivers={driverOpts} projects={projOpts} dispatchNos={openDispatchNos} />
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         <StatCard label="Material Moved" value={`${num(movedKg / 1000)} t`} sub={`${num(pairs.length)} loads`} accent="brand" icon={<Scale className="h-5 w-5" />} />
         <StatCard label="Short Loads" value={num(shortTrips)} sub={`over ${TRANSIT_LOSS_PCT}% missing`} accent={shortTrips ? "rose" : "emerald"} icon={<TriangleAlert className="h-5 w-5" />} />
         <StatCard label="Receipt Missing" value={num(unmatched)} sub="slip never recorded" accent={unmatched ? "amber" : "emerald"} icon={<FileQuestion className="h-5 w-5" />} />

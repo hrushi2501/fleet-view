@@ -143,7 +143,7 @@ export function CommandPalette({
 
   return (
     <div
-      className="fixed inset-0 z-[9990] flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 backdrop-blur-sm animate-fade-up sm:p-6 md:p-20"
+      className="fixed inset-0 z-[9990] flex items-start justify-center overflow-x-auto overflow-y-auto bg-slate-900/50 p-4 backdrop-blur-sm animate-fade-up sm:p-6 md:p-20"
       onClick={handleClose}
     >
       <div
@@ -181,7 +181,7 @@ export function CommandPalette({
         </div>
 
         {/* Results List */}
-        <div ref={listRef} className="max-h-[60vh] overflow-y-auto p-3">
+        <div ref={listRef} className="max-h-[60vh] overflow-x-auto overflow-y-auto p-3">
           {query.trim().length >= 2 ? (
             results.length > 0 ? (
               <div className="space-y-4">
@@ -283,7 +283,7 @@ export function CommandPalette({
         </div>
 
         {/* Footer info bar */}
-        <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/80 px-5 py-2.5 text-xs text-slate-500">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/80 px-5 py-2.5 text-xs text-slate-500">
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-1">
               <kbd className="rounded bg-white px-1.5 py-0.5 font-mono text-[10px] font-bold shadow-xs">↑</kbd>

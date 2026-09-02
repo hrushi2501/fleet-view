@@ -464,7 +464,7 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
           this system has only been receiving it since August — presenting a
           30-day figure as "overall", the way a provider dashboard does, would
           be a wrong number wearing a confident label. */}
-      <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3.5 md:grid-cols-4 lg:grid-cols-4">
         <Panel>
           <p className="text-[11px] font-medium uppercase tracking-wide text-[#8b93a5]">
             {asset.primaryMeter === "SMU" ? "Engine hours" : "Odometer"}
@@ -638,9 +638,9 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
               </div>
             </div>
           ) : (
-            <div className="h-[170px] space-y-2 overflow-y-auto pr-1">
+            <div className="h-[170px] space-y-2 overflow-x-auto overflow-y-auto pr-1">
               {asset.workOrders.map((w) => (
-                <div key={w.id} className="flex items-center justify-between gap-3 border-b border-[#edf0f4] pb-2 last:border-0">
+                <div key={w.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-[#edf0f4] pb-2 last:border-0">
                   <div className="min-w-0">
                     <p className="truncate text-[13px] font-semibold text-[#17233b]">{w.woNo} · {w.type}</p>
                     <p className="truncate text-xs text-[#667085]">{w.description}</p>

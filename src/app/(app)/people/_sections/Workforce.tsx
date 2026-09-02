@@ -217,7 +217,7 @@ export async function Workforce({ tab }: { tab: string }) {
       {activeTab === "overview" && (
         <>
           {/* Stat cards */}
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
             <StatCard
               label="Total Workforce"
               value={num(drivers.length)}
@@ -394,7 +394,7 @@ export async function Workforce({ tab }: { tab: string }) {
       {activeTab === "safety" && (
         <>
           {/* Stat cards */}
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             <StatCard
               label="People"
               value={num(drivers.length)}
@@ -588,7 +588,7 @@ export async function Workforce({ tab }: { tab: string }) {
                 subtitle="Dismissed events stop counting toward the score"
               />
             </div>
-            <div className="max-h-96 overflow-y-auto">
+            <div className="max-h-96 overflow-x-auto overflow-y-auto">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                   <tr>

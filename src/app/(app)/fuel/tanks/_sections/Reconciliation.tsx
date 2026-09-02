@@ -82,7 +82,7 @@ export async function Reconciliation() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         <StatCard label="Unaccounted Fuel" value={`${num(missingL)} L`} sub="across all tanks" accent="rose" icon={<TriangleAlert className="h-5 w-5" />} />
         <StatCard label="Value at Risk" value={inr(missingL * dieselRate, { compact: true })} sub={`@ ₹${dieselRate}/L`} accent="rose" icon={<IndianRupee className="h-5 w-5" />} />
         <StatCard label="Shrinkage" value={`${shrinkagePct.toFixed(2)}%`} sub={`of ${num(throughput)} L throughput`} accent={shrinkagePct > 1 ? "rose" : "emerald"} icon={<Scale className="h-5 w-5" />} />
@@ -93,7 +93,7 @@ export async function Reconciliation() {
       <Card className="p-0">
         <div className="p-5 pb-3">
           <SectionTitle
-            title="Live Reconciliation"
+            title="Live Tank Check"
             subtitle={`Computed between each tank's first and last dip · tolerance ±${DIP_TOLERANCE_L} L`}
           />
         </div>
@@ -165,7 +165,7 @@ export async function Reconciliation() {
       {/* Consumption norms */}
       <Card className="p-0">
         <div className="p-5 pb-3">
-          <SectionTitle title="Expected Fuel Use" subtitle="Normal burn for each type of machine — issues outside the range are flagged as problems" />
+          <SectionTitle title="Expected Fuel Use" subtitle="Normal diesel use for each machine type — anything outside this range is flagged" />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -201,7 +201,7 @@ export async function Reconciliation() {
       {/* Saved history */}
       <Card className="p-0">
         <div className="p-5 pb-3">
-          <SectionTitle title="Reconciliation History" subtitle="Signed-off periods — the audit trail finance reviews" />
+          <SectionTitle title="Past Tank Checks" subtitle="Signed-off periods — the audit trail finance reviews" />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">

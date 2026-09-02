@@ -189,7 +189,7 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
 
       {tab === "workorders" && (
         <>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
             <StatCard label="Open Work Orders" value={num(openJobs.length)} sub={`${wos.length} total`} accent="brand" icon={<Wrench className="h-5 w-5" />} />
             <StatCard label="Active Breakdowns" value={num(breakdowns.length)} sub="Needs urgent attention" accent="rose" icon={<TriangleAlert className="h-5 w-5" />} />
             <StatCard label="Avg MTTR" value={`${avgMttr.toFixed(1)} h`} sub="Mean time to repair" accent="amber" icon={<Clock className="h-5 w-5" />} />
@@ -212,16 +212,16 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
 
             return (
               <Card>
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
                   <div className="flex items-center gap-2">
                     <AlertCircle className="h-5 w-5 text-amber-600" />
-                    <SectionTitle title="Failure Reason & RCA Intelligence" subtitle="Categorized component failure frequency to drive corrective action" />
+                    <SectionTitle title="Failure Reason & RCA Intelligence" subtitle="Which parts break most often, so they can be fixed first" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {topFailures.slice(0, 4).map((tf) => (
                     <div key={tf.code} className="rounded-xl border border-slate-100 bg-slate-50/50 p-3">
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
                         <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{tf.category}</span>
                         <span className="text-xs font-bold text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full">{tf.count} incidents</span>
                       </div>
@@ -262,9 +262,9 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
               </Card>
               <Card className="lg:col-span-2">
                 <SectionTitle title="Open &amp; In-Progress Work Orders" subtitle="Prioritized queue" />
-                <div className="max-h-[300px] space-y-2 overflow-y-auto mt-4">
+                <div className="max-h-[300px] space-y-2 overflow-x-auto overflow-y-auto mt-4">
                   {openJobs.slice(0, 12).map((w) => (
-                    <div key={w.id} className="flex items-center justify-between rounded-lg border border-slate-100 p-2.5 hover:bg-slate-50/50">
+                    <div key={w.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 p-2.5 hover:bg-slate-50/50">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <Badge color={PRIORITY_COLOR[w.priority]}>{w.priority}</Badge>
@@ -333,7 +333,7 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
             <Card className="p-0">
               <div className="flex items-center gap-2 p-5 pb-3">
                 <Brain className="h-5 w-5 text-violet-600" />
-                <SectionTitle title="Predictive — Breakdown Risk" subtitle="Vehicles most likely to break down next, by age, overdue service, history &amp; health" />
+                <SectionTitle title="Predictive — Breakdown Risk" subtitle="Vehicles most likely to break down next — by age, missed services and past repairs" />
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -422,7 +422,7 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
 
       {tab === "preventive" && (
         <>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             <StatCard label="Overdue" value={num(overdue.length)} sub="past interval" accent="rose" icon={<TriangleAlert className="h-5 w-5" />} />
             <StatCard label="Due Now" value={num(dueNow.length)} sub={`${num(upcoming.length)} coming up`} accent="amber" icon={<CalendarClock className="h-5 w-5" />} />
             <StatCard label="Forecast Spend" value={inr(forecastCost, { compact: true })} sub="overdue + due tasks" accent="brand" icon={<IndianRupee className="h-5 w-5" />} />
@@ -508,7 +508,7 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
           <Card className="p-0">
             <div className="flex items-center gap-2 p-5 pb-3 border-b border-slate-100">
               <CalendarClock className="h-5 w-5 text-brand-600" />
-              <SectionTitle title="30-Day PM Forecast Planner" subtitle="Service intervals predicted to trip in the next 30 days based on run-rates" />
+              <SectionTitle title="30-Day PM Forecast Planner" subtitle="Services likely to fall due in the next 30 days, based on how much each machine runs" />
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

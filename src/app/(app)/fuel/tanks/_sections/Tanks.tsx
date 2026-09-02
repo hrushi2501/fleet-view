@@ -59,7 +59,7 @@ export async function Tanks() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         <StatCard label="Tanks" value={num(tanks.length)} sub={`${num(totalCapacity)} L capacity`} accent="brand" icon={<Droplets className="h-5 w-5" />} />
         <StatCard label="Diesel in Stock" value={`${num(totalStock)} L`} sub={inr(totalStock * dieselRate, { compact: true })} accent="violet" icon={<IndianRupee className="h-5 w-5" />} />
         <StatCard label="Short Deliveries" value={`${num(totalShortfall)} L`} sub={inr(totalShortfall * dieselRate, { compact: true })} accent="rose" icon={<TriangleAlert className="h-5 w-5" />} />
@@ -159,8 +159,8 @@ export async function Tanks() {
               </div>
 
               <div className="lg:col-span-3">
-                <SectionTitle title="Tank Ledger" subtitle="Newest first — a dip re-anchors the book to the physical measurement" />
-                <div className="mt-2 max-h-80 overflow-y-auto rounded-lg ring-1 ring-slate-100">
+                <SectionTitle title="Tank In &amp; Out" subtitle="Newest first — a dipstick reading resets the book to the real amount" />
+                <div className="mt-2 max-h-80 overflow-x-auto overflow-y-auto rounded-lg ring-1 ring-slate-100">
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                       <tr>
@@ -258,7 +258,7 @@ export async function Tanks() {
 
             {t.dips.length > 0 && (
               <div className="border-t border-slate-100 p-5">
-                <SectionTitle title="Dip Readings" subtitle="Physical measurements — the ground truth for reconciliation" />
+                <SectionTitle title="Dip Readings" subtitle="Real measurements taken by hand — the books are checked against these" />
                 <div className="mt-2 overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">

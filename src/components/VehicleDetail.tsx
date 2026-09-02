@@ -93,7 +93,7 @@ export function DetailList({ rows, cols = 2 }: { rows: Row[]; cols?: 1 | 2 | 3 }
     <dl
       className={cn(
         "grid gap-x-6 gap-y-4",
-        cols === 1 ? "grid-cols-1" : cols === 3 ? "grid-cols-2 lg:grid-cols-3" : "grid-cols-2"
+        cols === 1 ? "grid-cols-1" : cols === 3 ? "grid-cols-2 md:grid-cols-3 lg:grid-cols-3" : "grid-cols-2"
       )}
     >
       {rows.map((r) => (

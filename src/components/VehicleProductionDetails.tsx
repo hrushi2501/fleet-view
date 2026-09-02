@@ -360,7 +360,7 @@ export function VehicleProductionDetails({
 
       {/* Recent Production Shift Logs Table */}
       <Card className="p-0">
-        <div className="flex items-center justify-between p-5 pb-3 border-b border-slate-100">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-5 pb-3 border-b border-slate-100">
           <SectionTitle
             title="Recent Production Shift Records"
             subtitle={`${filteredLogs.length} shift logs in selected time window`}

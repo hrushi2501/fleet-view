@@ -186,7 +186,7 @@ export default async function Dashboard() {
       <section className="space-y-4">
         <SectionTitle
           title="Right now"
-          subtitle="Machines that can take work today, and what the rest are doing"
+          subtitle="Machines free for work today, and what the rest are doing"
         />
 
         <div className="grid gap-4 lg:grid-cols-3">
@@ -247,7 +247,7 @@ export default async function Dashboard() {
             title="Measured from active Tata Fleet Edge vehicles — last 30 days"
             subtitle={`${telemetry.totals.activeVehicles} active road vehicle${telemetry.totals.activeVehicles === 1 ? "" : "s"} with credible mileage · ${telemetry.totals.vehiclesReporting} Tata asset${telemetry.totals.vehiclesReporting === 1 ? "" : "s"} reported`}
           />
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-4">
             <StatCard label="Distance covered" value={`${num(telemetry.totals.distanceKm)} km`} sub="Odometer delta" accent="brand" icon={<Activity className="h-5 w-5" />} />
             <StatCard
               label="Diesel burned"
@@ -304,7 +304,7 @@ export default async function Dashboard() {
           title="Money and paperwork"
           subtitle={`From entered records · diesel priced at ₹${dieselRate}/L`}
         />
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
           <StatCard
             label="Fleet value"
             value={inr(fleetValue, { compact: true })}
@@ -339,12 +339,12 @@ export default async function Dashboard() {
 
       {/* ── Trends ────────────────────────────────────────────────────────── */}
       <section className="space-y-4">
-        <SectionTitle title="Trends" subtitle="Operating cost by head, and diesel going into tanks" />
+        <SectionTitle title="Trends" subtitle="Running cost by type, and diesel going into tanks" />
         <div className="grid gap-4 lg:grid-cols-3">
           <Card className="lg:col-span-2">
             <SectionTitle
               title="Monthly operating cost"
-              subtitle="The five largest heads · the rest are grouped, because a ninth colour is indistinguishable from one of the first eight"
+              subtitle="The five biggest costs · the rest are grouped together"
             />
             <MultiBar data={costByMonth} keys={heads} xKey="month" format="inrCompact" />
           </Card>
@@ -379,7 +379,7 @@ export default async function Dashboard() {
             <TrendArea data={fuelTrend} dataKey="litres" xKey="day" format="litres" />
           </Card>
           <Card>
-            <SectionTitle title="Utilisation by class" subtitle="Average across each class" />
+            <SectionTitle title="Usage by machine type" subtitle="Average across each class" />
             <div className="space-y-3.5">
               {utilByClass.length === 0 && <p className="text-sm text-slate-400">No classes to compare yet.</p>}
               {utilByClass.map((c) => (

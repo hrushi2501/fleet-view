@@ -179,7 +179,7 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
       // A neutral scrim. The old one was a brand-to-violet gradient blur, which
       // tinted the card's own whites and made two views of the same vehicle
       // look like two different products.
-      className="fixed inset-0 z-[2000] flex items-start justify-center overflow-y-auto bg-slate-900/55 p-4 backdrop-blur-sm sm:p-8"
+      className="fixed inset-0 z-[2000] flex items-start justify-center overflow-x-auto overflow-y-auto bg-slate-900/55 p-4 backdrop-blur-sm sm:p-8"
       onClick={onClose}
     >
       <div
@@ -202,7 +202,7 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
         {err && <div className="flex h-48 items-center justify-center bg-white text-rose-600">{err}</div>}
 
         {data && (
-          <div className="relative max-h-[86vh] overflow-y-auto">
+          <div className="relative max-h-[86vh] overflow-x-auto overflow-y-auto">
             {/* The same band the full vehicle page opens with, at the height a
                 floating card can afford. Two views of one vehicle should not
                 look like two products. */}
@@ -231,7 +231,7 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                   value={data.meterValue > 0 ? `${num(data.meterValue)} ${data.primaryMeter === "SMU" ? "h" : "km"}` : "—"}
                 />
                 <Stat label="Health" value={`${data.healthScore}`} sub={data.healthScore >= 75 ? "good" : data.healthScore >= 55 ? "watch" : "poor"} />
-                <Stat label="Utilisation" value={`${data.utilization}%`} />
+                <Stat label="Usage" value={`${data.utilization}%`} />
                 <Stat label="Year" value={data.yearMfg ? String(data.yearMfg) : "—"} />
                 <Stat label="Project" value={data.project?.code ?? "—"} sub={data.project?.name} />
               </div>
@@ -460,7 +460,7 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                 <div className="space-y-1.5">
                   {data.compliance.length === 0 && <p className="text-sm text-slate-400">No documents on record.</p>}
                   {data.compliance.map((c) => (
-                    <div key={c.docType} className="flex items-center justify-between text-sm">
+                    <div key={c.docType} className="flex flex-wrap items-center justify-between gap-3 text-sm">
                       <div><p className="font-medium text-ink-900">{c.docType}</p><p className="text-[11px] text-slate-500">exp {fmtDate(c.expiryDate)}</p></div>
                       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${STATUS_COLOR[c.status]}`}>{c.status}</span>
                     </div>
@@ -474,7 +474,7 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                 {data.workOrders.length === 0 && <p className="text-sm text-slate-400">No work orders yet.</p>}
                 <div className="space-y-2">
                   {data.workOrders.map((w) => (
-                    <div key={w.woNo} className="flex items-center justify-between text-sm">
+                    <div key={w.woNo} className="flex flex-wrap items-center justify-between gap-3 text-sm">
                       <div className="min-w-0"><p className="font-medium text-ink-900">{w.woNo} · {w.type}</p><p className="truncate text-[11px] text-slate-500">{w.description}</p></div>
                       <span className="text-xs font-medium text-ink-900">{inr(w.totalCost, { compact: true })}</span>
                     </div>
@@ -488,7 +488,7 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                 {data.fuel.length === 0 && <p className="text-sm text-slate-400">No fuel entries yet.</p>}
                 <div className="space-y-1.5">
                   {data.fuel.map((f, i) => (
-                    <div key={i} className="flex items-center justify-between text-sm">
+                    <div key={i} className="flex flex-wrap items-center justify-between gap-3 text-sm">
                       <span className="text-slate-600">{fmtDate(f.date)}</span>
                       <span className="font-medium text-ink-900">{num(f.quantity)} L</span>
                       <span className={f.anomaly ? "text-xs font-medium text-rose-600" : "text-xs text-emerald-600"}>{f.anomaly ? `${f.variancePct}% ⚠` : "OK"}</span>

@@ -147,7 +147,7 @@ export function DriverTripPanel({ active, hasCamera }: { active: Active; hasCame
       ) : (
         <>
           <div className="rounded-2xl bg-emerald-50 p-4 ring-1 ring-emerald-200">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-xs font-medium uppercase tracking-wide text-emerald-700">ट्रिप चालू है · Trip running</p>
                 <p className="mt-0.5 text-xl font-bold text-ink-900">{active.vehicle.code}</p>
@@ -237,7 +237,7 @@ function GaugeCapture({ assetId, onClose, onDone }: { assetId: string; onClose: 
   return (
     <div className="fixed inset-0 z-50 flex items-end bg-slate-900/50 backdrop-blur-sm sm:items-center sm:justify-center">
       <div className="w-full rounded-t-3xl bg-white p-5 sm:max-w-md sm:rounded-3xl">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-lg font-bold text-ink-900">फ्यूल गेज · Fuel gauge</p>
           <button onClick={onClose} className="rounded-lg p-1 text-slate-400"><X className="h-5 w-5" /></button>
         </div>

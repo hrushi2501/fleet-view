@@ -70,7 +70,7 @@ export default async function FuelChecksPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         <StatCard label="Awaiting Review" value={num(pending.length)} sub="held, not in the ledger" accent={pending.length ? "amber" : "emerald"} icon={<TriangleAlert className="h-5 w-5" />} />
         <StatCard label="Auto-Accepted" value={num(auto.length + autoSensor.length)} sub={autoSensor.length ? `${num(autoSensor.length)} from tank senders, ${num(auto.length)} from photos` : `${AUTO_VERIFY_CONFIDENCE * 100}%+ clear reading`} accent="emerald" icon={<CheckCircle2 className="h-5 w-5" />} />
         <StatCard label="Corrected by Staff" value={num(corrected.length)} sub="model was wrong" accent="brand" icon={<Gauge className="h-5 w-5" />} />

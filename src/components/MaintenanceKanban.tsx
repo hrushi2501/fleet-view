@@ -122,7 +122,7 @@ export function MaintenanceKanban({ workOrders }: { workOrders: KanbanWorkOrder[
               className="flex flex-col rounded-3xl border border-slate-200/80 bg-slate-50/70 p-3.5 shadow-xs min-h-[420px]"
             >
               {/* Column Header */}
-              <div className="flex items-center justify-between border-b border-slate-200/80 pb-3 px-1">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 pb-3 px-1">
                 <div className="flex items-center gap-2">
                   <span className={cn("h-2.5 w-2.5 rounded-full", col.dot)} />
                   <h4 className="text-xs font-black uppercase tracking-wider text-ink-900">{col.label}</h4>
@@ -133,7 +133,7 @@ export function MaintenanceKanban({ workOrders }: { workOrders: KanbanWorkOrder[
               </div>
 
               {/* Cards List */}
-              <div className="mt-3 flex-1 space-y-3 overflow-y-auto pr-0.5">
+              <div className="mt-3 flex-1 space-y-3 overflow-x-auto overflow-y-auto pr-0.5">
                 {columnOrders.map((wo) => {
                   const isBusy = pending && movingId === wo.id;
                   return (

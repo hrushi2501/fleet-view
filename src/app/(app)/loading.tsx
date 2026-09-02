@@ -37,7 +37,7 @@ export default function AppLoading() {
       </div>
 
       {/* the row of figures most screens open with */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         {[0, 1, 2, 3].map((i) => (
           <div key={i} className="rounded-[13px] border border-[#e9eef5] bg-white p-5">
             <div className="h-3 w-20 rounded bg-slate-200/80" />

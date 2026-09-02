@@ -73,7 +73,7 @@ export default async function ComplianceChecksPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         <StatCard label="Not Legal to Operate" value={num(grounded.length)} sub={`of ${num(assets.length)} machines`} accent="rose" icon={<Ban className="h-5 w-5" />} />
         <StatCard label="Missing Documents" value={num(totalMissing)} sub="never recorded" accent="rose" icon={<FileX2 className="h-5 w-5" />} />
         <StatCard label="Expired" value={num(totalExpired)} sub={`${num(totalExpiring)} expiring soon`} accent="amber" icon={<FileWarning className="h-5 w-5" />} />
@@ -99,7 +99,7 @@ export default async function ComplianceChecksPage() {
         <Card className="border-rose-200 p-0">
           <div className="flex items-center gap-2 p-5 pb-3">
             <Ban className="h-5 w-5 text-rose-600" />
-            <SectionTitle title="Not Legal to Operate" subtitle="A blocking document is expired or was never recorded — seizure, fines and void insurance claims" />
+            <SectionTitle title="Not Legal to Operate" subtitle="A missing or expired paper can mean the vehicle is seized, fined, or insurance not paid" />
           </div>
           <div className="divide-y divide-slate-100">
             {grounded.slice(0, 40).map(({ asset, compliance }) => (

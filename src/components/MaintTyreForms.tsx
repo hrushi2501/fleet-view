@@ -139,7 +139,7 @@ function Modal({
 }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-x-auto overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
       <div className="my-8 w-full max-w-2xl rounded-2xl bg-white shadow-xl ring-1 ring-slate-200">
         <div className="flex items-start justify-between border-b border-slate-100 p-5">
           <div>
@@ -520,7 +520,7 @@ export function PreOpChecklistForm({ assets }: { assets: Opt[] }) {
           setResultMsg(null);
         }}
         title="Daily Operator Pre-Op Safety Inspection"
-        subtitle="Fast 5-point shift inspection. Any failed check automatically opens an urgent breakdown Work Order."
+        subtitle="Quick 5-point check before a shift. Any fail opens an urgent repair job on its own."
       >
         <form
           action={(fd) =>
@@ -547,7 +547,7 @@ export function PreOpChecklistForm({ assets }: { assets: Opt[] }) {
           className="space-y-4"
         >
           <Sel
-            label="Select Machine / Asset *"
+            label="Select Machine *"
             name="assetId"
             required
             options={[
@@ -561,7 +561,7 @@ export function PreOpChecklistForm({ assets }: { assets: Opt[] }) {
               5-Point Safety Inspection Items
             </h4>
 
-            <label className="flex items-center justify-between rounded-lg bg-white p-3 border border-slate-200">
+            <label className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-white p-3 border border-slate-200">
               <span className="text-sm font-medium text-slate-800">1. Engine Oil & Fluid Levels OK</span>
               <input
                 type="checkbox"
@@ -571,7 +571,7 @@ export function PreOpChecklistForm({ assets }: { assets: Opt[] }) {
               />
             </label>
 
-            <label className="flex items-center justify-between rounded-lg bg-white p-3 border border-slate-200">
+            <label className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-white p-3 border border-slate-200">
               <span className="text-sm font-medium text-slate-800">
                 2. Hydraulic Hoses & Cylinders (No Leaks)
               </span>
@@ -583,7 +583,7 @@ export function PreOpChecklistForm({ assets }: { assets: Opt[] }) {
               />
             </label>
 
-            <label className="flex items-center justify-between rounded-lg bg-white p-3 border border-slate-200">
+            <label className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-white p-3 border border-slate-200">
               <span className="text-sm font-medium text-slate-800">3. Fan Belts & Tension OK</span>
               <input
                 type="checkbox"
@@ -593,7 +593,7 @@ export function PreOpChecklistForm({ assets }: { assets: Opt[] }) {
               />
             </label>
 
-            <label className="flex items-center justify-between rounded-lg bg-white p-3 border border-slate-200">
+            <label className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-white p-3 border border-slate-200">
               <span className="text-sm font-medium text-slate-800">
                 4. Tyres / Tracks & Undercarriage Intact
               </span>
@@ -605,7 +605,7 @@ export function PreOpChecklistForm({ assets }: { assets: Opt[] }) {
               />
             </label>
 
-            <label className="flex items-center justify-between rounded-lg bg-white p-3 border border-slate-200">
+            <label className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-white p-3 border border-slate-200">
               <span className="text-sm font-medium text-slate-800">
                 5. Brakes, Steering & Emergency Stop Responsive
               </span>
@@ -867,7 +867,7 @@ export function TyreForm({
         open={open}
         onClose={() => setOpen(false)}
         title={tyre ? "Edit Tyre" : "Add Tyre to Register"}
-        subtitle="Each casing is tracked by serial — that is what makes a quiet swap between machines visible."
+        subtitle="Every tyre is tracked by its serial number, so a swap between machines shows up."
       >
         <form
           action={(fd) =>
@@ -1124,7 +1124,7 @@ export function ComponentForm({
         open={open}
         onClose={() => setOpen(false)}
         title={component ? "Edit Component" : "Add Major Component"}
-        subtitle="Buckets, undercarriage, engines — same serial-level discipline as tyres, for the same reason."
+        subtitle="Buckets, undercarriage, engines — tracked by serial number, just like tyres."
       >
         <form
           action={(fd) =>

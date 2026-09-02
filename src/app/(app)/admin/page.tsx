@@ -33,7 +33,7 @@ export default async function AdminUsersPage() {
         <UserEntry />
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-3">
         <StatCard label="Total Users" value={num(users.length)} accent="brand" icon={<Users className="h-5 w-5" />} />
         <StatCard label="Administrators" value={num(admins)} accent="violet" icon={<Shield className="h-5 w-5" />} />
         <StatCard label="Truck Drivers" value={num(drivers)} accent="emerald" icon={<Truck className="h-5 w-5" />} />

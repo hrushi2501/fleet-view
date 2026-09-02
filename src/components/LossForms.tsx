@@ -109,7 +109,7 @@ function Modal({
 }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-x-auto overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
       <div className="my-8 w-full max-w-2xl rounded-2xl bg-white shadow-xl ring-1 ring-slate-200">
         <div className="flex items-start justify-between border-b border-slate-100 p-5">
           <div>
@@ -349,7 +349,7 @@ export function NewCaseForm({ assets, drivers }: { assets: Opt[]; drivers: Opt[]
         open={open}
         onClose={() => setOpen(false)}
         title="Open a Case Manually"
-        subtitle="For something a rule wouldn't catch — a tip-off, a physical check, an audit finding."
+        subtitle="For something the system cannot spot on its own — a tip-off or a hand check."
       >
         <form
           action={(fd) =>
@@ -385,7 +385,7 @@ export function NewCaseForm({ assets, drivers }: { assets: Opt[]; drivers: Opt[]
           />
           <Inp label="Risk Score" name="score" type="number" step="1" defaultValue={50} hint="0–100" />
           <Sel
-            label="Asset"
+            label="Machine"
             name="assetId"
             options={[{ value: "", label: "— None —" }, ...assets.map((a) => ({ value: a.id, label: a.label }))]}
           />
@@ -538,7 +538,7 @@ export function EvidenceForm({ caseId }: { caseId: string }) {
         open={open}
         onClose={() => setOpen(false)}
         title="Add Evidence"
-        subtitle="Everything attached here forms the pack handed to whoever decides the outcome."
+        subtitle="Everything added here goes to the person who makes the final decision."
       >
         <form
           action={(fd) =>
@@ -598,7 +598,7 @@ export function RecoveryForm({ caseId }: { caseId: string }) {
         open={open}
         onClose={() => setOpen(false)}
         title="Record Recovery"
-        subtitle="Money actually clawed back. Partial recoveries from different channels each keep their own reference."
+        subtitle="Money actually recovered. Each part-payment keeps its own reference."
       >
         <form
           action={(fd) =>

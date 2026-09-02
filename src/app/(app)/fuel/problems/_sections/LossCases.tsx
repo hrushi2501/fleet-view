@@ -83,7 +83,7 @@ export async function LossCases() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         <StatCard label="Open Cases" value={num(sc.openCases)} sub={`${num(sc.totalCases)} total`} accent="rose" icon={<ShieldAlert className="h-5 w-5" />} />
         <StatCard label="Live Exposure" value={inr(sc.atRisk, { compact: true })} sub="open cases only" accent="rose" icon={<IndianRupee className="h-5 w-5" />} />
         <StatCard label="Recovered" value={inr(sc.recovered, { compact: true })} sub={sc.recoveryRate != null ? `${sc.recoveryRate.toFixed(0)}% of pursued` : "no cases pursued yet"} accent="emerald" icon={<HandCoins className="h-5 w-5" />} />
@@ -113,7 +113,7 @@ export async function LossCases() {
         </Card>
 
         <Card className="lg:col-span-2">
-          <SectionTitle title="Repeat Offenders" subtitle="Patterns no single module could see — a vendor or machine appearing again and again" />
+          <SectionTitle title="Repeat Offenders" subtitle="Things that repeat across the whole system — the same supplier or machine coming up again and again" />
           <div className="mt-2 overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
@@ -250,7 +250,7 @@ export async function LossCases() {
       {resolved.length > 0 && (
         <Card className="p-0">
           <div className="p-5 pb-3">
-            <SectionTitle title={`Resolved (${resolved.length})`} subtitle="Closed, recovered, written off or dismissed" />
+            <SectionTitle title={`Resolved (${resolved.length})`} subtitle="Closed, money recovered, written off, or dropped" />
           </div>
           <div className="divide-y divide-slate-100 opacity-75">
             {resolved.slice(0, 40).map((c) => <CaseRow key={c.id} c={c} />)}

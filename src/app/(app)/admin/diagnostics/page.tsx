@@ -87,7 +87,7 @@ export default async function DiagnosticsPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         <StatCard label="Readings — 24h" value={num(last24h)} sub={`${num(lastWeek)} in 7 days`} accent="brand" icon={<Activity className="h-5 w-5" />} />
         <StatCard label="Tracked Vehicles" value={`${num(assetsTracked)}/${num(assetsTotal)}`} sub="have a device id" accent="violet" icon={<PlugZap className="h-5 w-5" />} />
         <StatCard label="Silent Over 24h" value={num(silent.length)} sub="tracker fitted, no data" accent={silent.length ? "rose" : "emerald"} icon={<TriangleAlert className="h-5 w-5" />} />
@@ -151,7 +151,7 @@ export default async function DiagnosticsPage() {
       <Card>
         <SectionTitle
           title="Payload Schema Drift"
-          subtitle="Newest raw payload compared against the recorded field contract"
+          subtitle="The latest data received, compared with the fields we expect"
         />
         <div className="mt-3 text-sm">
           {!newestRaw && <p className="text-slate-400">No payload with a stored `raw` object in the last 25 readings.</p>}
@@ -180,7 +180,7 @@ export default async function DiagnosticsPage() {
           <SectionTitle title="Readings by Source" subtitle="Where the data is coming from" />
           <div className="mt-3 space-y-2 text-sm">
             {bySource.map((s) => (
-              <div key={s.source} className="flex items-center justify-between">
+              <div key={s.source} className="flex flex-wrap items-center justify-between gap-3">
                 <span className="font-mono text-xs text-slate-600">{s.source}</span>
                 <span className="font-semibold text-ink-900">{num(s._count._all)}</span>
               </div>
@@ -193,7 +193,7 @@ export default async function DiagnosticsPage() {
           <SectionTitle title="Silent Trackers" subtitle="Device fitted, nothing received in 24 hours" />
           <div className="mt-3 space-y-2 text-sm">
             {silent.map((a) => (
-              <div key={a.id} className="flex items-center justify-between">
+              <div key={a.id} className="flex flex-wrap items-center justify-between gap-3">
                 <span className="font-medium text-ink-900">{a.code}<span className="ml-2 text-xs text-slate-400">{a.registrationNo ?? ""}</span></span>
                 <span className="text-xs text-slate-500">last seen {timeAgo(a.lastSeen)}</span>
               </div>

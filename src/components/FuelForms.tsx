@@ -67,7 +67,7 @@ function Sel({ label, name, options, defaultValue, value, onChange, required }: 
 function Modal({ open, onClose, title, subtitle, children }: { open: boolean; onClose: () => void; title: string; subtitle?: string; children: ReactNode }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-x-auto overflow-y-auto bg-slate-900/50 p-4 backdrop-blur-sm">
       <div className="my-8 w-full max-w-2xl rounded-3xl bg-white shadow-2xl ring-1 ring-black/5 animate-fade-up">
         <div className="flex items-start justify-between border-b border-slate-100 p-5">
           <div>
@@ -124,7 +124,7 @@ export function TankForm({ projects, tank }: { projects: Opt[]; tank?: { id: str
         {!tank && <Plus className="h-4 w-4" />}
         {tank ? "Edit" : "Add Tank"}
       </TriggerBtn>
-      <Modal open={open} onClose={() => setOpen(false)} title={tank ? "Edit Site Tank" : "Add Site Diesel Tank"} subtitle="Every litre entering or leaving this tank is tracked and reconciled against physical dips.">
+      <Modal open={open} onClose={() => setOpen(false)} title={tank ? "Edit Site Tank" : "Add Site Diesel Tank"} subtitle="Every litre in and out of this tank, checked against the dipstick reading">
         <form
           action={(fd) => start(async () => {
             try {
@@ -196,7 +196,7 @@ export function ReceiptForm({ tanks, defaultRate }: { tanks: Opt[]; defaultRate:
         open={open}
         onClose={() => setOpen(false)}
         title="Record Diesel Delivery (GRN)"
-        subtitle="Enter supplier bill vs actual physical dip. Shortfall & transit risks are computed live."
+        subtitle="Enter the supplier bill and the real dipstick reading. Any shortage is worked out for you."
       >
         <form
           action={(fd) => start(async () => {
@@ -327,7 +327,7 @@ export function DipForm({ tanks }: { tanks: Opt[] }) {
       <TriggerBtn onClick={() => setOpen(true)} tone="ghost">
         <Plus className="h-4 w-4" /> Record Dip
       </TriggerBtn>
-      <Modal open={open} onClose={() => setOpen(false)} title="Record Physical Dip" subtitle="The dipstick reading is the ground truth. Reconciliation measures the book against this.">
+      <Modal open={open} onClose={() => setOpen(false)} title="Record Physical Dip" subtitle="The dipstick reading is the real one. The book is checked against it.">
         <form action={(fd) => start(async () => {
           try {
             const res = await saveDip(fd);
@@ -413,7 +413,7 @@ export function AnomalyTriage({ anomaly }: { anomaly: { id: string; status: stri
       <button onClick={() => setOpen(true)} className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">
         Triage
       </button>
-      <Modal open={open} onClose={() => setOpen(false)} title="Investigate Anomaly" subtitle="Record the outcome and any amount recovered. Recovered value rolls up to the loss-prevention scorecard.">
+      <Modal open={open} onClose={() => setOpen(false)} title="Check This Problem" subtitle="Record the outcome and any amount recovered. Recovered value rolls up to the loss-prevention scorecard.">
         <form action={(fd) => start(async () => {
           try {
             const res = await updateAnomaly(anomaly.id, fd);
@@ -469,7 +469,7 @@ export function NormForm({ classes }: { classes: { value: string; label: string 
       <TriggerBtn onClick={() => setOpen(true)} tone="ghost">
         <Plus className="h-4 w-4" /> Set Norm
       </TriggerBtn>
-      <Modal open={open} onClose={() => setOpen(false)} title="Consumption Norm" subtitle="Expected fuel burn for an asset class. Issues outside the tolerance band raise an anomaly.">
+      <Modal open={open} onClose={() => setOpen(false)} title="Consumption Norm" subtitle="Normal diesel use for each machine type. Anything outside this range is flagged.">
         <form action={(fd) => start(async () => {
           try {
             const res = await saveNorm(fd);
@@ -484,7 +484,7 @@ export function NormForm({ classes }: { classes: { value: string; label: string 
             toast.error("Failed to save norm");
           }
         })} className="grid gap-4 sm:grid-cols-2">
-          <Sel label="Asset Class" name="assetClass" required options={classes} />
+          <Sel label="Machine Type" name="assetClass" required options={classes} />
           <Sel label="Unit" name="unit" required options={[{ value: "KMPL", label: "km per litre (road vehicles)" }, { value: "LPH", label: "litres per engine-hour (equipment)" }]} />
           <Inp label="Norm Low" name="normLow" type="number" step="0.01" required />
           <Inp label="Norm High" name="normHigh" type="number" step="0.01" required />

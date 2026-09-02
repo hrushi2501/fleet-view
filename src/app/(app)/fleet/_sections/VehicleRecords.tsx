@@ -66,7 +66,7 @@ export async function VehicleRecords() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         <StatCard label="Data Completeness" value={`${avg.toFixed(0)}%`} sub="fleet average, weighted" accent={avg >= 80 ? "emerald" : "amber"} icon={<Database className="h-5 w-5" />} />
         <StatCard label="Poor Records" value={num(poor)} sub="below 60%" accent="rose" icon={<TriangleAlert className="h-5 w-5" />} />
         <StatCard label="No Acquisition Cost" value={num(noCost)} sub="depreciation reads zero" accent={noCost > 0 ? "rose" : "emerald"} icon={<ClipboardList className="h-5 w-5" />} />
@@ -169,7 +169,7 @@ export async function VehicleRecords() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="p-0">
           <div className="p-5 pb-3"><SectionTitle title="Meter History" subtitle="Flagged rows ran backwards" /></div>
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-80 overflow-x-auto overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
@@ -204,7 +204,7 @@ export async function VehicleRecords() {
 
         <Card className="p-0">
           <div className="p-5 pb-3"><SectionTitle title="Lifecycle Events" subtitle="Commissioning, transfers and disposal" /></div>
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-80 overflow-x-auto overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>

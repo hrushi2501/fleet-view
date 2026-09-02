@@ -347,7 +347,7 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
             vehicles={visible}
           />
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-x-auto overflow-y-auto">
             {visible.length === 0 ? (
               <p className="px-4 py-10 text-center text-sm text-slate-400">
                 No vehicle matches this filter.
@@ -657,7 +657,7 @@ function DetailCard({
         "absolute top-3 z-[1000] w-[min(23rem,calc(100%-1.5rem))] overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/10",
         // Sits clear of the vehicle list rather than under it.
         sidebarOpen ? "right-[calc(min(20rem,90vw)+0.75rem)]" : "right-3",
-        "max-h-[calc(100%-1.5rem)] overflow-y-auto",
+        "max-h-[calc(100%-1.5rem)] overflow-x-auto overflow-y-auto",
       )}
     >
       <header className="sticky top-0 z-10 flex items-start gap-2.5 bg-gradient-to-r from-violet-100 to-brand-50 px-3.5 py-3">
@@ -895,7 +895,7 @@ function LevelBar({
 
   return (
     <div>
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="flex items-center gap-1.5 text-[13px] font-semibold text-ink-900">
           <Icon className="h-4 w-4 text-slate-400" />
           {label}

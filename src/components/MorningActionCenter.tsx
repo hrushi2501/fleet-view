@@ -74,7 +74,7 @@ export function MorningActionCenter({ data }: { data: ActionCenterData }) {
       </div>
 
       {/* Action Cards Grid */}
-      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-4">
         {/* 1. Active Breakdowns */}
         <Link
           href="/maintenance"

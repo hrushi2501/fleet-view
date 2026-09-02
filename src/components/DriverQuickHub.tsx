@@ -78,7 +78,7 @@ export function DriverQuickHub({
     <div className="space-y-4">
       {/* 1. Live Active Shift Control Card */}
       <div className="overflow-hidden rounded-3xl border border-emerald-500/30 bg-gradient-to-br from-emerald-600 to-teal-800 p-5 text-white shadow-xl shadow-emerald-700/15">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-300 animate-ping" />
             <span className="text-xs font-bold uppercase tracking-wider text-emerald-100">Duty Active</span>
@@ -161,7 +161,7 @@ export function DriverQuickHub({
       {tripModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md">
           <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl animate-fade-up ring-1 ring-black/10">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
               <div className="flex items-center gap-2.5">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
                   <Route className="h-5 w-5" />

@@ -48,7 +48,7 @@ function Chk({ label, name, defaultChecked, hint }: { label: string; name: strin
 function Modal({ open, onClose, title, subtitle, children }: { open: boolean; onClose: () => void; title: string; subtitle?: string; children: ReactNode }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-x-auto overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
       <div className="my-8 w-full max-w-2xl rounded-2xl bg-white shadow-xl ring-1 ring-slate-200">
         <div className="flex items-start justify-between border-b border-slate-100 p-5">
           <div>
@@ -114,7 +114,7 @@ export function ContractForm({ assets, contract }: {
       </Trigger>
       <Modal open={open} onClose={() => setOpen(false)} title={contract ? "Edit Hire Contract" : "New Hire Contract"} subtitle="These terms drive invoice validation — nothing is approved that the contract and the logs don't both support.">
         <form action={(fd) => start(async () => { const result = await saveContract(contract?.id ?? null, fd); if (isActionError(result)) { toast.error("Contract not saved", result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
-          <Sel label="Hired Asset" name="assetId" required defaultValue={contract?.assetId} options={assets.map((a) => ({ value: a.id, label: a.label }))} />
+          <Sel label="Hired Machine" name="assetId" required defaultValue={contract?.assetId} options={assets.map((a) => ({ value: a.id, label: a.label }))} />
           <Inp label="Vendor" name="vendor" required defaultValue={contract?.vendor} placeholder="Sharma Earthmovers" />
           <Inp label="Contract No." name="contractNo" defaultValue={contract?.contractNo ?? ""} />
           <Sel label="Rate Basis" name="rateType" required defaultValue={contract?.rateType ?? "PER_DAY"} options={RATE_TYPES} />

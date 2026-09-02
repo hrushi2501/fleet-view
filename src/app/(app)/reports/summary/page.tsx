@@ -200,9 +200,9 @@ export default async function ManagementSummaryPage() {
 
       <Card className="p-0">
         <div className="p-5 pb-3">
-          <SectionTitle title="Export" subtitle="CSV with proper escaping — commas and quotes inside vendor names won't corrupt the file" />
+          <SectionTitle title="Export" subtitle="Downloads as a CSV file that opens correctly in Excel" />
         </div>
-        <div className="grid gap-2 p-5 pt-0 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-2 p-5 pt-0 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3">
           {REPORT_CATALOGUE.map((r) => (
             <a
               key={r.key}

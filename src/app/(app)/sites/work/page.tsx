@@ -112,7 +112,7 @@ export default async function SiteWorkPage() {
           </div>
         </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         <StatCard label="Tonnage Moved" value={`${num(totalTonnage)} t`} sub="last 90 days" accent="brand" icon={<Boxes className="h-5 w-5" />} />
         <StatCard label="Volume Moved" value={`${num(totalM3)} m³`} sub="earthwork / BCM" accent="violet" icon={<Layers className="h-5 w-5" />} />
         <StatCard label="Trips" value={num(totalTrips)} sub={`${num(worked)} worked hrs`} accent="emerald" icon={<Gauge className="h-5 w-5" />} />
@@ -135,7 +135,7 @@ export default async function SiteWorkPage() {
       {rows.length > 0 && (
         <Card className="p-0">
           <div className="p-5 pb-3">
-            <SectionTitle title="Productivity by Machine" subtitle="Each class judged on its own unit — trips for tippers, m³/hr for excavators" />
+            <SectionTitle title="Productivity by Machine" subtitle="Each machine type is measured its own way — trips for tippers, m³/hr for excavators" />
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

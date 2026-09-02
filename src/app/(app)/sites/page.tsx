@@ -120,11 +120,11 @@ export default async function SitesPage() {
       </div>
 
       {/* ──────────── SUMMARY STATS ──────────── */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         <StatCard label="Active Projects" value={num(activeProjects.length)} sub={`${num(projects.length)} total`} accent="brand" icon={<FolderKanban className="h-5 w-5" />} />
         <StatCard label="Total Sites" value={num(sites.length)} sub={`across ${num(projects.length)} projects`} accent="emerald" icon={<MapPin className="h-5 w-5" />} />
         <StatCard label="Active Allocations" value={num(activeAllocs.length)} sub={`${num(allocations.length)} total`} accent="violet" icon={<ClipboardList className="h-5 w-5" />} />
-        <StatCard label="Budget Utilisation" value={`${budgetPct}%`} sub={`${inr(totalSpent, { compact: true })} of ${inr(totalBudget, { compact: true })}`} accent={budgetAccent} icon={<IndianRupee className="h-5 w-5" />} />
+        <StatCard label="Budget Used" value={`${budgetPct}%`} sub={`${inr(totalSpent, { compact: true })} of ${inr(totalBudget, { compact: true })}`} accent={budgetAccent} icon={<IndianRupee className="h-5 w-5" />} />
         <StatCard label="Mobilisation Cost" value={inr(mobStats.totalCost, { compact: true })} sub={`${num(mobStats.inTransit)} in transit`} accent="rose" icon={<Truck className="h-5 w-5" />} />
       </div>
 
@@ -133,7 +133,7 @@ export default async function SitesPage() {
         <Card className="border-rose-200 p-0">
           <div className="flex items-center gap-2 p-5 pb-3">
             <TriangleAlert className="h-5 w-5 text-rose-600" />
-            <SectionTitle title="Double-Booked Machines" subtitle="Committed to two projects over the same dates — only one can legitimately be billed" />
+            <SectionTitle title="Double-Booked Machines" subtitle="Booked on two sites for the same dates — only one can be billed" />
           </div>
           <div className="divide-y divide-slate-100">
             {conflicts.map((c, i) => {
@@ -166,7 +166,7 @@ export default async function SitesPage() {
         <Card className="border-amber-200 p-0">
           <div className="flex items-center gap-2 p-5 pb-3">
             <Navigation className="h-5 w-5 text-amber-600" />
-            <SectionTitle title="Machines Outside Their Geofence" subtitle="Allocated to a site but reporting a position elsewhere" />
+            <SectionTitle title="Machines Away From Their Site" subtitle="Allocated to a site but reporting a position elsewhere" />
           </div>
           <div className="divide-y divide-slate-100">
             {outsideFence.slice(0, 20).map(({ alloc, site, check }) => (

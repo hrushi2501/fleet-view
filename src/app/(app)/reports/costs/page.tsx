@@ -226,7 +226,7 @@ export default async function CostsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         <StatCard label="Total Cost" value={inr(fleetTotal, { compact: true })} sub="last 12 months" accent="brand" icon={<IndianRupee className="h-5 w-5" />} />
         <StatCard label="Cash Cost" value={inr(fleetCash, { compact: true })} sub="excludes depreciation" accent="violet" icon={<Wallet className="h-5 w-5" />} />
         <StatCard label="Depreciation" value={inr(fleetDep, { compact: true })} sub={`${inr(fleetBook, { compact: true })} book value`} accent="amber" icon={<TrendingDown className="h-5 w-5" />} />
@@ -363,7 +363,7 @@ export default async function CostsPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="p-0">
           <div className="p-5 pb-3"><SectionTitle title="Manual Cost Lines" subtitle="Tyres, insurance, EMI, tolls — fuel, maintenance and hire flow in automatically" /></div>
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-80 overflow-x-auto overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
@@ -392,7 +392,7 @@ export default async function CostsPage() {
 
         <Card className="p-0">
           <div className="p-5 pb-3"><SectionTitle title="Project Revenue" subtitle="RA bills and advances" /></div>
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-80 overflow-x-auto overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>

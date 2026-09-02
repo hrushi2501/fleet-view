@@ -41,7 +41,7 @@ export default async function NotificationLogPage() {
         <p className="text-sm text-slate-500">Master record of driver and system notifications, newest first</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         <StatCard label="Recorded" value={num(alerts.length)} sub="latest 500 events" accent="brand" icon={<BellRing className="h-5 w-5" />} />
         <StatCard label="Open" value={num(open)} sub="needs attention" accent="amber" icon={<CircleAlert className="h-5 w-5" />} />
         <StatCard label="Critical" value={num(critical)} sub="priority events" accent="rose" icon={<ShieldAlert className="h-5 w-5" />} />

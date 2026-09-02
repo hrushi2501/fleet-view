@@ -41,7 +41,7 @@ function Sel({ label, name, options, defaultValue, required, hint }: { label: st
 function Modal({ open, onClose, title, subtitle, children }: { open: boolean; onClose: () => void; title: string; subtitle?: string; children: ReactNode }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-x-auto overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
       <div className="my-8 w-full max-w-2xl rounded-2xl bg-white shadow-xl ring-1 ring-slate-200">
         <div className="flex items-start justify-between border-b border-slate-100 p-5">
           <div>
@@ -155,7 +155,7 @@ export function ProdNormForm({ classes }: { classes: { value: string; label: str
           }
           className="grid gap-4 sm:grid-cols-2"
         >
-          <Sel label="Asset Class" name="assetClass" required options={classes} />
+          <Sel label="Machine Type" name="assetClass" required options={classes} />
           <Sel label="Unit" name="unit" required options={[
             { value: "TRIPS_PER_DAY", label: "Trips per day" }, { value: "M3_PER_HOUR", label: "m³ per hour" },
             { value: "TONNES_PER_DAY", label: "Tonnes per day" }, { value: "CYCLES_PER_HOUR", label: "Cycles per hour" },
@@ -205,7 +205,7 @@ export function CostForm({ assets, projects }: { assets: Opt[]; projects: Opt[] 
   return (
     <>
       <Trigger onClick={() => setOpen(true)} tone="ghost"><Plus className="h-4 w-4" /> Add Cost</Trigger>
-      <Modal open={open} onClose={() => setOpen(false)} title="Add a Cost Line" subtitle="For costs not already captured automatically. Fuel, maintenance and hire flow in from their own modules — don't double-enter them.">
+      <Modal open={open} onClose={() => setOpen(false)} title="Add a Cost Line" subtitle="Only for costs not added automatically. Fuel, repairs and hire come in on their own — do not enter them twice.">
         <form
           action={(fd) =>
             start(async () => {
@@ -223,7 +223,7 @@ export function CostForm({ assets, projects }: { assets: Opt[]; projects: Opt[] 
             { value: "EMI", label: "EMI / lease" }, { value: "TOLL", label: "Tolls & permits" }, { value: "OTHER", label: "Other" },
           ]} />
           <Inp label="Amount ₹" name="amount" type="number" step="0.01" required />
-          <Sel label="Asset" name="assetId" options={[{ value: "", label: "— Fleet-wide —" }, ...assets.map((a) => ({ value: a.id, label: a.label }))]} />
+          <Sel label="Machine" name="assetId" options={[{ value: "", label: "— Fleet-wide —" }, ...assets.map((a) => ({ value: a.id, label: a.label }))]} />
           <Sel label="Project" name="projectId" options={[{ value: "", label: "— None —" }, ...projects.map((p) => ({ value: p.id, label: p.label }))]} />
           <Inp label="Date" name="date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
           <div className="sm:col-span-2"><SubmitBar pending={pending} onCancel={() => setOpen(false)} label="Add Cost" /></div>

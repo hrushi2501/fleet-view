@@ -37,7 +37,7 @@ export async function QrStickers() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold text-ink-900">Cabin QR Stickers</h2>
-            <p className="text-sm text-slate-500">Issue codes once, print this sheet, then laminate and fix one sticker inside each cab. Drivers scan only this sticker to begin duty.</p>
+            <p className="text-sm text-slate-500">Make the codes once, print this sheet, laminate it, and stick one code inside each cab. Drivers scan this sticker to start duty.</p>
           </div>
           <div className="flex gap-2">
             {unissuedCount > 0 && access.can("fleet.edit") && <IssueQrButton />}

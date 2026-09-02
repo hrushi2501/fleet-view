@@ -134,7 +134,7 @@ export function Sidebar({
           </div>
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-4">
+        <nav className="flex-1 space-y-1 overflow-x-auto overflow-y-auto px-3 pb-4">
           {operational.map(renderItem)}
 
           {admin && (

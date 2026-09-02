@@ -80,7 +80,7 @@ export async function PeopleRecords() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         <StatCard label="People" value={num(drivers.length)} sub={`${num(contractors)} contractor-supplied`} accent="brand" icon={<Users className="h-5 w-5" />} />
         <StatCard label="Attendance" value={avgAtt != null ? `${avgAtt.toFixed(0)}%` : "—"} sub={avgAtt != null ? `last 30 days · ${withAtt.length} marked` : "nobody marked in the last 30 days"} accent={avgAtt != null && avgAtt >= 90 ? "emerald" : "amber"} icon={<CalendarCheck className="h-5 w-5" />} />
         <StatCard label="Missing Documents" value={num(totalMissing)} sub="never recorded" accent={totalMissing > 0 ? "rose" : "emerald"} icon={<FileX2 className="h-5 w-5" />} />
@@ -151,7 +151,7 @@ export async function PeopleRecords() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="p-0">
           <div className="p-5 pb-3"><SectionTitle title="Attendance Log" subtitle="Last 30 days" /></div>
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-80 overflow-x-auto overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
@@ -184,7 +184,7 @@ export async function PeopleRecords() {
 
         <Card className="p-0">
           <div className="p-5 pb-3"><SectionTitle title="Personal Documents" subtitle="Soonest expiry first" /></div>
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-80 overflow-x-auto overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>

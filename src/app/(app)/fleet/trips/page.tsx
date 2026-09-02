@@ -66,7 +66,7 @@ export default async function TripsPage() {
 
       <TelematicsSyncBanner status={syncStatus} />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         <StatCard label="Active Trips" value={num(active.length)} sub={`${num(sessions.length)} in 30 days`} accent="emerald" icon={<Radio className="h-5 w-5" />} />
         <StatCard label="Forgotten Checkouts" value={num(stale.length)} sub={`open over ${SESSION_STALE_HOURS}h`} accent={stale.length ? "rose" : "emerald"} icon={<TriangleAlert className="h-5 w-5" />} />
         <StatCard label="QR Codes Issued" value={`${num(withQr)}/${num(assets.length)}`} sub="cabin stickers" accent="brand" icon={<QrCode className="h-5 w-5" />} />
@@ -95,7 +95,7 @@ export default async function TripsPage() {
           <div className="p-5 pb-3">
             <SectionTitle
               title="Usage & Efficiency — Last 30 Days"
-              subtitle="Distance and diesel measured between consecutive vehicle readings, not from manual entries"
+              subtitle="Measured from the vehicle's own readings, not from anything typed in"
             />
           </div>
           <div className="overflow-x-auto">
@@ -210,7 +210,7 @@ export default async function TripsPage() {
       </Card>
 
       <Card className="p-0">
-        <div className="p-5 pb-3"><SectionTitle title="Vehicle Data Sources" subtitle="Which machines have a tracker, and which fall back to gauge photos" /></div>
+        <div className="p-5 pb-3"><SectionTitle title="Vehicle Data Sources" subtitle="Which machines have a tracker, and which use gauge photos instead" /></div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">

@@ -25,7 +25,7 @@ export default async function CompliancePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-ink-900">Compliance &amp; Documents</h1>
           <p className="text-sm text-slate-500">RC, Insurance, Fitness, Permits, PUC, Road Tax</p>
@@ -33,7 +33,7 @@ export default async function CompliancePage() {
         <ComplianceEntry assets={assetOpts} />
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         <StatCard label="Total Documents" value={num(docs.length)} accent="brand" icon={<FileText className="h-5 w-5" />} />
         <StatCard label="Valid" value={num(valid)} sub={`${((valid / (docs.length || 1)) * 100).toFixed(0)}% compliant`} accent="emerald" icon={<ShieldCheck className="h-5 w-5" />} />
         <StatCard label="Expiring (30d)" value={num(expiring)} sub="Needs renewal" accent="amber" icon={<ShieldAlert className="h-5 w-5" />} />

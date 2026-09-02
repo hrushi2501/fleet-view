@@ -98,7 +98,7 @@ export default async function TyresPage({ searchParams }: { searchParams: Promis
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         <StatCard label="Tyres Tracked" value={num(tyres.length)} sub={`${num(inUse.length)} fitted`} accent="brand" icon={<CircleDot className="h-5 w-5" />} />
         <StatCard label="Unsafe / Replace" value={num(unsafe.length + replace.length)} sub={`${num(unsafe.length)} below legal tread`} accent="rose" icon={<TriangleAlert className="h-5 w-5" />} />
         <StatCard label="Tyre Spend" value={inr(tyreSpend, { compact: true })} sub="purchase value" accent="violet" icon={<IndianRupee className="h-5 w-5" />} />
@@ -250,7 +250,7 @@ export default async function TyresPage({ searchParams }: { searchParams: Promis
 
           <Card className="p-0">
             <div className="p-5 pb-3">
-              <SectionTitle title="Component Register" subtitle="Buckets, undercarriage, engines — tracked by serial and hours" />
+              <SectionTitle title="Component Register" subtitle="Buckets, undercarriage, engines — tracked by serial number and hours run" />
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -325,8 +325,8 @@ export default async function TyresPage({ searchParams }: { searchParams: Promis
 
       {tab === "stock" && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <SectionTitle title="Store &amp; Yard Inventory" subtitle="Stock levels of tyres and components kept at each site location" />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <SectionTitle title="Store &amp; Yard Inventory" subtitle="How many tyres and parts are kept at each site" />
           </div>
 
           {warehouses.length === 0 && (
@@ -461,7 +461,7 @@ export default async function TyresPage({ searchParams }: { searchParams: Promis
           {events.length > 0 && (
             <Card className="p-0">
               <div className="p-5 pb-3"><SectionTitle title="Tyre History" subtitle="Fitments, removals, inspections and retreads" /></div>
-              <div className="max-h-[500px] overflow-y-auto">
+              <div className="max-h-[500px] overflow-x-auto overflow-y-auto">
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                     <tr>
