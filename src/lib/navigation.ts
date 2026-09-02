@@ -94,6 +94,7 @@ export const MODULES: NavItem[] = [
     children: [
       { href: "/people", label: "Staff & Drivers", permission: "people.view" },
       { href: "/people/attendance", label: "Attendance", permission: "people.view" },
+      { href: "/people/payroll", label: "Payroll", permission: "payroll.view" },
       { href: "/people/contractors", label: "Contractors", permission: "hire.view" },
     ],
   },

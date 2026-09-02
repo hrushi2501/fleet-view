@@ -198,6 +198,8 @@ model Driver {
   documents        PersonDocument[]
   tripSessions     TripSession[]
   fuelLevels       FuelLevelReading[]
+  wageRates        WageRate[]
+  payrollLines     PayrollLine[]
   loginAccount     User?
   // ---- M2 master data ----
   employmentType   String              @default("OWN") // OWN | CONTRACTOR
@@ -1694,4 +1696,109 @@ model InventoryTransaction {
   // database, because `prisma db push` makes the database match this file and
   // would otherwise drop them as drift.
   @@index([toWarehouseId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PAYROLL
+//
+// Wages are paid from the attendance register, so payroll is downstream of it
+// and never a second place to record who worked.
+//
+// Two rules shape these tables, and both exist because payroll is a financial
+// record about a named person:
+//
+//   1. A wage is a history, not a field. If an admin raises someone's rate in
+//      September, August's payslip must still show August's rate. A single
+//      mutable `wage` column on Driver would silently rewrite every payslip
+//      ever produced, which is how a payroll dispute becomes unanswerable.
+//
+//   2. A finalised run is frozen. Every line stores its own copy of the name,
+//      code, rate and day counts, so a run reprinted next year matches the one
+//      handed over with the cash — even if the person has since left, changed
+//      rate, or had their attendance corrected.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// One wage agreement, effective from a date. Superseded, never edited.
+model WageRate {
+  id       String   @id @default(cuid())
+  driverId String
+  driver   Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  /// DAILY — paid per day worked. MONTHLY — a fixed salary, pro-rated on days.
+  kind     String   @default("DAILY")
+  /// Rupees per day for DAILY, rupees per month for MONTHLY.
+  amount   Float
+  /// Rupees per hour beyond the standard shift. 0 disables overtime pay.
+  otHourly Float    @default(0)
+  /// Payroll for any month on or after this date uses this rate.
+  effectiveFrom DateTime
+  note      String?
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@index([driverId, effectiveFrom])
+}
+
+/// One month's payroll. DRAFT can be recalculated; FINALISED cannot change.
+model PayrollRun {
+  id     String @id @default(cuid())
+  /// `YYYY-MM`, in the business timezone.
+  period String @unique
+  status String @default("DRAFT") // DRAFT | FINALISED
+  /// Days in the month a monthly salary is divided by. 26 is the common
+  /// construction convention (one rest day a week, unpaid).
+  standardDays Int @default(26)
+  /// Hours in a normal shift; anything beyond counts as overtime.
+  standardHours Float @default(8)
+  notes       String?
+  createdBy   String?
+  createdAt   DateTime  @default(now())
+  finalisedAt DateTime?
+  finalisedBy String?
+  lines       PayrollLine[]
+
+  @@index([status, period])
+}
+
+/// One person's pay for one month, with everything it was worked out from.
+model PayrollLine {
+  id     String     @id @default(cuid())
+  runId  String
+  run    PayrollRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  driverId String
+  driver   Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  // Snapshot of who this was, so a reprint survives the person leaving.
+  empCode String
+  name    String
+
+  // Snapshot of the agreement used.
+  wageKind String
+  wageAmount Float
+  otHourly   Float @default(0)
+
+  // Snapshot of the register it was read from.
+  daysPresent Float @default(0)
+  daysHalf    Float @default(0)
+  daysLeave   Float @default(0)
+  daysAbsent  Float @default(0)
+  daysRest    Float @default(0)
+  /// Days actually paid for, after the half-day and leave rules.
+  daysPaid    Float @default(0)
+  otHours     Float @default(0)
+
+  // The money. Each is stored rather than derived, so the arithmetic on a
+  // printed payslip can always be reproduced exactly.
+  basic     Float @default(0)
+  overtime  Float @default(0)
+  bonus     Float @default(0)
+  advance   Float @default(0)
+  deduction Float @default(0)
+  net       Float @default(0)
+
+  /// Set when an admin overrode the computed figures, with the reason.
+  adjustedBy   String?
+  adjustedNote String?
+
+  @@unique([runId, driverId])
+  @@index([driverId])
 }

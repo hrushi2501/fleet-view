@@ -40,6 +40,12 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   transpilePackages: ["lucide-react"],
+  // PDFKit reads its font metrics (.afm) from disk at runtime, and ExcelJS
+  // pulls in Node built-ins. Bundling either produces a build that compiles
+  // cleanly and then fails on the first payroll download in production, which
+  // is the worst place to find out. Left external so both resolve from
+  // node_modules with their data files intact.
+  serverExternalPackages: ["pdfkit", "exceljs"],
   turbopack: {
     root: path.join(__dirname),
   },
