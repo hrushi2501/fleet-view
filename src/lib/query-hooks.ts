@@ -29,9 +29,21 @@ export function useLiveFleet(initialData?: LiveFleet) {
     initialData,
     staleTime: 15 * 1000,
     refetchInterval: 15 * 1000,
+    // Polling deliberately pauses for a hidden tab — a tracking screen left
+    // open on a spare monitor should not query the fleet all night.
     refetchIntervalInBackground: false,
     refetchOnMount: false,
-    refetchOnReconnect: false,
+    // ...but the moment somebody looks at it again, it must catch up.
+    //
+    // Without these two, pausing was a one-way door: nothing restarted the
+    // poll on return, while the "last seen" counter went on ticking once a
+    // second against data frozen at the moment the tab lost focus. On 2 Sep
+    // the screen showed vehicles last seen "4m 17s ago" when the newest
+    // readings in the database were 26 seconds old. A screen labelled Live
+    // that quietly ages is worse than one that admits it is stale, because a
+    // dispatcher reads the gap as a vehicle having stopped reporting.
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
     retry: 0,
   });
 }

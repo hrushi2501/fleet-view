@@ -158,6 +158,14 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
     return () => clearInterval(t);
   }, []);
 
+  // Whether what is on screen can still be called live.
+  //
+  // Polling pauses for a hidden tab, so this picture can be minutes old while
+  // every row goes on counting upward once a second. Past a few poll
+  // intervals, say so rather than letting the display imply the fleet went
+  // quiet — the vehicles are usually fine and it is the screen that stopped.
+  const stalePicture = now - Date.parse(fleet.generatedAt) > 4 * POLL_MS;
+
   const refresh = useCallback(async () => {
     await refetch();
   }, [refetch]);
@@ -252,10 +260,23 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
 
           <button
             onClick={refresh}
-            className="pointer-events-auto inline-flex items-center gap-1.5 rounded-lg bg-white/90 px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow ring-1 ring-black/10 backdrop-blur transition-colors hover:bg-white"
+            title={
+              stalePicture
+                ? "This screen has not updated recently. Click to refresh now."
+                : "Refresh now"
+            }
+            className={cn(
+              "pointer-events-auto inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold shadow ring-1 ring-black/10 backdrop-blur transition-colors",
+              // Stale has to look different. Reading "4m ago" in the same calm
+              // grey as "8s ago" is how a paused screen gets mistaken for a
+              // vehicle that stopped reporting.
+              stalePicture
+                ? "bg-amber-100/95 text-amber-900 hover:bg-amber-100"
+                : "bg-white/90 text-slate-700 hover:bg-white",
+            )}
           >
             <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
-            {fmtAge(fleet.generatedAt, now)} ago
+            {stalePicture ? `Not updating · ${fmtAge(fleet.generatedAt, now)} old` : `${fmtAge(fleet.generatedAt, now)} ago`}
           </button>
         </div>
 
