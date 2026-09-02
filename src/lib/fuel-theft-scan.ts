@@ -133,9 +133,25 @@ export async function scanForFuelTheft(sinceHours = 30): Promise<ScanOutcome> {
 
     out.scanned++;
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Never accuse anybody of losing less diesel than this sender routinely
+    // invents.
+    //
+    // The analyser now measures each unit's own noise from the impossible
+    // upward moves it reports, and on this fleet that runs to 8–12 L where the
+    // assumed band was 4.5 L. A flat 10 L floor therefore sat *below* the noise
+    // of four of the eight working senders: the first ordinary wobble past it
+    // would have been raised as a case against a driver.
+    //
+    // Taking whichever is larger keeps the commercial floor for quiet senders
+    // and defers to measurement on noisy ones.
+    // ─────────────────────────────────────────────────────────────────────────
+    const senderNoiseL = usage.diagnostics.fuel.noiseBandL ?? 0;
+    const raiseFloorL = Math.max(MIN_RAISEABLE_LITRES, senderNoiseL);
+
     for (const seg of segments as Segment[]) {
       if (!ACCUSABLE.has(seg.event)) continue;
-      if (seg.excessLitres < MIN_RAISEABLE_LITRES) continue;
+      if (seg.excessLitres < raiseFloorL) continue;
       // A LOW-confidence finding is a statement about the data, not the driver.
       if (seg.confidence === "LOW") continue;
 

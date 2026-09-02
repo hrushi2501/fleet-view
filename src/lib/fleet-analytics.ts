@@ -367,14 +367,77 @@ export type FuelSeriesAnalysis = {
  * the band — a slow drain is recognised late and in a lump, not lost, because
  * the final number comes from the endpoints regardless.
  */
+/**
+ * How much this particular sender wobbles, measured from its own readings.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Diesel cannot appear in a tank. So every upward move that is not a refuel is
+ * the sender being wrong, by an amount we can read straight off the wire — a
+ * free, self-calibrating measurement of that unit's noise, with no assumption
+ * about the hardware.
+ *
+ * It matters because the assumed band (1.5% of tank, so 4.5 L on a 300 L tank)
+ * is far too tight for the units actually fitted to this fleet. Measured over
+ * fourteen days, their impossible *gains* reach 8–12 L: TRU-108 12.3 L,
+ * TRU-106 11.8 L, TRU-053 11.6 L. A drop of 11 L on such a sender is the exact
+ * mirror of a gain of 11 L, and means precisely as much — nothing.
+ *
+ * Read against a 4.5 L band, those wobbles look like fuel leaving the tank, and
+ * the first one over the raise threshold becomes an accusation against a
+ * driver. Guessing wrong in that direction is not a rounding error; it is
+ * telling someone they stole diesel that never moved.
+ *
+ * The result is only ever used to *widen* the band, never to narrow it, so this
+ * can make the system more careful and never more trigger-happy.
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * Returns null when there is too little to measure, in which case the caller
+ * keeps the assumed band.
+ */
+export function measureSenderNoiseL(
+  samples: AnalyticsReading[],
+  refuelMinL: number,
+): number | null {
+  const gains: number[] = [];
+  let previous: number | null = null;
+
+  for (const s of samples) {
+    const level = s.fuelLevelL;
+    if (level == null) continue;
+    if (previous != null) {
+      const delta = level - previous;
+      // Only rises too small to be a refuel: a real fill is not noise, and
+      // including one would inflate the band enough to hide a theft.
+      if (delta > 0 && delta < refuelMinL) gains.push(delta);
+    }
+    previous = level;
+  }
+
+  // Too few impossible gains to characterise anything. A quiet sender should
+  // keep its tight assumed band rather than be handed a made-up one.
+  if (gains.length < 30) return null;
+
+  gains.sort((a, b) => a - b);
+  // The high tail rather than the maximum: one freak sample should not excuse
+  // a real siphon, but the routine worst case must not be called theft.
+  const at = (q: number) => gains[Math.min(gains.length - 1, Math.floor(gains.length * q))]!;
+  return round(at(0.99), 2);
+}
+
 export function analyseFuelSeries(
   samples: AnalyticsReading[],
   tankCapacityL: number | null,
   cfg: FuelAnalysisConfig = DEFAULT_FUEL_CONFIG,
 ): FuelSeriesAnalysis {
-  const { noiseBandL, refuelMinL } = fuelThresholds(tankCapacityL, cfg);
+  const { noiseBandL: assumedNoiseL, refuelMinL } = fuelThresholds(tankCapacityL, cfg);
 
   const levelled = samples.filter((s) => s.fuelLevelL != null);
+
+  // What this sender actually does, in preference to what its tank size
+  // suggests it ought to do. Widens the band only — see measureSenderNoiseL.
+  const measuredNoiseL = measureSenderNoiseL(levelled, refuelMinL);
+  const noiseBandL =
+    measuredNoiseL != null && measuredNoiseL > assumedNoiseL ? measuredNoiseL : assumedNoiseL;
   const base: FuelSeriesAnalysis = {
     startLevelL: null,
     endLevelL: null,
