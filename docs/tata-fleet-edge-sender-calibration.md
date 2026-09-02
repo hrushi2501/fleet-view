@@ -159,43 +159,48 @@ interval, and can the long tail be reduced?
 
 ---
 
-## Issue 5 — Confirmation on `fuelLevelPercent`
+## Issue 5 — The push feed is missing data your own portal has
 
-**Priority: informational.**
+**Priority: medium.** This one is not about a sensor. It is about the API
+delivering less than your platform already holds.
 
-The Basic Push specification lists a `fuelLevelPercent` field. Across roughly
-30,000 readings from all 13 vehicles it has never been populated; only litres
-arrive. We derive the percentage from litres and tank capacity.
+Taken from your Fleet Edge portal for **RJ21GD0599** on 2 Sep 2026, compared
+against the push payload for the same vehicle at the same odometer reading
+(83,521 km):
 
-**Question:** is `fuelLevelPercent` deprecated, or does it require enabling on
-the subscription? We would prefer to use your value than compute our own.
-
----
-
-## Issue 6 — `engineRunHour` is a copy of the odometer
-
-**Priority: medium.**
-
-On every one of the 11 reporting vehicles, `engineRunHour` is being sent with
-the same value as `odometer`:
-
-| Vehicle | `odometer` | `engineRunHour` |
+| Field | Your portal shows | Your push API sends |
 |---|---|---|
-| RJ21GE3220 | 90,641 | 90,641 |
-| RJ21GD6559 | 155,540 | 155,541 |
-| RJ21GD6557 | 201,638 | 201,639 |
-| RJ21GE2479 | 151,013 | 151,013 |
+| Fuel level | 62% | 98–100 L — **agrees**, 61.3–62.5% of the 160 L tank |
+| Odometer | 83,521 km | 83,521 — **agrees** |
+| `engineRunHour` | **7,324.5 hrs** | **83,521.6** — the odometer value, not hours |
+| `fuelLevelPercent` | 62% displayed | **never sent, on any vehicle** |
+| DEF level | 74% | **null** |
 
-A truck with 90,000 km has in the order of 3,000 engine hours, not 90,000. The
-field appears to be populated from the odometer rather than from the engine hour
-meter, so it cannot be used at all.
+The fuel and odometer agreeing is worth stating plainly: it confirms our
+integration reads your feed correctly, so the three items below are gaps in the
+push feed itself, not in our handling of it.
 
-This matters to us beyond neatness: engine hours are the correct meter for plant
-and equipment, and for idling analysis on trucks. We currently have to show it
-as unavailable.
+**5a. `engineRunHour` carries the odometer.** Your portal reports 7,324.5 hours
+for this vehicle; the push feed sends 83,521.6 against an odometer of 83,521 km.
+The same pattern holds on all 11 reporting vehicles — the value tracks kilometres
+across its whole range, never hours. A truck with 83,000 km has in the order of
+7,000 engine hours, exactly as your portal says. The field is therefore unusable
+to us today, and engine hours are the correct meter for idling analysis and for
+plant.
 
-**Requested action:** confirm whether `engineRunHour` is supported on these
-units, and if so, correct the value being sent.
+**5b. `fuelLevelPercent` is never populated.** Zero occurrences across
+approximately 30,000 readings from all 13 vehicles, while your portal displays
+the percentage. We derive it from litres and tank capacity instead. Is the field
+deprecated, or does it need enabling on our subscription?
+
+**5c. DEF is missing on two vehicles.** `defLevel`, `defQuality` and
+`vehicleBatteryVoltage` arrive on 9 of the 11 reporting vehicles but never on
+**RJ21GD0598** or **RJ21GD0599** (both TATA 912 LPK) — yet your portal shows DEF
+at 74% for RJ21GD0599. Is this a device or subscription difference on these two
+units?
+
+**Requested action:** correct `engineRunHour`, and confirm whether
+`fuelLevelPercent` and DEF can be enabled on the push feed.
 
 ---
 
@@ -206,8 +211,10 @@ units, and if so, correct the value being sent.
 2. **Restore reporting** on RJ21GE1659 and RJ21GC7857.
 3. **Confirm the accuracy specification** for the fuel sender, and whether the
    remaining units meet it.
-4. **Correct `engineRunHour`**, which currently duplicates the odometer.
-5. **Advise** on the parked reporting interval and on `fuelLevelPercent`.
+4. **Correct `engineRunHour`** in the push feed, which currently carries the
+   odometer rather than hours — your portal already has the right value.
+5. **Advise** on the parked reporting interval, on `fuelLevelPercent`, and on
+   the missing DEF fields for the two 912 LPK vehicles.
 
 We are happy to provide the raw readings behind any figure in this document.
 
