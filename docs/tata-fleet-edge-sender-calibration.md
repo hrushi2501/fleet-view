@@ -41,11 +41,46 @@ the swings measured:
 - **RJ21GE3219** — rises of +177.9 L and falls of −172.4 L on a 300 L tank
 - **RJ21GD0599** — rises of +76.0 L and falls of −67.0 L on a 160 L tank
 
-**Requested action:** on-site inspection, recalibration, or replacement of the
-fuel level sender on these three vehicles. Please confirm whether this is a
-sender fault, a wiring/earthing fault, or a calibration table issue.
+**This is your data, not our processing.** We store the `primaryFuelLevel`
+field exactly as delivered. Across 7,006 readings from all 11 reporting vehicles
+in a 24-hour window, our stored value differed from your raw payload by more
+than 0.05 L on **zero** occasions.
 
----
+Verbatim from your Basic Push feed, RJ21GE1657 (IMEI 869128060472528), 1 Sep
+2026, vehicle stationary, `noOfFuelTanks: 1`, `primaryFuelTankCapacity: 300`:
+
+```
+19:16:56 IST   primaryFuelLevel: 276.8
+19:17:56 IST   primaryFuelLevel:  33.6      -243.2 L in 60 seconds
+19:18:56 IST   primaryFuelLevel: 272.1      +238.5 L in 60 seconds
+19:19:56 IST   primaryFuelLevel: 131.0
+19:20:56 IST   primaryFuelLevel:  35.2
+19:23:56 IST   primaryFuelLevel: 273.5
+```
+
+The odometer did not move during this window and the truck was stationary.
+
+**It is not two tanks being reported alternately.** We checked for that: over 36
+hours, 735 of RJ21GE1657's 2,236 readings fall *between* the two levels rather
+than at either of them. The value sweeps continuously through the whole range,
+which is the signature of an intermittent electrical fault — a bad earth, a
+corroded connector, or a failing float — rather than two sensors being sampled
+in turn.
+
+The three units show different signatures, which may help your diagnosis:
+
+- **RJ21GE1657** — sweeps continuously across the full range; roughly a third of
+  all readings are mid-range. Worst case, a fault in the sender or its wiring.
+- **RJ21GE3219** — normally steady, with occasional collapses towards empty
+  (790 readings high, 48 low). Consistent with intermittent signal loss.
+- **RJ21GD0599** — reaches a reported **0.0 L** on a tank that is not empty.
+
+We cannot tell from the data whether the fault lies in the tank sender, its
+wiring, or the telematics unit's input stage. That is what we are asking you to
+determine.
+
+**Requested action:** on-site inspection, recalibration, or replacement of the
+fuel level sender and its wiring on these three vehicles.
 
 ## Issue 2 — Residual error on the working senders
 
@@ -137,6 +172,33 @@ the subscription? We would prefer to use your value than compute our own.
 
 ---
 
+## Issue 6 — `engineRunHour` is a copy of the odometer
+
+**Priority: medium.**
+
+On every one of the 11 reporting vehicles, `engineRunHour` is being sent with
+the same value as `odometer`:
+
+| Vehicle | `odometer` | `engineRunHour` |
+|---|---|---|
+| RJ21GE3220 | 90,641 | 90,641 |
+| RJ21GD6559 | 155,540 | 155,541 |
+| RJ21GD6557 | 201,638 | 201,639 |
+| RJ21GE2479 | 151,013 | 151,013 |
+
+A truck with 90,000 km has in the order of 3,000 engine hours, not 90,000. The
+field appears to be populated from the odometer rather than from the engine hour
+meter, so it cannot be used at all.
+
+This matters to us beyond neatness: engine hours are the correct meter for plant
+and equipment, and for idling analysis on trucks. We currently have to show it
+as unavailable.
+
+**Requested action:** confirm whether `engineRunHour` is supported on these
+units, and if so, correct the value being sent.
+
+---
+
 ## What we are asking for
 
 1. **Calibrate or replace** the fuel senders on RJ21GE3219, RJ21GE1657 and
@@ -144,7 +206,8 @@ the subscription? We would prefer to use your value than compute our own.
 2. **Restore reporting** on RJ21GE1659 and RJ21GC7857.
 3. **Confirm the accuracy specification** for the fuel sender, and whether the
    remaining units meet it.
-4. **Advise** on the parked reporting interval and on `fuelLevelPercent`.
+4. **Correct `engineRunHour`**, which currently duplicates the odometer.
+5. **Advise** on the parked reporting interval and on `fuelLevelPercent`.
 
 We are happy to provide the raw readings behind any figure in this document.
 
