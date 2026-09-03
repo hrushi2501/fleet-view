@@ -11,9 +11,10 @@
  */
 
 import L from "leaflet";
-import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, useMap } from "react-leaflet";
-import { useEffect, useMemo, useRef } from "react";
+import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, ZoomControl, useMap } from "react-leaflet";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LiveStatus } from "@/lib/fleet-edge-live";
+import { iconCacheKey } from "@/lib/map-icon-key";
 import type { TrackPoint } from "@/components/FleetEdgePlayback";
 
 export type MapView = "streets" | "satellite" | "hybrid";
@@ -74,11 +75,52 @@ function escapeHtml(s: string): string {
  * no course — a stationary vehicle usually reports none — the marker falls back
  * to a plain disc rather than inventing a direction and pointing north.
  */
-function vehicleIcon(m: FleetEdgeMapMarker, active: boolean): L.DivIcon {
+/**
+ * Built icons, reused between renders.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Without this the console repaints the entire fleet every fifteen seconds.
+ *
+ * Each poll returns a fresh array, so every marker object is new, so every
+ * `icon` prop is a new `L.DivIcon`, so react-leaflet calls `setIcon()` on all of
+ * them — tearing down and rebuilding every marker's DOM four times a minute
+ * whether or not anything about it changed. On a parked fleet that is pure
+ * waste, and it makes the labels flicker while somebody is trying to read them.
+ *
+ * The key is what the icon actually *looks* like. Two markers with the same
+ * status, label, selection state and heading bucket are visually identical, so
+ * they can share one instance.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+const iconCache = new Map<string, L.DivIcon>();
+
+
+function vehicleIcon(m: FleetEdgeMapMarker, active: boolean, showLabel: boolean): L.DivIcon {
+  const key = iconCacheKey(m, active, showLabel);
+  const bucket = key.split("|")[1];
+
+  const cached = iconCache.get(key);
+  if (cached) return cached;
+
+  const built = buildVehicleIcon(m, active, showLabel, bucket === "none" ? null : Number(bucket));
+
+  // The fleet is bounded and so is the set of appearances, but a long session
+  // with many selections should not grow this without limit.
+  if (iconCache.size > 600) iconCache.clear();
+  iconCache.set(key, built);
+  return built;
+}
+
+function buildVehicleIcon(
+  m: FleetEdgeMapMarker,
+  active: boolean,
+  showLabel: boolean,
+  bucketedHeading: number | null,
+): L.DivIcon {
   const color = STATUS_HEX[m.status];
   const size = active ? 40 : 32;
-  const hasHeading = m.headingDeg != null && Number.isFinite(m.headingDeg);
-  const rotation = hasHeading ? (m.headingDeg as number) : 0;
+  const hasHeading = bucketedHeading != null;
+  const rotation = bucketedHeading ?? 0;
 
   const glyph = hasHeading
     ? `<svg viewBox="0 0 24 24" width="${size * 0.55}" height="${size * 0.55}" style="transform:rotate(${rotation}deg)">
@@ -93,15 +135,17 @@ function vehicleIcon(m: FleetEdgeMapMarker, active: boolean): L.DivIcon {
       <div style="display:flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;border-radius:9999px;background:${color};border:${active ? 3 : 2}px solid #fff;box-shadow:0 2px 8px rgba(15,23,42,.45)${active ? `;outline:3px solid ${color}55` : ""}">
         ${glyph}
       </div>
-      <div style="margin-top:3px;padding:1px 6px;border-radius:4px;background:rgba(255,255,255,.95);border:1px solid rgba(15,23,42,.12);box-shadow:0 1px 3px rgba(15,23,42,.2);font:600 10px/1.4 ui-sans-serif,system-ui,sans-serif;color:#0f172a;white-space:nowrap">
-        ${escapeHtml(m.label)}
-      </div>
+      ${
+        showLabel
+          ? `<div style="margin-top:3px;padding:1px 6px;border-radius:4px;background:rgba(255,255,255,.95);border:1px solid rgba(15,23,42,.12);box-shadow:0 1px 3px rgba(15,23,42,.2);font:600 10px/1.4 ui-sans-serif,system-ui,sans-serif;color:#0f172a;white-space:nowrap">${escapeHtml(m.label)}</div>`
+          : ""
+      }
     </div>`;
 
   return L.divIcon({
     className: "",
     html,
-    iconSize: [size, size + 18],
+    iconSize: [size, showLabel ? size + 18 : size],
     iconAnchor: [size / 2, size / 2],
   });
 }
@@ -220,6 +264,30 @@ function TrackLayer({ points, cursor }: { points: TrackPoint[]; cursor: number |
   );
 }
 
+/**
+ * Below this zoom, registration plates are dropped from the markers.
+ *
+ * A yard holding a dozen parked trucks puts every plate on top of the next, and
+ * a stack of unreadable labels is worse than none: the dots still say where and
+ * what state, and the list beside the map says which. Zooming in brings them
+ * back, which is the moment they can actually be read.
+ */
+const LABEL_MIN_ZOOM = 11;
+
+/** Reports the current zoom so markers can decide whether a label fits. */
+function ZoomWatcher({ onZoom }: { onZoom: (z: number) => void }) {
+  const map = useMap();
+  useEffect(() => {
+    const report = () => onZoom(map.getZoom());
+    report();
+    map.on("zoomend", report);
+    return () => {
+      map.off("zoomend", report);
+    };
+  }, [map, onZoom]);
+  return null;
+}
+
 /** Keeps the scrubbed position in view without fighting the user's panning. */
 function FollowCursor({ point }: { point: TrackPoint | undefined }) {
   const map = useMap();
@@ -230,6 +298,64 @@ function FollowCursor({ point }: { point: TrackPoint | undefined }) {
     }
   }, [point, map]);
   return null;
+}
+
+
+/**
+ * A street basemap that fails over instead of going blank.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * OpenStreetMap's public tile servers are run on donated capacity and their
+ * usage policy is explicit that heavy or commercial traffic will be throttled
+ * or blocked. A dispatch console open all day on a working fleet is exactly
+ * that traffic. When it happens Leaflet simply draws nothing: the operator sees
+ * an empty blue rectangle with the trucks floating on it and no reason given.
+ *
+ * So tile failures are counted, and past a handful the layer switches to Esri's
+ * street basemap — already trusted here for the satellite views. The vehicles,
+ * which are the point of the screen, never depend on the basemap at all.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+const ESRI_STREETS =
+  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}";
+
+/** Enough failures to be an outage rather than two tiles lost to a flaky cell link. */
+const TILE_FAILURES_BEFORE_FALLBACK = 8;
+
+function StreetTiles() {
+  const [fellBack, setFellBack] = useState(false);
+  const failures = useRef(0);
+
+  const onTileError = useCallback(() => {
+    failures.current += 1;
+    if (failures.current >= TILE_FAILURES_BEFORE_FALLBACK) setFellBack(true);
+  }, []);
+
+  if (fellBack) {
+    return (
+      <TileLayer
+        attribution="Tiles &copy; Esri"
+        url={ESRI_STREETS}
+        maxZoom={19}
+        updateWhenIdle
+        keepBuffer={3}
+      />
+    );
+  }
+
+  return (
+    <TileLayer
+      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+      // OSM has no tiles past 19; asking for them is a guaranteed 404 per tile.
+      maxZoom={19}
+      // Fetch on settle rather than through every frame of a pan. Fewer
+      // requests, which also keeps us further inside OSM's rate limits.
+      updateWhenIdle
+      keepBuffer={3}
+      eventHandlers={{ tileerror: onTileError }}
+    />
+  );
 }
 
 export default function FleetEdgeMap({
@@ -249,32 +375,40 @@ export default function FleetEdgeMap({
   track?: TrackPoint[] | null;
   trackCursor?: number | null;
 }) {
+  const [zoom, setZoom] = useState(7);
+
   return (
     <MapContainer
       center={[26.9, 74.2]}
       zoom={7}
       minZoom={3}
       scrollWheelZoom
+      // Leaflet's own control, bottom-right, clear of the status strip and the
+      // playback bar. Pinch-zoom is not available on a laptop trackpad and the
+      // console is used on one.
       zoomControl={false}
+      // Vector work — the playback track and its cursor — on a canvas rather
+      // than as SVG nodes. A day's track is thousands of points, and as SVG
+      // that is thousands of DOM elements the browser lays out on every pan.
+      preferCanvas
       style={{ height: "100%", width: "100%", background: "#aadaff" }}
     >
-      {view === "streets" && (
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
-      )}
+      <ZoomControl position="bottomright" />
+      <ZoomWatcher onZoom={setZoom} />
+      {view === "streets" && <StreetTiles />}
       {(view === "satellite" || view === "hybrid") && (
         <TileLayer
           attribution="Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics"
           url={ESRI_IMAGERY}
           maxZoom={19}
+          updateWhenIdle
+          keepBuffer={3}
         />
       )}
       {view === "hybrid" && (
         <>
-          <TileLayer url={ESRI_ROADS} maxZoom={19} />
-          <TileLayer url={ESRI_LABELS} maxZoom={19} />
+          <TileLayer url={ESRI_ROADS} maxZoom={19} updateWhenIdle />
+          <TileLayer url={ESRI_LABELS} maxZoom={19} updateWhenIdle />
         </>
       )}
 
@@ -291,7 +425,7 @@ export default function FleetEdgeMap({
         <Marker
           key={m.id}
           position={[m.lat, m.lng]}
-          icon={vehicleIcon(m, selectedId === m.id)}
+          icon={vehicleIcon(m, selectedId === m.id, zoom >= LABEL_MIN_ZOOM)}
           // The icon is `pointer-events:none` so the label cannot swallow clicks;
           // the marker itself stays clickable, which is what selects a vehicle.
           interactive
