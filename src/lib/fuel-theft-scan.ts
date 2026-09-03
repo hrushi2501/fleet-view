@@ -52,6 +52,15 @@ const ACCUSABLE = new Set(["STATIONARY_DROP", "EXCESS_CONSUMPTION"]);
  */
 const MIN_RAISEABLE_LITRES = 10;
 
+/**
+ * Fewest fuel readings that can support a comparison at all.
+ *
+ * Low on purpose. This is a floor against a vehicle that barely reported, not a
+ * quality bar — the quality bar is the per-segment confidence, which already
+ * refuses to raise anything scored LOW.
+ */
+const MIN_FUEL_SAMPLES = 6;
+
 export type ScanOutcome = {
   scanned: number;
   raised: number;
@@ -126,8 +135,31 @@ export async function scanForFuelTheft(sinceHours = 30): Promise<ScanOutcome> {
 
     const { segments, usage } = analyseUsage(rows as AnalyticsReading[], null, asset.fuelCapacity);
 
-    if (usage.insufficientData) {
-      note(`telemetry too sparse to measure (longest gap ${usage.worstGapHours} h)`);
+    // ─────────────────────────────────────────────────────────────────────────
+    // Deliberately NOT gated on `usage.insufficientData`.
+    //
+    // That flag answers a different question: "can this vehicle's km/L be
+    // trusted", which genuinely needs continuous sampling. Theft asks something
+    // much narrower — did the level fall between two readings while the vehicle
+    // stood still — and that needs two readings, not unbroken coverage.
+    //
+    // Using the efficiency gate here inverted the feature. A parked truck
+    // reports roughly hourly, every gap over an hour counts as blind, and a
+    // night in the yard therefore pushes coverage under the bar. On the night
+    // of 2 September the scan examined ONE vehicle out of eleven and reported
+    // "nothing found": TRU-053 was dropped for a 2.32 h gap, TRU-106 for 1.07 h,
+    // TRU-111 for 1.06 h, and so on down the list. Standing still overnight —
+    // exactly when diesel goes missing — was what disqualified a vehicle from
+    // being watched.
+    //
+    // Sparse data still weakens a finding rather than being ignored: a segment
+    // observed across a long gap is already scored LOW by `analyseUsage`, and
+    // LOW findings are never raised. So the sampling quality still governs what
+    // can be said — it just no longer silently excuses the whole vehicle.
+    // ─────────────────────────────────────────────────────────────────────────
+    const fuelSamples = litreSeries.length;
+    if (fuelSamples < MIN_FUEL_SAMPLES) {
+      note(`only ${fuelSamples} fuel readings — too few to compare`);
       continue;
     }
 

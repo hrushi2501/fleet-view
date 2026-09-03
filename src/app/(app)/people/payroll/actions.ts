@@ -167,15 +167,14 @@ async function buildRun__impl(period: string): Promise<Result> {
 
   const settings = { standardDays: run.standardDays, standardHours: run.standardHours };
 
-  await db.$transaction(async (tx) => {
-    await tx.payrollLine.deleteMany({ where: { runId: run.id } });
-
-    for (const person of people) {
-      const pay = computePay(daysBy.get(person.id) ?? [], wagesBy.get(person.id) ?? [], end, settings);
-      const kept = keptAdjustments.get(person.id);
-
-      await tx.payrollLine.create({
-        data: {
+  // Worked out in memory first, then written in one statement. A create() per
+  // person inside the transaction is a round trip per person — fine for the
+  // handful here today, an obvious stall on a full labour roll, and it holds a
+  // write transaction open for the whole time.
+  const rows = people.map((person) => {
+    const pay = computePay(daysBy.get(person.id) ?? [], wagesBy.get(person.id) ?? [], end, settings);
+    const kept = keptAdjustments.get(person.id);
+    return {
           runId: run.id,
           driverId: person.id,
           empCode: person.empCode,
@@ -203,10 +202,13 @@ async function buildRun__impl(period: string): Promise<Result> {
           }),
           adjustedBy: kept?.adjustedBy ?? null,
           adjustedNote: kept?.adjustedNote ?? null,
-        },
-      });
-    }
+    };
   });
+
+  await db.$transaction([
+    db.payrollLine.deleteMany({ where: { runId: run.id } }),
+    db.payrollLine.createMany({ data: rows }),
+  ]);
 
   await audit({
     action: "UPDATE",

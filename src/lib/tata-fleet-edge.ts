@@ -748,33 +748,42 @@ async function runTataSync(base: TataSyncResult): Promise<TataSyncResult> {
       // duplicate row per sync — and every duplicate reads as a fresh sample to
       // anything reasoning over reading history, such as idle-time and
       // fuel-drop detection.
-      const alreadyStored = await db.telemetryReading.findFirst({
-        where: { assetId: asset.id, recordedAt: ping.timestamp, source: "GPS_API" },
-        select: { id: true },
-      });
-      if (alreadyStored) {
-        duplicates++;
-        continue;
-      }
-
-      // Attribute the sample to whoever is checked in, so a fuel drop has an
-      // accountable driver and not just a vehicle.
-      const session = await db.tripSession.findFirst({
-        where: { assetId: asset.id, status: "ACTIVE" },
-        orderBy: { startedAt: "desc" },
-        select: { id: true },
-      });
-
-      // The immediately preceding sample is what turns a snapshot into a
-      // measurement — distance covered, fuel burned, and whether those agree.
-      const previous = await db.telemetryReading.findFirst({
+      //
+      // These three reads do not depend on one another, so they go together.
+      // Issued in sequence they were three round trips to Mumbai per vehicle,
+      // repeated for every vehicle, on a job that runs once a minute — the same
+      // avoidable latency already removed from the push handler.
+      const [alreadyStored, session, previous] = await Promise.all([
+        db.telemetryReading.findFirst({
+          where: { assetId: asset.id, recordedAt: ping.timestamp, source: "GPS_API" },
+          select: { id: true },
+        }),
+        // Attribute the sample to whoever is checked in, so a fuel drop has an
+        // accountable driver and not just a vehicle.
+        db.tripSession.findFirst({
+          where: { assetId: asset.id, status: "ACTIVE" },
+          orderBy: { startedAt: "desc" },
+          select: { id: true },
+        }),
+        // The immediately preceding sample is what turns a snapshot into a
+        // measurement — distance covered, fuel burned, and whether those agree.
+        db.telemetryReading.findFirst({
         where: { assetId: asset.id, recordedAt: { lt: ping.timestamp } },
         orderBy: { recordedAt: "desc" },
         select: {
           recordedAt: true, lat: true, lng: true, speedKph: true,
           odometerKm: true, fuelLevelL: true, fuelLevelPct: true, ignitionOn: true,
-        },
-      });
+          },
+        }),
+      ]);
+
+      // The duplicate check still short-circuits, just after the reads rather
+      // than before them: a wasted pair of cheap lookups on a parked vehicle is
+      // a better trade than three serial round trips on a moving one.
+      if (alreadyStored) {
+        duplicates++;
+        continue;
+      }
 
       // The tank size the vehicle reports beats a hand-typed one: fuel-theft
       // detection sizes a siphon against it, and so does the sender's noise
