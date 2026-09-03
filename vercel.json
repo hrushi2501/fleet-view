@@ -15,6 +15,10 @@
     {
       "path": "/api/fuel/theft-scan",
       "schedule": "0 21 * * *"
+    },
+    {
+      "path": "/api/telemetry/retention",
+      "schedule": "30 21 * * *"
     }
   ]
 }
