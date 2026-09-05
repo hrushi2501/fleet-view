@@ -212,7 +212,7 @@ export default async function DiagnosticsPage() {
           <SectionTitle title="Provider Sync Status" subtitle="Last run, and what it reported" />
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
+          <table className="w-full min-w-180 text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
                 <th className="px-5 py-3 font-medium">Provider</th>
@@ -243,7 +243,7 @@ export default async function DiagnosticsPage() {
                       ? <Badge color={SYNC_BADGE[p.lastSyncStatus] ?? SYNC_BADGE.RATE_LIMITED}>{p.lastSyncStatus}</Badge>
                       : <span className="text-slate-300">—</span>}
                   </td>
-                  <td className="px-5 py-3 max-w-md break-words font-mono text-[11px] text-rose-600">{p.lastSyncError ?? ""}</td>
+                  <td className="px-5 py-3 max-w-md wrap-break-word font-mono text-[11px] text-rose-600">{p.lastSyncError ?? ""}</td>
                 </tr>
               ))}
               {providers.length === 0 && (

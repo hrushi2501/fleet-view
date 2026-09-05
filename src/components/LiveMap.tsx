@@ -49,11 +49,11 @@ export function LiveMap({ markers }: { markers: Marker[] }) {
           ))}
         </div>
 
-        <div className="relative h-[560px] w-full overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
-          <div className="absolute right-3 top-3 z-[1000] rounded-lg bg-white/85 px-3 py-1.5 text-xs font-medium text-slate-700 shadow ring-1 ring-black/5 backdrop-blur">
+        <div className="relative h-140 w-full overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
+          <div className="absolute right-3 top-3 z-1000 rounded-lg bg-white/85 px-3 py-1.5 text-xs font-medium text-slate-700 shadow ring-1 ring-black/5 backdrop-blur">
             <Navigation className="mr-1 inline h-3 w-3 text-brand-600" /> Rajasthan · {shown.length} assets live
           </div>
-          <div className="absolute bottom-3 left-3 z-[1000] flex overflow-hidden rounded-lg bg-white/90 shadow ring-1 ring-black/10 backdrop-blur">
+          <div className="absolute bottom-3 left-3 z-1000 flex overflow-hidden rounded-lg bg-white/90 shadow ring-1 ring-black/10 backdrop-blur">
             {([["streets", "Map"], ["satellite", "Satellite"], ["hybrid", "Hybrid"]] as [MapView, string][]).map(([v, label]) => (
               <button
                 key={v}
@@ -71,7 +71,7 @@ export function LiveMap({ markers }: { markers: Marker[] }) {
         </div>
       </div>
 
-      <div className="card max-h-[600px] overflow-y-auto p-0">
+      <div className="card max-h-150 overflow-y-auto p-0">
         <div className="sticky top-0 z-10 border-b border-slate-100 bg-white px-4 py-3">
           <p className="font-semibold text-ink-900">Asset List</p>
           <p className="text-xs text-slate-400">{shown.length} shown · click to view & locate</p>

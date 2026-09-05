@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -80,6 +80,7 @@ export function DataTable<TData, TValue>({
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [pageSize, setPageSize] = useState(25);
 
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data,
     columns,
@@ -142,9 +143,9 @@ export function DataTable<TData, TValue>({
     <div className="space-y-3.5">
       {/* Table Toolbar Controls */}
       <div className="flex flex-wrap items-center justify-between gap-2.5">
-        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
+        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-70">
           {/* Global Search */}
-          <div className="relative flex-1 min-w-[200px] max-w-md">
+          <div className="relative flex-1 min-w-50 max-w-md">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               value={globalFilter ?? ""}

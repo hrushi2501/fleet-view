@@ -122,7 +122,7 @@ export function DriverQuickHub({
   return (
     <div className="space-y-4">
       {/* 1. Live Active Shift Control Card */}
-      <div className="overflow-hidden rounded-3xl border border-emerald-500/30 bg-gradient-to-br from-emerald-600 to-teal-800 p-5 text-white shadow-xl shadow-emerald-700/15">
+      <div className="overflow-hidden rounded-3xl border border-emerald-500/30 bg-linear-to-br from-emerald-600 to-teal-800 p-5 text-white shadow-xl shadow-emerald-700/15">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-300 animate-ping" />

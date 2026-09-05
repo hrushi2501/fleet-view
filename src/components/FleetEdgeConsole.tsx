@@ -212,7 +212,7 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
 
   return (
     <div className="space-y-3">
-      <div className="relative h-[calc(100vh-15rem)] min-h-[600px] w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-sm">
+      <div className="relative h-[calc(100vh-15rem)] min-h-150 w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-sm">
         <FleetEdgeMap
           markers={markers}
           selectedId={selectedId}
@@ -224,7 +224,7 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
         />
 
         {/* Top-left: liveness and playback. */}
-        <div className="pointer-events-none absolute left-3 top-3 z-[1000] flex flex-col items-start gap-2">
+        <div className="pointer-events-none absolute left-3 top-3 z-1000 flex flex-col items-start gap-2">
           <span
             className={cn(
               "pointer-events-auto inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold text-white shadow ring-1 ring-black/10",
@@ -266,7 +266,7 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
         <StatusStrip counts={fleet.counts} active={status} onChange={setStatus} />
 
         {/* Bottom-left: base map. */}
-        <div className="absolute bottom-3 left-3 z-[1000] flex overflow-hidden rounded-lg bg-white/90 shadow ring-1 ring-black/10 backdrop-blur">
+        <div className="absolute bottom-3 left-3 z-1000 flex overflow-hidden rounded-lg bg-white/90 shadow ring-1 ring-black/10 backdrop-blur">
           {(
             [
               ["streets", "Map"],
@@ -290,7 +290,7 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
         {/* Vehicles with no fix at all would otherwise be silently absent from a
             screen whose whole claim is that it shows the fleet. */}
         {unpositioned > 0 && (
-          <div className="absolute bottom-3 left-1/2 z-[1000] -translate-x-1/2 rounded-lg bg-white/90 px-3 py-1.5 text-xs font-medium text-slate-600 shadow ring-1 ring-black/10 backdrop-blur">
+          <div className="absolute bottom-3 left-1/2 z-1000 -translate-x-1/2 rounded-lg bg-white/90 px-3 py-1.5 text-xs font-medium text-slate-600 shadow ring-1 ring-black/10 backdrop-blur">
             {unpositioned} of {visible.length} not on the map — no position reported
           </div>
         )}
@@ -316,7 +316,7 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
 
         <aside
           className={cn(
-            "absolute right-0 top-0 z-[1001] flex h-full w-[min(20rem,90vw)] flex-col border-l border-slate-200 bg-white/95 shadow-xl backdrop-blur transition-transform",
+            "absolute right-0 top-0 z-1001 flex h-full w-[min(20rem,90vw)] flex-col border-l border-slate-200 bg-white/95 shadow-xl backdrop-blur transition-transform",
             sidebarOpen ? "translate-x-0" : "translate-x-full",
           )}
         >
@@ -377,7 +377,7 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
         <button
           onClick={() => setSidebarOpen((v) => !v)}
           className={cn(
-            "absolute top-1/2 z-[1002] -translate-y-1/2 rounded-l-lg bg-white/95 py-4 pl-1.5 pr-1 text-slate-500 shadow ring-1 ring-black/10 transition-all hover:text-brand-600",
+            "absolute top-1/2 z-1002 -translate-y-1/2 rounded-l-lg bg-white/95 py-4 pl-1.5 pr-1 text-slate-500 shadow ring-1 ring-black/10 transition-all hover:text-brand-600",
             sidebarOpen ? "right-[min(20rem,90vw)]" : "right-0",
           )}
           title={sidebarOpen ? "Hide vehicle list" : "Show vehicle list"}
@@ -415,13 +415,13 @@ function StatusStrip({
   ];
 
   return (
-    <div className="absolute left-1/2 top-3 z-[1000] flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 overflow-hidden rounded-xl bg-white/95 shadow-lg ring-1 ring-black/10 backdrop-blur">
+    <div className="absolute left-1/2 top-3 z-1000 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 overflow-hidden rounded-xl bg-white/95 shadow-lg ring-1 ring-black/10 backdrop-blur">
       {cells.map((c) => (
         <button
           key={c.key}
           onClick={() => onChange(c.key)}
           className={cn(
-            "group relative min-w-[4.25rem] px-3 pb-2.5 pt-2 text-center transition-colors",
+            "group relative min-w-17 px-3 pb-2.5 pt-2 text-center transition-colors",
             active === c.key ? "bg-ink-900/95 text-white" : "text-slate-600 hover:bg-slate-50",
           )}
         >
@@ -663,13 +663,13 @@ function DetailCard({
   return (
     <div
       className={cn(
-        "absolute top-3 z-[1000] w-[min(23rem,calc(100%-1.5rem))] overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/10",
+        "absolute top-3 z-1000 w-[min(23rem,calc(100%-1.5rem))] overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/10",
         // Sits clear of the vehicle list rather than under it.
         sidebarOpen ? "right-[calc(min(20rem,90vw)+0.75rem)]" : "right-3",
         "max-h-[calc(100%-1.5rem)] overflow-y-auto",
       )}
     >
-      <header className="sticky top-0 z-10 flex items-start gap-2.5 bg-gradient-to-r from-violet-100 to-brand-50 px-3.5 py-3">
+      <header className="sticky top-0 z-10 flex items-start gap-2.5 bg-linear-to-r from-violet-100 to-brand-50 px-3.5 py-3">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white shadow-sm">
           <Truck className="h-4.5 w-4.5 text-brand-600" />
         </span>
