@@ -40,6 +40,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     include: {
       project: { select: { code: true, name: true, location: true } },
       driver: { select: { name: true } },
+      tripSessions: { where: { status: "ACTIVE" }, include: { driver: { select: { name: true } } }, take: 1 },
       compliance: { orderBy: { expiryDate: "asc" } },
       workOrders: { orderBy: { reportedAt: "desc" }, take: 5 },
       fuelTxns: { where: { type: "ISSUE" }, orderBy: { date: "desc" }, take: 5 },
@@ -101,6 +102,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   for (const c of asset.costs) costByHead[c.costHead] = (costByHead[c.costHead] || 0) + c.amount;
   const totalCost = Object.values(costByHead).reduce((s, v) => s + v, 0);
 
+  const activeDriver = asset.tripSessions[0]?.driver ?? asset.driver;
+
   return NextResponse.json({
     id: asset.id, code: asset.code, name: asset.name, registrationNo: asset.registrationNo,
     assetClass: asset.assetClass, category: asset.category, ownershipType: asset.ownershipType,
@@ -108,7 +111,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     meterValue: asset.meterValue, fuelCapacity: asset.fuelCapacity, status: asset.status,
     healthScore: asset.healthScore, utilization: asset.utilization, acquisitionCost: asset.acquisitionCost,
     lat: asset.lat, lng: asset.lng, lastSeen: asset.lastSeen,
-    project: asset.project, driver: asset.driver,
+    project: asset.project, driver: activeDriver,
     compliance: asset.compliance.map((c) => ({ docType: c.docType, number: c.number, expiryDate: c.expiryDate, status: c.status })),
     workOrders: asset.workOrders.map((w) => ({ woNo: w.woNo, type: w.type, description: w.description, totalCost: w.totalCost, status: w.status })),
     fuel: asset.fuelTxns.map((f) => ({ date: f.date, quantity: f.quantity, sensorRise: f.sensorRise, variancePct: f.variancePct, anomaly: f.anomaly })),

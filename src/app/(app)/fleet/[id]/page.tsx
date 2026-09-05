@@ -85,6 +85,7 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
       costs: true,
       tyres: true,
       components: true,
+      tripSessions: { where: { status: "ACTIVE" }, include: { driver: true }, take: 1 },
     },
   });
   if (!asset) notFound();
@@ -306,10 +307,11 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
     },
   ];
 
+  const activeDriver = asset.tripSessions[0]?.driver ?? asset.driver;
   const heroDescription =
     `${ASSET_CLASS_LABEL[asset.assetClass] ?? asset.assetClass} on ${asset.ownershipType.toLowerCase()} terms` +
     (asset.project ? `, working ${asset.project.name}` : ", not allocated to a site") +
-    (asset.driver ? `. Operator ${asset.driver.name}.` : ". No operator assigned.");
+    (activeDriver ? `. Operator ${activeDriver.name}${asset.tripSessions[0] ? " (Claimed / On Duty)" : ""}.` : ". No Driver Assigned.");
 
   const cards = specCards({
     fuelCapacity: asset.fuelCapacity, engineNo: asset.engineNo, chassisNo: asset.chassisNo,
@@ -349,8 +351,9 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
       href: asset.project ? `/projects` : undefined,
     },
     { label: "Location on site", value: asset.project?.location ?? null },
-    { label: "Operator", value: asset.driver?.name ?? null, href: asset.driver ? `/drivers` : undefined },
-    { label: "Operator licence", value: asset.driver?.licenseNo ?? null },
+    { label: "Operator", value: activeDriver ? activeDriver.name : "No Driver Assigned", href: activeDriver ? `/people` : undefined },
+    { label: "Operator licence", value: activeDriver?.licenseNo ?? "—" },
+    { label: "Duty status", value: asset.tripSessions[0] ? "Claimed / On Duty" : "No Active Shift" },
     { label: "Ownership", value: asset.ownershipType },
     { label: "Status", value: asset.status.replace(/-/g, " ") },
   ];
@@ -610,6 +613,7 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
                     assetClass: asset.assetClass, status: asset.status,
                     lat: asset.lat, lng: asset.lng, speed: asset.speed,
                     project: asset.project?.code ?? "—",
+                    driverName: activeDriver?.name ?? null,
                   }
                 : null
             }

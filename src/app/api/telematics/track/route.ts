@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { requireApi, canSeeAsset } from "@/lib/access";
 import { startOfBusinessDay, parseBusinessDay } from "@/lib/business-time";
 import { haversineKm } from "@/lib/fleet-analytics";
+import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,17 @@ const MAX_POINTS = 4000;
 export async function GET(req: Request) {
   const auth = await requireApi("fleet.view");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
+  const limit = await reserveRateLimit({
+    scope: "telematics-track",
+    subject: auth.access.session.id,
+    limit: 60,
+    windowMs: 60_000,
+  });
+  if (!limit.ok) {
+    return rateLimitResponse(limit.retryInSeconds, "Too many track playback requests. Please wait.");
+  }
+
 
   const url = new URL(req.url);
   const assetId = url.searchParams.get("assetId");

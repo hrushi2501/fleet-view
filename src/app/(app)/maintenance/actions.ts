@@ -172,6 +172,21 @@ async function completeWorkOrder__impl(id: string, fd: FormData) {
     });
   }
   await db.asset.update({ where: { id: wo.assetId }, data: { lastServiceDate: new Date() } });
+
+  // If this asset was marked Breakdown or Under-Maintenance, check if any other open breakdown work orders remain
+  if (wo.asset && (wo.asset.status === "Breakdown" || wo.asset.status === "Under-Maintenance")) {
+    const remainingOpen = await db.workOrder.count({
+      where: {
+        assetId: wo.assetId,
+        id: { not: wo.id },
+        status: { in: ["Open", "In-Progress"] },
+        type: { in: ["BREAKDOWN", "REPAIR"] },
+      },
+    });
+    if (remainingOpen === 0) {
+      await db.asset.update({ where: { id: wo.assetId }, data: { status: "Active" } });
+    }
+  }
   refresh();
 }
 
@@ -211,6 +226,12 @@ async function submitPreOpChecklist__impl(fd: FormData) {
         description: `Pre-Op Inspection Failed: ${issueSummary}`,
         meterAtService: asset.meterValue,
       },
+    });
+
+    // Mark vehicle as in Breakdown so it cannot be claimed or operated unsafe
+    await db.asset.update({
+      where: { id: asset.id },
+      data: { status: "Breakdown" },
     });
 
     // Create a critical alert

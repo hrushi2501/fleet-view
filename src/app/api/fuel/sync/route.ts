@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { checkSharedSecret } from "@/lib/auth";
 import { requireApi } from "@/lib/access";
 import { syncTataFleetEdge, isTataEnabled, missingConfigKeys } from "@/lib/tata-fleet-edge";
+import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -17,8 +18,20 @@ async function handleSync(req: Request) {
 
   if (!isAuthorized) {
     const sessionAuth = await requireApi("fuel.view");
-    if (sessionAuth.ok) isAuthorized = true;
+    if (sessionAuth.ok) {
+      const limit = await reserveRateLimit({
+        scope: "fuel-sync",
+        subject: sessionAuth.access.session.id,
+        limit: 5,
+        windowMs: 60_000,
+      });
+      if (!limit.ok) {
+        return rateLimitResponse(limit.retryInSeconds, "Too many sync requests. Please wait before syncing again.");
+      }
+      isAuthorized = true;
+    }
   }
+
 
   if (!isAuthorized) {
     return NextResponse.json(

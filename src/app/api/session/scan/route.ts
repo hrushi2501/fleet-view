@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getAccess } from "@/lib/access";
-import { evaluateScan, staleSessions, type SessionLite } from "@/lib/telematics";
+import {
+  evaluateScan,
+  staleSessions,
+  isAssetCheckinAllowed,
+  validateOdometerAtScan,
+  type SessionLite,
+} from "@/lib/telematics";
 import { assetCompliance, DOC_LABEL, type DocLite } from "@/lib/compliance";
 import { eligibility, safetyScore, type DriverLite, type CompetencyLite, type ViolationLite } from "@/lib/drivers";
+import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -21,17 +28,30 @@ export async function POST(req: Request) {
   if (!access) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   if (access.group !== "DRIVER") return NextResponse.json({ error: "Only a driver account can check in to a vehicle." }, { status: 403 });
 
+  const limit = await reserveRateLimit({
+    scope: "qr-scan",
+    subject: access.session.id,
+    limit: 30,
+    windowMs: 60_000,
+  });
+  if (!limit.ok) {
+    return rateLimitResponse(limit.retryInSeconds, "Too many scan attempts. Please wait before trying again.");
+  }
+
   let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch { return NextResponse.json({ error: "bad json" }, { status: 400 }); }
 
   const token = String(body.token ?? "").trim();
   if (!token) return NextResponse.json({ error: "No QR token supplied" }, { status: 400 });
-  if (token.length > 48) return NextResponse.json({ error: "This is not a valid cabin sticker code." }, { status: 400 });
+  if (token.length > 48 || /[\r\n\t\0]/.test(token)) return NextResponse.json({ error: "This is not a valid cabin sticker code." }, { status: 400 });
+
 
   const asset = await db.asset.findUnique({ where: { qrToken: token }, include: { compliance: true } });
   if (!asset) return NextResponse.json({ error: "This QR code does not match any vehicle." }, { status: 404 });
-  if (asset.decommissionedOn || ["Off-hired", "Disposed"].includes(asset.status)) {
-    return NextResponse.json({ error: "This vehicle is not available for check-in. Please contact your supervisor." }, { status: 409 });
+
+  const checkinCheck = isAssetCheckinAllowed(asset.status, asset.decommissionedOn);
+  if (!checkinCheck.allowed) {
+    return NextResponse.json({ error: checkinCheck.reason }, { status: 409 });
   }
 
   // Only an administrator's explicit driver assignment can attribute a trip.
@@ -45,6 +65,11 @@ export async function POST(req: Request) {
 
   const num = (k: string) => (body[k] != null && isFinite(Number(body[k])) ? Number(body[k]) : null);
   const lat = num("lat"), lng = num("lng");
+  const manualOdo = num("odometer");
+  const odoCheck = validateOdometerAtScan(manualOdo, asset.meterValue);
+  if (!odoCheck.valid) {
+    return NextResponse.json({ error: odoCheck.error }, { status: 400 });
+  }
 
   // Session ownership is decided and written together. Two simultaneous scans
   // cannot quietly create duplicate active trips for one vehicle.
@@ -58,19 +83,45 @@ export async function POST(req: Request) {
       const stale = staleSessions(rows, now);
       if (stale.length) {
         await tx.tripSession.updateMany({ where: { id: { in: stale.map((s) => s.id) }, status: "ACTIVE" }, data: { status: "ABANDONED", endedAt: now, endedBy: "AUTO" } });
+        await tx.asset.updateMany({ where: { id: { in: stale.map((s) => s.assetId) } }, data: { driverId: null } });
       }
       const current = rows.filter((s) => !stale.some((old) => old.id === s.id));
       const decision = evaluateScan(asset.id, person.id, current, now);
       if (!decision.ok) return { outcome: decision, session: null };
       if (decision.action === "START" && decision.releaseSessionId) {
-        await tx.tripSession.update({ where: { id: decision.releaseSessionId }, data: { status: "COMPLETED", endedAt: now, endedBy: "AUTO" } });
+        const oldSession = await tx.tripSession.findUnique({
+          where: { id: decision.releaseSessionId },
+          select: { id: true, assetId: true, driverId: true, projectId: true, startedAt: true, startOdometer: true },
+        });
+        if (oldSession) {
+          await tx.tripSession.update({
+            where: { id: decision.releaseSessionId },
+            data: { status: "COMPLETED", endedAt: now, endedBy: "AUTO" },
+          });
+          await tx.asset.update({
+            where: { id: oldSession.assetId },
+            data: { driverId: null },
+          });
+          await tx.trip.create({
+            data: {
+              assetId: oldSession.assetId,
+              driverId: oldSession.driverId,
+              projectId: oldSession.projectId,
+              startTime: oldSession.startedAt,
+              endTime: now,
+              distanceKm: 0,
+              status: "Completed",
+              gpsVerified: false,
+            },
+          });
+        }
       }
       if (decision.action === "RESUME") {
         return { outcome: decision, session: current.find((s) => s.assetId === asset.id && s.driverId === person.id)! };
       }
       const session = await tx.tripSession.create({ data: {
         assetId: asset.id, driverId: person.id, userId: access.session.id, projectId: asset.projectId,
-        startLat: lat, startLng: lng, startOdometer: num("odometer") ?? asset.meterValue,
+        startLat: lat, startLng: lng, startOdometer: manualOdo ?? asset.meterValue,
         trackingSource: asset.deviceId ? "GPS" : lat != null ? "MOBILE" : "NONE", scanMethod: "QR",
       } });
       await tx.asset.update({ where: { id: asset.id }, data: { driverId: person.id } });

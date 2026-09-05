@@ -21,7 +21,7 @@ import Link from "next/link";
 import {
   Search, SlidersHorizontal, Download, Share2, MapPinned, Route, Info,
   Fuel, Droplet, Clock, X, Play,
-  RefreshCw, Loader2, Truck, Radio, ExternalLink,
+  RefreshCw, Loader2, Truck, Radio, ExternalLink, UserRound,
 } from "lucide-react";
 import { cn, num } from "@/lib/utils";
 import { AssetGlass } from "@/components/AssetGlass";
@@ -201,6 +201,9 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
           lat: v.lat as number,
           lng: v.lng as number,
           headingDeg: v.headingDeg,
+          driverName: v.driverName,
+          onTrip: v.onTrip,
+          speedKph: v.live.speedKph,
         })),
     [visible],
   );
@@ -589,6 +592,12 @@ function VehicleCard({
           </div>
           <p className="truncate text-[11px] text-slate-400">{v.chassisNo ?? v.code}</p>
           <p className="truncate text-[11px] text-slate-500">{v.modelLabel}</p>
+          <div className="mt-1 flex items-center gap-1 text-[11px]">
+            <UserRound className={cn("h-3 w-3 shrink-0", v.driverName ? "text-emerald-600" : "text-amber-500")} />
+            <span className={cn("truncate font-medium", v.driverName ? "text-slate-800" : "text-amber-700")}>
+              {v.driverName ? v.driverName : "No Driver Assigned"}
+            </span>
+          </div>
           <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-500">
             <Clock className="h-3 w-3 shrink-0" />
             {v.lastUpdate ? (
@@ -804,15 +813,17 @@ function DetailCard({
         </div>
       </Section>
 
-      {(v.onTrip || v.projectCode) && (
-        <Section title="Assignment">
-          <div className="grid grid-cols-3 gap-y-3">
-            <Metric label="Driver" value={v.driverName ?? DASH} muted={!v.driverName} />
-            <Metric label="Project" value={v.projectCode ?? DASH} muted={!v.projectCode} />
-            <Metric label="Trip" value={v.onTrip ? "On trip" : "Not checked in"} muted={!v.onTrip} />
-          </div>
-        </Section>
-      )}
+      <Section title="Assignment">
+        <div className="grid grid-cols-3 gap-y-3">
+          <Metric
+            label="Driver"
+            value={v.driverName ? v.driverName : "No Driver Assigned"}
+            muted={!v.driverName}
+          />
+          <Metric label="Project" value={v.projectCode ?? DASH} muted={!v.projectCode} />
+          <Metric label="Trip" value={v.onTrip ? "On trip" : "Not checked in"} muted={!v.onTrip} />
+        </div>
+      </Section>
 
       <div className="grid grid-cols-3 gap-2 border-t border-slate-100 px-3.5 py-3">
         <button

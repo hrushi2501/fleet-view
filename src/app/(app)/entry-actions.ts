@@ -90,6 +90,10 @@ async function saveAsset__impl(id: string | null, fd: FormData) {
     ...(s(fd, "lng") ? { lng: n(fd, "lng") } : {}),
   };
   if (id) {
+    const before = await db.asset.findUnique({ where: { id }, select: { meterValue: true } });
+    if (before && data.meterValue > 0 && data.meterValue < before.meterValue) {
+      throw new ActionError(`Odometer reading (${data.meterValue} km) cannot be lower than existing reading (${before.meterValue} km).`);
+    }
     const updated = await db.asset.updateMany({ where: { id, decommissionedOn: null }, data });
     if (updated.count !== 1) throw new ActionError("Decommissioned vehicles cannot be edited. Restore it deliberately before changing its register record.");
   }
@@ -113,6 +117,10 @@ async function deleteAsset__impl(id: string) {
   // financial reconciliation impossible, so the register's former "delete" is
   // intentionally a retirement operation.
   await db.$transaction(async (tx) => {
+    await tx.tripSession.updateMany({
+      where: { assetId: id, status: "ACTIVE" },
+      data: { status: "COMPLETED", endedAt: now, endedBy: "ADMIN" },
+    });
     await tx.asset.update({
       where: { id },
       data: {
@@ -208,6 +216,18 @@ async function saveDriver__impl(id: string | null, fd: FormData) {
   };
   if (id) {
     await db.driver.update({ where: { id }, data });
+    // If the driver is marked Inactive or Suspended, release any active vehicle they hold
+    if (data.status === "Inactive" || data.status === "Suspended") {
+      const now = new Date();
+      await db.tripSession.updateMany({
+        where: { driverId: id, status: "ACTIVE" },
+        data: { status: "COMPLETED", endedAt: now, endedBy: "ADMIN" },
+      });
+      await db.asset.updateMany({
+        where: { driverId: id },
+        data: { driverId: null },
+      });
+    }
   } else {
     const driver = await db.driver.create({ data });
 
@@ -234,6 +254,11 @@ async function saveDriver__impl(id: string | null, fd: FormData) {
 
 async function deleteDriver__impl(id: string) {
   await requireAction("people.edit");
+  const now = new Date();
+  await db.tripSession.updateMany({
+    where: { driverId: id, status: "ACTIVE" },
+    data: { status: "COMPLETED", endedAt: now, endedBy: "ADMIN" },
+  });
   await db.asset.updateMany({ where: { driverId: id }, data: { driverId: null } });
   await db.trip.updateMany({ where: { driverId: id }, data: { driverId: null } });
   await db.alert.updateMany({ where: { driverId: id }, data: { driverId: null } });
@@ -263,6 +288,14 @@ async function saveFuel__impl(fd: FormData) {
   const lng = s(fd, "lng") ? Number(fd.get("lng")) : null;
   const assetId = s(fd, "assetId") || null;
 
+  if (quantity <= 0) throw new ActionError("Fuel quantity must be greater than 0 litres.");
+
+  const tankId = s(fd, "tankId") || null;
+  const asset = assetId ? await db.asset.findUnique({ where: { id: assetId } }) : null;
+  if (asset && asset.fuelCapacity > 0 && quantity > asset.fuelCapacity * 1.5) {
+    throw new ActionError(`Fuel quantity (${quantity} L) exceeds plausible tank capacity (${asset.fuelCapacity} L).`);
+  }
+
   // The driver wizard calls the same action as the office fuel form. A Server
   // Action is still directly POSTable, so a driver must prove the submitted
   // asset is their assigned vehicle before it can create either a fuel row or
@@ -272,10 +305,7 @@ async function saveFuel__impl(fd: FormData) {
     if (!assetId || !access.driverId || !(await canSeeAsset(access, assetId))) {
       throw new ActionError("You may record fuel only for your assigned vehicle.");
     }
-    const [driver, asset] = await Promise.all([
-      db.driver.findUnique({ where: { id: access.driverId }, select: { id: true, name: true } }),
-      db.asset.findUnique({ where: { id: assetId }, select: { id: true, code: true } }),
-    ]);
+    const driver = await db.driver.findUnique({ where: { id: access.driverId }, select: { id: true, name: true } });
     if (!driver || !asset) throw new ActionError("Your assigned vehicle could not be found.");
     driverEvent = driverFuelFillNotification({
       assetId: asset.id,
@@ -289,24 +319,30 @@ async function saveFuel__impl(fd: FormData) {
 
   // geofence check: how far is the fill from the vehicle's known GPS position?
   let geofenceOk = fd.get("geofenceOk") !== "false";
-  if (lat != null && lng != null && assetId) {
-    const asset = await db.asset.findUnique({ where: { id: assetId } });
-    if (asset && (asset.lat || asset.lng)) {
-      const R = 6371, dLat = ((asset.lat - lat) * Math.PI) / 180, dLng = ((asset.lng - lng) * Math.PI) / 180;
-      const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat * Math.PI) / 180) * Math.cos((asset.lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-      const distKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      if (distKm > 15) geofenceOk = false; // fill logged >15km from the vehicle
-    }
+  if (lat != null && lng != null && asset && (asset.lat || asset.lng)) {
+    const R = 6371, dLat = ((asset.lat - lat) * Math.PI) / 180, dLng = ((asset.lng - lng) * Math.PI) / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat * Math.PI) / 180) * Math.cos((asset.lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+    const distKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    if (distKm > 15) geofenceOk = false; // fill logged >15km from the vehicle
   }
 
   const meterValue = n(fd, "meterValue");
+  const activeSession = assetId
+    ? await db.tripSession.findFirst({
+        where: { assetId, status: "ACTIVE" },
+        orderBy: { startedAt: "desc" },
+      })
+    : null;
 
   await db.$transaction(async (tx) => {
     await tx.fuelTransaction.create({
       data: {
         type,
         assetId,
-        projectId: s(fd, "projectId") || null,
+        tankId,
+        sessionId: activeSession?.id ?? null,
+        source: tankId ? "SITE_TANK" : s(fd, "source") || "RETAIL",
+        projectId: s(fd, "projectId") || asset?.projectId || null,
         quantity,
         rate,
         amount: quantity * rate,
@@ -323,17 +359,37 @@ async function saveFuel__impl(fd: FormData) {
       },
     });
 
+    if (tankId) {
+      await tx.fuelTank.update({
+        where: { id: tankId },
+        data: { currentLevel: { decrement: quantity } },
+      });
+    }
+
     if (driverEvent) await tx.alert.create({ data: driverEvent });
 
     if (assetId && meterValue > 0) {
-      await tx.asset.update({
-        where: { id: assetId },
-        data: {
-          meterValue,
-          ...(lat != null && lng != null ? { lat, lng } : {}),
-          lastSeen: new Date(),
-        },
-      });
+      const currentMeter = asset?.meterValue ?? 0;
+      // Only advance odometer; prevent backwards rollback
+      if (meterValue >= currentMeter) {
+        await tx.asset.update({
+          where: { id: assetId },
+          data: {
+            meterValue,
+            ...(lat != null && lng != null ? { lat, lng } : {}),
+            lastSeen: new Date(),
+          },
+        });
+        await tx.meterReading.create({
+          data: {
+            assetId,
+            meterType: "ODOMETER",
+            value: meterValue,
+            source: "FUEL",
+            date: new Date(),
+          },
+        });
+      }
     }
   });
 
@@ -410,22 +466,35 @@ async function saveWorkOrder__impl(fd: FormData) {
   await requireAction("maintenance.edit");
   const labor = n(fd, "laborCost");
   const parts = n(fd, "partsCost");
-  await db.workOrder.create({
-    data: {
-      woNo: `WO-${Date.now().toString().slice(-8)}`,
-      assetId: s(fd, "assetId"),
-      type: s(fd, "type") || "PM",
-      priority: s(fd, "priority") || "Medium",
-      status: s(fd, "status") || "Open",
-      description: s(fd, "description"),
-      laborCost: labor,
-      partsCost: parts,
-      totalCost: labor + parts,
-      downtimeHrs: n(fd, "downtimeHrs"),
-      warranty: fd.get("warranty") === "on",
-      reportedAt: new Date(),
-      completedAt: s(fd, "status") === "Completed" || s(fd, "status") === "Closed" ? new Date() : null,
-    },
+  const assetId = s(fd, "assetId");
+  const type = s(fd, "type") || "PM";
+  const status = s(fd, "status") || "Open";
+
+  await db.$transaction(async (tx) => {
+    await tx.workOrder.create({
+      data: {
+        woNo: `WO-${Date.now().toString().slice(-8)}`,
+        assetId,
+        type,
+        priority: s(fd, "priority") || "Medium",
+        status,
+        description: s(fd, "description"),
+        laborCost: labor,
+        partsCost: parts,
+        totalCost: labor + parts,
+        downtimeHrs: n(fd, "downtimeHrs"),
+        warranty: fd.get("warranty") === "on",
+        reportedAt: new Date(),
+        completedAt: status === "Completed" || status === "Closed" ? new Date() : null,
+      },
+    });
+
+    if (assetId && (type === "BREAKDOWN" || s(fd, "priority") === "Critical") && status !== "Completed" && status !== "Closed") {
+      await tx.asset.update({
+        where: { id: assetId },
+        data: { status: "Breakdown" },
+      });
+    }
   });
   revalidatePath("/maintenance");
   revalidatePath("/");
@@ -433,11 +502,37 @@ async function saveWorkOrder__impl(fd: FormData) {
 
 async function updateWorkOrderStatus__impl(id: string, status: string) {
   await requireAction("maintenance.edit");
+  const wo = await db.workOrder.findUnique({ where: { id }, include: { asset: true } });
+  if (!wo) throw new ActionError("Work order not found");
+
   await db.workOrder.update({
     where: { id },
     data: { status, completedAt: status === "Completed" || status === "Closed" ? new Date() : null },
   });
+
+  if (wo.assetId) {
+    if (status === "Completed" || status === "Closed") {
+      // Check if all breakdown work orders on this asset are now done
+      if (wo.asset?.status === "Breakdown" || wo.asset?.status === "Under-Maintenance") {
+        const remainingOpen = await db.workOrder.count({
+          where: {
+            assetId: wo.assetId,
+            id: { not: wo.id },
+            status: { in: ["Open", "In-Progress"] },
+            type: { in: ["BREAKDOWN", "REPAIR"] },
+          },
+        });
+        if (remainingOpen === 0) {
+          await db.asset.update({ where: { id: wo.assetId }, data: { status: "Active" } });
+        }
+      }
+    } else if (wo.type === "BREAKDOWN" && (status === "Open" || status === "In-Progress")) {
+      await db.asset.update({ where: { id: wo.assetId }, data: { status: "Breakdown" } });
+    }
+  }
+
   revalidatePath("/maintenance");
+  revalidatePath("/");
 }
 
 /* ----------------------------- COMPLIANCE ----------------------------- */

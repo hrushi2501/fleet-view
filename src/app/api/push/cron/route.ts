@@ -18,7 +18,7 @@ export async function GET(req: Request) {
     // Materialise PUC/compliance, PM, tyre, fuel, and allocation conditions as
     // Alert rows before counting or pushing. The in-app bell then exposes the
     // same durable record to each role under its own RBAC scope.
-    await runAutomaticAlertSweep();
+    const sweep = await runAutomaticAlertSweep();
     const soon = new Date(Date.now() + 15 * 86400000);
     const [serviceDue, breakdowns, expiring] = await db.$transaction([
       db.asset.count({ where: { serviceDueDate: { not: null, lte: soon } } }),
@@ -30,14 +30,14 @@ export async function GET(req: Request) {
     if (serviceDue) parts.push(`${serviceDue} service due`);
     if (breakdowns) parts.push(`${breakdowns} breakdowns`);
     if (expiring) parts.push(`${expiring} docs expiring`);
-    if (parts.length === 0) return NextResponse.json({ ok: true, skipped: "nothing due" });
+    if (parts.length === 0) return NextResponse.json({ ok: true, skipped: "nothing due", dbAudit: sweep.dbAudit });
 
     const result = await sendPushToUsers(await administratorNotificationUserIds(), {
       title: "FleetView — Fleet needs attention",
       body: parts.join(" · "),
       url: "/notifications",
     });
-    return NextResponse.json({ ok: true, ...result });
+    return NextResponse.json({ ok: true, dbAudit: sweep.dbAudit, ...result });
   } catch (err) {
     console.error("[API] /push/cron error:", err);
     return NextResponse.json({ ok: false, error: "Failed to process push cron" }, { status: 500 });

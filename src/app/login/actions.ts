@@ -4,6 +4,8 @@ import { db } from "@/lib/db";
 import { setSession, verifyPassword } from "@/lib/auth";
 import { auditAs } from "@/lib/audit";
 import { checkLock, recordFailure, clearFailures, MAX_ATTEMPTS } from "@/lib/login-throttle";
+import { reserveRateLimit, clientIp } from "@/lib/request-rate-limit";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 /**
@@ -24,11 +26,25 @@ export async function login(_prev: unknown, formData: FormData) {
 
   if (!email || !password) return { error: "Enter your email and password." };
 
+  const headerStore = await headers();
+  const ip = clientIp(headerStore);
+  const ipLimit = await reserveRateLimit({
+    scope: "login-ip",
+    subject: ip,
+    limit: 30,
+    windowMs: 15 * 60_000,
+  });
+  if (!ipLimit.ok) {
+    const mins = Math.ceil(ipLimit.retryInSeconds / 60);
+    return { error: `Too many login attempts from this network. Try again in ${mins} minute${mins === 1 ? "" : "s"}.` };
+  }
+
   const lock = await checkLock(email);
   if (lock.locked) {
     const mins = Math.ceil(lock.retryInSeconds / 60);
     return { error: `Too many failed attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.` };
   }
+
 
   const user = await db.user.findUnique({ where: { email } });
   // Always run bcrypt, including for unknown addresses. Without the dummy

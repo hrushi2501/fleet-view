@@ -285,3 +285,26 @@ export const DEFAULT_PM_TASKS: { assetClass: string; taskName: string; serviceTi
   { assetClass: "TRANSIT_MIXER", taskName: "Drum & chute service", serviceTier: "SERVICE_B", intervalKm: 15000, intervalHours: 0, intervalDays: 120, estimatedCost: 9000 },
 ];
 
+/**
+ * Determines whether completing a work order should restore an asset's status to Active.
+ */
+export function shouldRestoreAssetStatus(
+  currentStatus: string,
+  remainingOpenBreakdowns: number
+): boolean {
+  if (currentStatus !== "Breakdown" && currentStatus !== "Under-Maintenance") {
+    return false;
+  }
+  return remainingOpenBreakdowns === 0;
+}
+
+/**
+ * Determines if raising or editing a work order should transition the machine into Breakdown status.
+ */
+export function shouldMoveAssetToBreakdown(
+  type: string,
+  priority?: string
+): boolean {
+  return type === "BREAKDOWN" || priority === "Critical";
+}
+

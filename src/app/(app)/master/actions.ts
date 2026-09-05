@@ -120,7 +120,15 @@ async function saveLifecycleEvent__impl(fd: FormData) {
   });
 
   if (kind === "DECOMMISSIONED" || kind === "DISPOSED") {
-    await db.asset.update({ where: { id: assetId }, data: { status: "Off-hired", decommissionedOn: new Date() } });
+    const now = new Date();
+    await db.tripSession.updateMany({
+      where: { assetId, status: "ACTIVE" },
+      data: { status: "COMPLETED", endedAt: now, endedBy: "ADMIN" },
+    });
+    await db.asset.update({
+      where: { id: assetId },
+      data: { status: "Off-hired", driverId: null, decommissionedOn: now },
+    });
   }
   await audit({ action: "UPDATE", module: "FLEET", entity: "Asset", entityId: assetId, summary: `Lifecycle event: ${kind}` });
   refresh();

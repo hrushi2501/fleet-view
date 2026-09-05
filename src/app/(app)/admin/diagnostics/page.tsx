@@ -7,8 +7,10 @@ import {
 } from "@/lib/telemetry-normalization";
 import { isTataEnabled, missingConfigKeys, TATA_PROVIDER_CODE } from "@/lib/tata-fleet-edge";
 import { num, fmtDate, timeAgo } from "@/lib/utils";
-import { Activity, Database, PlugZap, TriangleAlert } from "lucide-react";
+import { Activity, Database, PlugZap, TriangleAlert, ShieldCheck, Server } from "lucide-react";
 import { requireAdminPage } from "@/lib/access";
+import { auditSchemaAlignment, auditSupabaseSecurity, auditDatabaseHealth } from "@/lib/db-audit";
+import { RunDatabaseAuditButton } from "@/components/RunDatabaseAuditButton";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +46,19 @@ export default async function DiagnosticsPage() {
   // eslint-disable-next-line react-hooks/purity
   const weekAgo = new Date(Date.now() - 7 * 86400000);
 
-  const [providers, latest, last24h, lastWeek, bySource, assetsTracked, assetsTotal] = await Promise.all([
+  const [
+    providers,
+    latest,
+    last24h,
+    lastWeek,
+    bySource,
+    assetsTracked,
+    assetsTotal,
+    schemaAudit,
+    securityAudit,
+    healthAudit,
+    latestDbAudit,
+  ] = await Promise.all([
     db.telematicsProvider.findMany({ orderBy: { name: "asc" } }),
     db.telemetryReading.findMany({
       include: { asset: { select: { code: true, registrationNo: true } } },
@@ -56,7 +70,15 @@ export default async function DiagnosticsPage() {
     db.telemetryReading.groupBy({ by: ["source"], _count: { _all: true } }),
     db.asset.count({ where: { deviceId: { not: null } } }),
     db.asset.count(),
+    auditSchemaAlignment(),
+    auditSupabaseSecurity(),
+    auditDatabaseHealth(),
+    db.auditEvent.findFirst({
+      where: { entity: "DatabaseAudit" },
+      orderBy: { at: "desc" },
+    }),
   ]);
+
 
   // Drift is measured against the newest payload that actually carried one —
   // an empty `raw` tells you nothing about the provider's contract.
@@ -94,7 +116,98 @@ export default async function DiagnosticsPage() {
         <StatCard label="Payload Fields" value={num(FLEET_EDGE_KNOWN_FIELDS.length)} sub="in the recorded contract" accent="brand" icon={<Database className="h-5 w-5" />} />
       </div>
 
+      {/* Database & Supabase Schema Uniformity */}
+      <Card className="border-slate-200 shadow-sm">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+          <div>
+            <div className="flex items-center gap-2">
+              <SectionTitle
+                title="Database & Supabase Schema Uniformity"
+                subtitle="Live synchronization between Prisma schema, PostgreSQL, and Supabase PostgREST"
+              />
+              <Badge
+                color={
+                  schemaAudit.synced && securityAudit.isZeroExposure
+                    ? "bg-emerald-100 text-emerald-700 ring-emerald-600/20"
+                    : "bg-amber-100 text-amber-700 ring-amber-600/20"
+                }
+              >
+                {schemaAudit.synced && securityAudit.isZeroExposure ? "IN SYNC" : "ATTENTION NEEDED"}
+              </Badge>
+            </div>
+          </div>
+          <RunDatabaseAuditButton />
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 pt-4">
+          <div className="rounded-lg bg-slate-50 p-3.5 border border-slate-100">
+            <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+              <Server className="h-3.5 w-3.5 text-brand-600" />
+              <span>Prisma ⟷ DB Models</span>
+            </div>
+            <div className="mt-1 text-lg font-bold text-ink-900">
+              {schemaAudit.matchedModels} / {schemaAudit.totalModels}
+            </div>
+            <div className="text-[11px] text-slate-500">
+              {schemaAudit.synced ? "100% column alignment" : `${schemaAudit.missingTables.length} tables / ${schemaAudit.missingColumns.length} cols missing`}
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-slate-50 p-3.5 border border-slate-100">
+            <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+              <Activity className="h-3.5 w-3.5 text-violet-600" />
+              <span>DB Ping Latency</span>
+            </div>
+            <div className="mt-1 text-lg font-bold text-ink-900">
+              {healthAudit.latencyMs} ms
+            </div>
+            <div className="text-[11px] text-slate-500">
+              PostgreSQL connection healthy
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-slate-50 p-3.5 border border-slate-100">
+            <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+              <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+              <span>Supabase PostgREST Security</span>
+            </div>
+            <div className="mt-1 text-lg font-bold text-ink-900">
+              {securityAudit.isZeroExposure ? "Zero Exposure" : "Exposed Grants"}
+            </div>
+            <div className="text-[11px] text-slate-500">
+              anon/auth grants: {securityAudit.anonGrants.length + securityAudit.authenticatedGrants.length}
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-slate-50 p-3.5 border border-slate-100">
+            <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+              <Database className="h-3.5 w-3.5 text-amber-600" />
+              <span>RLS Active State</span>
+            </div>
+            <div className="mt-1 text-lg font-bold text-ink-900">
+              {securityAudit.rlsEnabledCount} / {securityAudit.totalTables}
+            </div>
+            <div className="text-[11px] text-slate-500">
+              {securityAudit.policyCount > 0 ? `${securityAudit.policyCount} policies · ` : ""}
+              {securityAudit.unsecuredTables.length === 0 ? "All tables guarded" : `${securityAudit.unsecuredTables.length} tables pending RLS`}
+            </div>
+          </div>
+        </div>
+
+        {latestDbAudit && (
+          <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between text-xs text-slate-500">
+            <span>
+              Last Automated Audit: <strong className="text-ink-900 font-mono">{fmtDate(latestDbAudit.at)}</strong> ({timeAgo(latestDbAudit.at)})
+            </span>
+            <span className="font-mono text-[11px] text-slate-400">
+              {latestDbAudit.summary}
+            </span>
+          </div>
+        )}
+      </Card>
+
       <Card className="p-0">
+
         <div className="p-5 pb-3">
           <SectionTitle title="Provider Sync Status" subtitle="Last run, and what it reported" />
         </div>

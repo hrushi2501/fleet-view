@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getAccess, assetScope, projectScope } from "@/lib/access";
+import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -21,12 +22,26 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const limit = await reserveRateLimit({
+      scope: "search",
+      subject: access.session.id,
+      limit: 60,
+      windowMs: 60_000,
+    });
+    if (!limit.ok) {
+      return rateLimitResponse(limit.retryInSeconds, "Too many search requests. Please wait a moment.");
+    }
+
     const { searchParams } = new URL(req.url);
-    const query = (searchParams.get("q") || "").trim();
+    const query = (searchParams.get("q") || "").replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim();
 
     if (!query || query.length < 2) {
       return NextResponse.json({ results: [] });
     }
+    if (query.length > 100) {
+      return NextResponse.json({ error: "Search query exceeds maximum length of 100 characters." }, { status: 400 });
+    }
+
 
     const q = query.toLowerCase();
     const visibleAssets = assetScope(access);

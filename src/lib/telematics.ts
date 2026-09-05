@@ -344,6 +344,54 @@ export function staleSessions(sessions: SessionLite[], now = new Date()): Sessio
   );
 }
 
+/**
+ * Validate asset status for driver QR checkin.
+ */
+export function isAssetCheckinAllowed(status: string, decommissionedOn?: Date | null): { allowed: boolean; reason?: string } {
+  if (decommissionedOn || ["Off-hired", "Disposed"].includes(status)) {
+    return { allowed: false, reason: "This vehicle is not available for check-in. Please contact your supervisor." };
+  }
+  if (["Breakdown", "Under-Maintenance"].includes(status)) {
+    return { allowed: false, reason: "This vehicle is currently under maintenance / breakdown and cannot be checked in." };
+  }
+  return { allowed: true };
+}
+
+/**
+ * Validate start odometer at checkin. Cannot be lower than vehicle's current recorded meter.
+ */
+export function validateOdometerAtScan(startOdo: number | null, assetMeterValue: number): { valid: boolean; error?: string } {
+  if (startOdo != null && startOdo < assetMeterValue) {
+    return {
+      valid: false,
+      error: `Starting odometer (${startOdo} km) cannot be lower than the vehicle's last recorded meter (${assetMeterValue} km).`,
+    };
+  }
+  return { valid: true };
+}
+
+/**
+ * Validate end odometer at checkout.
+ * Cannot be lower than start odometer, and delta cannot exceed 2,000 km in a single shift.
+ */
+export function validateOdometerAtCheckout(endOdo: number | null, startOdometer: number | null): { valid: boolean; error?: string } {
+  if (endOdo != null && startOdometer != null) {
+    if (endOdo < startOdometer) {
+      return {
+        valid: false,
+        error: `Ending odometer (${endOdo} km) cannot be lower than starting odometer (${startOdometer} km).`,
+      };
+    }
+    if (endOdo - startOdometer > 2000) {
+      return {
+        valid: false,
+        error: `Ending odometer delta (${endOdo - startOdometer} km) is implausibly high for a single shift. Please verify meter reading.`,
+      };
+    }
+  }
+  return { valid: true };
+}
+
 /** Opaque, unguessable token for the cabin sticker. */
 export function makeQrToken(bytes: Uint8Array): string {
   const A = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no ambiguous characters

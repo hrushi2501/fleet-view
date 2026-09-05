@@ -58,23 +58,73 @@ async function fitTyre__impl(fd: FormData) {
   const tread = n(fd, "treadMm");
   const session = await getSession();
 
-  await db.tyre.update({
-    where: { id: tyreId },
-    data: {
-      assetId,
-      position: s(fd, "position") || null,
-      status: "IN_USE",
-      fittedMeter: meter,
-      warehouseId: null, // Clear warehouse when in use
-      ...(tread > 0 ? { currentTreadMm: tread } : {}),
-    },
-  });
-  await db.tyreEvent.create({
-    data: {
-      tyreId, kind: "FIT", assetId, position: s(fd, "position") || null,
-      meterValue: meter, treadMm: tread, note: s(fd, "note") || null, by: session?.name ?? null,
-      date: s(fd, "date") ? new Date(s(fd, "date")) : new Date(),
-    },
+  const pos = s(fd, "position") || null;
+  const existingAtPos = pos
+    ? await db.tyre.findFirst({
+        where: {
+          assetId,
+          position: pos,
+          status: "IN_USE",
+          id: { not: tyreId },
+        },
+      })
+    : null;
+
+  await db.$transaction(async (tx) => {
+    // If another tyre is currently mounted at this wheel position, dismount it cleanly
+    if (existingAtPos) {
+      const ranKm = existingAtPos.fittedMeter != null && meter > existingAtPos.fittedMeter ? meter - existingAtPos.fittedMeter : 0;
+      await tx.tyre.update({
+        where: { id: existingAtPos.id },
+        data: {
+          assetId: null,
+          position: null,
+          status: "REMOVED",
+          fittedMeter: 0,
+          totalKm: { increment: ranKm },
+        },
+      });
+      await tx.tyreEvent.create({
+        data: {
+          tyreId: existingAtPos.id,
+          kind: "REMOVE",
+          assetId,
+          position: pos,
+          meterValue: meter,
+          treadMm: existingAtPos.currentTreadMm,
+          reason: "ROTATION",
+          note: `Auto-unmounted: replaced at position ${pos} (${ranKm} km run banked)`,
+          by: session?.name ?? null,
+          date: s(fd, "date") ? new Date(s(fd, "date")) : new Date(),
+        },
+      });
+    }
+
+    await tx.tyre.update({
+      where: { id: tyreId },
+      data: {
+        assetId,
+        position: pos,
+        status: "IN_USE",
+        fittedMeter: meter,
+        warehouseId: null,
+        ...(tread > 0 ? { currentTreadMm: tread } : {}),
+      },
+    });
+
+    await tx.tyreEvent.create({
+      data: {
+        tyreId,
+        kind: "FIT",
+        assetId,
+        position: pos,
+        meterValue: meter,
+        treadMm: tread,
+        note: s(fd, "note") || null,
+        by: session?.name ?? null,
+        date: s(fd, "date") ? new Date(s(fd, "date")) : new Date(),
+      },
+    });
   });
   refresh();
 }

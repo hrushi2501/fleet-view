@@ -4,12 +4,14 @@ function makeQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {
       queries: {
-        // Cache data is considered fresh for 20 seconds before background refetching
-        staleTime: 20 * 1000,
-        // Inactive cache entries are garbage collected after 10 minutes
-        gcTime: 10 * 60 * 1000,
-        // Avoid automatic aggressive refetches on window focus for low-latency operational screens
+        // Cache data is considered fresh for 30 seconds before background refetching
+        staleTime: 30 * 1000,
+        // Inactive cache entries are garbage collected after 15 minutes
+        gcTime: 15 * 60 * 1000,
+        // Smart window focus revalidation
         refetchOnWindowFocus: false,
+        // Automatically refetch stale queries when network reconnects
+        refetchOnReconnect: true,
         // Retry failed queries once before surfacing error
         retry: 1,
       },

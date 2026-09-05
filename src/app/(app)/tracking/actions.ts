@@ -211,7 +211,7 @@ async function verifyGaugeReading__impl(id: string, fd: FormData) {
 
 /** Force-release a session — the supervisor override for a forgotten checkout. */
 async function releaseSession__impl(id: string) {
-  await requireAction("fuel.receipt");
+  await requireAction("fleet.edit");
   const auth = await getSession();
   const sess = await db.tripSession.findUnique({ where: { id } });
   if (!sess || sess.status !== "ACTIVE") return;
@@ -222,21 +222,50 @@ async function releaseSession__impl(id: string) {
     odometerKm: r.odometerKm, fuelLevelPct: r.fuelLevelPct, ignitionOn: r.ignitionOn, source: r.source,
   })));
 
+  const now = new Date();
   await db.tripSession.update({
     where: { id },
-    data: { status: "COMPLETED", endedAt: new Date(), endedBy: "ADMIN", distanceKm: path.distanceKm },
+    data: { status: "COMPLETED", endedAt: now, endedBy: "ADMIN", distanceKm: path.distanceKm },
   });
+
+  await db.trip.create({
+    data: {
+      assetId: sess.assetId,
+      driverId: sess.driverId,
+      projectId: sess.projectId,
+      startTime: sess.startedAt,
+      endTime: now,
+      distanceKm: path.distanceKm,
+      idleHours: path.idleMinutes / 60,
+      gpsVerified: path.points > 1,
+      status: "Completed",
+    },
+  });
+
+  await db.asset.update({
+    where: { id: sess.assetId },
+    data: { driverId: null },
+  });
+
   await audit({ action: "UPDATE", module: "OPERATIONS", entity: "TripSession", entityId: id, summary: `Session force-released by ${auth?.name ?? "admin"}` });
   refresh();
 }
 
 /** Close sessions a driver forgot to end. Safe to run on a schedule. */
 async function closeStaleSessions__impl() {
-  await requireAction("fuel.receipt");
+  await requireAction("fleet.edit");
   const open = await db.tripSession.findMany({ where: { status: "ACTIVE" } });
   const stale = staleSessions(open.map((x): SessionLite => ({ id: x.id, assetId: x.assetId, driverId: x.driverId, startedAt: x.startedAt, endedAt: x.endedAt, status: x.status })));
+  const now = new Date();
   for (const x of stale) {
-    await db.tripSession.update({ where: { id: x.id }, data: { status: "ABANDONED", endedAt: new Date(), endedBy: "AUTO" } });
+    await db.tripSession.update({ where: { id: x.id }, data: { status: "ABANDONED", endedAt: now, endedBy: "AUTO" } });
+  }
+  const staleAssetIds = [...new Set(stale.map((x) => x.assetId))];
+  if (staleAssetIds.length) {
+    await db.asset.updateMany({
+      where: { id: { in: staleAssetIds } },
+      data: { driverId: null },
+    });
   }
   if (stale.length) await audit({ action: "UPDATE", module: "OPERATIONS", summary: `Closed ${stale.length} stale trip session(s)` });
   refresh();

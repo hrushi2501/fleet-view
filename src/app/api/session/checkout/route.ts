@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getAccess } from "@/lib/access";
-import { reconstructPath, type ReadingLite } from "@/lib/telematics";
+import { reconstructPath, validateOdometerAtCheckout, type ReadingLite } from "@/lib/telematics";
+import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -17,10 +18,21 @@ export async function POST(req: Request) {
   if (!access) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   if (access.group !== "DRIVER") return NextResponse.json({ error: "Only a driver account can end a vehicle trip." }, { status: 403 });
 
+  const limit = await reserveRateLimit({
+    scope: "session-checkout",
+    subject: access.session.id,
+    limit: 20,
+    windowMs: 60_000,
+  });
+  if (!limit.ok) {
+    return rateLimitResponse(limit.retryInSeconds, "Too many checkout attempts. Please wait before retrying.");
+  }
+
   let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch { return NextResponse.json({ error: "A cabin QR code is required to end the trip." }, { status: 400 }); }
   const token = String(body.token ?? "").trim();
   if (!token || token.length > 48) return NextResponse.json({ error: "Scan or enter the cabin QR code to end this trip." }, { status: 400 });
+
 
   const account = await db.user.findUnique({ where: { id: access.session.id }, include: { driverRef: true } });
   // A trip belongs to the administrator-assigned driver, never to whichever
@@ -49,6 +61,11 @@ export async function POST(req: Request) {
   const num = (k: string) => (body[k] != null && isFinite(Number(body[k])) ? Number(body[k]) : null);
   const endOdo = num("odometer");
 
+  const odoCheck = validateOdometerAtCheckout(endOdo, active.startOdometer);
+  if (!odoCheck.valid) {
+    return NextResponse.json({ error: odoCheck.error }, { status: 400 });
+  }
+
   // Explicit columns: `reconstructPath` uses eight of them, and the row also
   // carries `raw`, the full provider payload. A long shift is thousands of
   // samples, so pulling the blob for each was the bulk of this request.
@@ -74,7 +91,7 @@ export async function POST(req: Request) {
     data: {
       status: "COMPLETED", endedAt: new Date(), endedBy: "DRIVER",
       endLat: num("lat"), endLng: num("lng"), endOdometer: endOdo,
-      distanceKm, notes: body.notes ? String(body.notes) : undefined,
+      distanceKm, notes: body.notes ? String(body.notes).slice(0, 2000) : undefined,
     },
   });
 
@@ -88,14 +105,20 @@ export async function POST(req: Request) {
     },
   });
 
+  // Explicitly unbind the driver from the asset on checkout so it doesn't remain claimed.
+  const asset = await db.asset.findUnique({ where: { id: closed.assetId } });
+  await db.asset.update({
+    where: { id: closed.assetId },
+    data: {
+      driverId: null,
+      ...(endOdo != null && asset && endOdo > asset.meterValue ? { meterValue: endOdo } : {}),
+    },
+  });
+
   if (endOdo != null && endOdo > 0) {
     await db.meterReading.create({
       data: { assetId: closed.assetId, meterType: "ODOMETER", value: endOdo, source: "GPS", refId: closed.id, recordedBy: access.session.name },
     });
-    const asset = await db.asset.findUnique({ where: { id: closed.assetId } });
-    if (asset && endOdo > asset.meterValue) {
-      await db.asset.update({ where: { id: closed.assetId }, data: { meterValue: endOdo } });
-    }
   }
 
   return NextResponse.json({

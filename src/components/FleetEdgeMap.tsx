@@ -11,7 +11,7 @@
  */
 
 import L from "leaflet";
-import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, Popup, Tooltip, useMap } from "react-leaflet";
 import { useEffect, useMemo, useRef } from "react";
 import type { LiveStatus } from "@/lib/fleet-edge-live";
 import type { TrackPoint } from "@/components/FleetEdgePlayback";
@@ -25,6 +25,9 @@ export type FleetEdgeMapMarker = {
   lat: number;
   lng: number;
   headingDeg: number | null;
+  driverName?: string | null;
+  onTrip?: boolean;
+  speedKph?: number | null;
 };
 
 /**
@@ -86,22 +89,27 @@ function vehicleIcon(m: FleetEdgeMapMarker, active: boolean): L.DivIcon {
        </svg>`
     : `<span style="display:block;width:${size * 0.3}px;height:${size * 0.3}px;border-radius:9999px;background:#fff"></span>`;
 
-  // The label is part of the icon rather than a tooltip so it survives panning
-  // and never needs a hover — a console is read, not explored.
+  // The label and driver badge are part of the icon so they survive panning
+  // and never need a hover — a dispatcher sees who is on which truck at a glance.
+  const driverBadge = m.driverName
+    ? `<span style="display:block;margin-top:1px;font-size:9px;font-weight:700;color:#047857">👤 ${escapeHtml(m.driverName)}</span>`
+    : `<span style="display:block;margin-top:1px;font-size:9px;font-weight:600;color:#b45309">No Driver Assigned</span>`;
+
   const html = `
     <div style="display:flex;flex-direction:column;align-items:center;pointer-events:none">
       <div style="display:flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;border-radius:9999px;background:${color};border:${active ? 3 : 2}px solid #fff;box-shadow:0 2px 8px rgba(15,23,42,.45)${active ? `;outline:3px solid ${color}55` : ""}">
         ${glyph}
       </div>
-      <div style="margin-top:3px;padding:1px 6px;border-radius:4px;background:rgba(255,255,255,.95);border:1px solid rgba(15,23,42,.12);box-shadow:0 1px 3px rgba(15,23,42,.2);font:600 10px/1.4 ui-sans-serif,system-ui,sans-serif;color:#0f172a;white-space:nowrap">
-        ${escapeHtml(m.label)}
+      <div style="margin-top:3px;padding:2px 7px;border-radius:5px;background:rgba(255,255,255,.96);border:1px solid rgba(15,23,42,.15);box-shadow:0 2px 4px rgba(15,23,42,.2);font:600 10px/1.3 ui-sans-serif,system-ui,sans-serif;color:#0f172a;white-space:nowrap;text-align:center">
+        <div>${escapeHtml(m.label)}</div>
+        ${driverBadge}
       </div>
     </div>`;
 
   return L.divIcon({
     className: "",
     html,
-    iconSize: [size, size + 18],
+    iconSize: [size, size + 28],
     iconAnchor: [size / 2, size / 2],
   });
 }
@@ -296,7 +304,56 @@ export default function FleetEdgeMap({
           // the marker itself stays clickable, which is what selects a vehicle.
           interactive
           eventHandlers={{ click: () => onSelect(m.id) }}
-        />
+        >
+          <Tooltip direction="top" offset={[0, -20]} opacity={0.95}>
+            <div style={{ font: "600 11px ui-sans-serif,system-ui,sans-serif", color: "#0f172a" }}>
+              <strong>{m.label}</strong> ({m.status})<br />
+              <span style={{ color: m.driverName ? "#047857" : "#b45309" }}>
+                Driver: {m.driverName ? m.driverName : "No Driver Assigned"}
+              </span>
+              {m.speedKph != null && (
+                <span style={{ color: "#64748b" }}> · {Math.round(m.speedKph)} km/h</span>
+              )}
+            </div>
+          </Tooltip>
+          <Popup>
+            <div style={{ minWidth: 190, fontFamily: "ui-sans-serif,system-ui,sans-serif", padding: "2px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: "4px" }}>
+                <strong style={{ fontSize: "13px", color: "#0f172a" }}>{m.label}</strong>
+                <span style={{ fontSize: "10px", fontWeight: "700", padding: "2px 6px", borderRadius: "4px", color: "#fff", background: STATUS_HEX[m.status] }}>
+                  {m.status}
+                </span>
+              </div>
+              <div style={{ marginTop: "6px", fontSize: "11px", lineHeight: 1.6 }}>
+                <div style={{ margin: "3px 0" }}>
+                  <span style={{ color: "#64748b" }}>Driver: </span>
+                  <strong style={{ color: m.driverName ? "#047857" : "#b45309" }}>
+                    {m.driverName ? m.driverName : "No Driver Assigned"}
+                  </strong>
+                </div>
+                {m.speedKph != null && (
+                  <div>
+                    <span style={{ color: "#64748b" }}>Speed: </span>
+                    <strong>{Math.round(m.speedKph)} km/h</strong>
+                  </div>
+                )}
+                <div style={{ color: "#64748b", fontFamily: "monospace", fontSize: "10px", marginTop: "4px" }}>
+                  {m.lat.toFixed(5)}, {m.lng.toFixed(5)}
+                </div>
+              </div>
+              <button
+                onClick={() => onSelect(m.id)}
+                style={{
+                  marginTop: "8px", width: "100%", padding: "5px 0",
+                  background: "#1f47e6", color: "#fff", border: "none",
+                  borderRadius: "6px", fontWeight: 600, fontSize: "11px", cursor: "pointer",
+                }}
+              >
+                Inspect Vehicle Details →
+              </button>
+            </div>
+          </Popup>
+        </Marker>
       ))}
     </MapContainer>
   );

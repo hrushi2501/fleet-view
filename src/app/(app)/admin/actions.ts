@@ -120,6 +120,19 @@ async function linkUserToDriver__impl(userId: string, driverId: string) {
   revalidatePath("/users");
 }
 
+async function runDatabaseAuditAction__impl() {
+  const auth = await requireAction("admin.settings");
+  const { runPeriodicDatabaseAudit } = await import("@/lib/db-audit");
+  const result = await runPeriodicDatabaseAudit("MANUAL", {
+    id: auth.session.id,
+    name: auth.session.name,
+    role: auth.session.role,
+  });
+  revalidatePath("/admin/diagnostics");
+  revalidatePath("/admin/audit");
+  return { ok: true as const, result };
+}
+
 /* ---------------------------------------------------------------------------
  * Exported actions.
  *
@@ -133,3 +146,5 @@ export const saveRole = safe(saveRole__impl);
 export const deleteRole = safe(deleteRole__impl);
 export const assignRole = safe(assignRole__impl);
 export const linkUserToDriver = safe(linkUserToDriver__impl);
+export const runDatabaseAuditAction = safe(runDatabaseAuditAction__impl);
+

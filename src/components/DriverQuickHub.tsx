@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useTransition } from "react";
+import React, { useState, useEffect, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -46,6 +46,51 @@ export function DriverQuickHub({
     distanceKm: "14",
     endMeter: String(vehicle.meterValue + 14),
   });
+
+  // Periodic background telemetry ping from driver device while shift is active
+  useEffect(() => {
+    if (typeof window === "undefined" || !("geolocation" in navigator)) return;
+
+    let cancelled = false;
+
+    const sendPing = () => {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          if (cancelled) return;
+          try {
+            const speedKph =
+              pos.coords.speed != null && pos.coords.speed >= 0
+                ? Math.round(pos.coords.speed * 3.6)
+                : null;
+            await fetch("/api/session/ping", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                lat: pos.coords.latitude,
+                lng: pos.coords.longitude,
+                speed: speedKph,
+                accuracy: pos.coords.accuracy,
+              }),
+            });
+          } catch {
+            // Mobile ping is best-effort — ignore network/intermittent drops
+          }
+        },
+        () => {
+          // Geolocation permission denied or unavailable
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
+      );
+    };
+
+    sendPing();
+    const interval = setInterval(sendPing, 60000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   const [pending, startTransition] = useTransition();
   const toast = useToast();

@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { DEFAULT_ALERT_RULES, dueForEscalation, sweepAlerts, type AlertRuleLite, type SweepInput } from "@/lib/alerts";
 import { pmDue, type ScheduleLite } from "@/lib/maintenance";
 import { allocationConflicts, mobilizationStats, type AllocationLite, type MobLite } from "@/lib/operations";
+import { runPeriodicDatabaseAudit } from "@/lib/db-audit";
 
 /**
  * The unattended counterpart to the Alerts screen's "Run sweep" action.
@@ -11,6 +12,9 @@ import { allocationConflicts, mobilizationStats, type AllocationLite, type MobLi
  * conditions instead of creating another PUC or service-expiry row each day.
  */
 export async function runAutomaticAlertSweep() {
+  // Concurrently run the periodic database audit, schema verification, and Setting pruning
+  const dbAudit = await runPeriodicDatabaseAudit("CRON");
+
   let rules = await db.alertRule.findMany();
   if (rules.length === 0) {
     for (const rule of DEFAULT_ALERT_RULES) {
@@ -175,5 +179,6 @@ export async function runAutomaticAlertSweep() {
     if (hits !== rule.hits) await db.alertRule.update({ where: { id: rule.id }, data: { hits } });
   }
 
-  return { found: candidates.length, created, updated, escalated: escalations.length };
+  return { found: candidates.length, created, updated, escalated: escalations.length, dbAudit };
 }
+

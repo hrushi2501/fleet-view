@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { requireApi, assetScope, projectIdScope } from "@/lib/access";
 import { toCsv } from "@/lib/reporting";
 import { NextResponse } from "next/server";
+import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,17 @@ export async function GET(_req: Request, ctx: { params: Promise<{ key: string }>
   const auth = await requireApi("reports.export");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const session = auth.access.session;
+
+  const limit = await reserveRateLimit({
+    scope: "report-export",
+    subject: session.id,
+    limit: 15,
+    windowMs: 5 * 60_000,
+  });
+  if (!limit.ok) {
+    return rateLimitResponse(limit.retryInSeconds, "Export rate limit reached. Please wait a moment before downloading another report.");
+  }
+
 
   // An export is the easiest way to walk out with more than you can see on
   // screen, so it is bounded by the same scope as every other read.

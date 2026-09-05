@@ -29,6 +29,10 @@ begin
   loop
     execute format('alter table public.%I enable row level security', r.tablename);
     execute format('revoke all on public.%I from anon, authenticated', r.tablename);
+    execute format('drop policy if exists "deny_anon_access" on public.%I', r.tablename);
+    execute format('create policy "deny_anon_access" on public.%I for all to anon using (false)', r.tablename);
+    execute format('drop policy if exists "deny_authenticated_access" on public.%I', r.tablename);
+    execute format('create policy "deny_authenticated_access" on public.%I for all to authenticated using (false)', r.tablename);
   end loop;
 end $$;
 

@@ -100,6 +100,13 @@ export async function reportProblem(fd: FormData) {
           note,
         }),
     });
+    if (stopped || accident) {
+      await tx.asset.update({
+        where: { id: assetId },
+        data: { status: "Breakdown" },
+      });
+    }
+
     return { workOrder, notification };
   });
 
@@ -181,10 +188,22 @@ export async function logDriverTrip(fd: FormData) {
   });
 
   if (endMeter > 0 && assetId) {
-    await db.asset.update({
-      where: { id: assetId },
-      data: { meterValue: endMeter, lastSeen: now },
-    });
+    const currentAsset = await db.asset.findUnique({ where: { id: assetId }, select: { meterValue: true } });
+    if (currentAsset && endMeter > currentAsset.meterValue) {
+      await db.asset.update({
+        where: { id: assetId },
+        data: { meterValue: endMeter, lastSeen: now },
+      });
+      await db.meterReading.create({
+        data: {
+          assetId,
+          meterType: "ODOMETER",
+          value: endMeter,
+          source: "MOBILE",
+          recordedBy: access.session.name,
+        },
+      });
+    }
   }
 
   revalidatePath("/my");

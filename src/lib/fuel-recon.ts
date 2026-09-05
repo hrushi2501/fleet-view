@@ -262,3 +262,22 @@ export function scoreTankRecon(r: TankRecon, dieselRate: number): ScoredAnomaly 
     reasons: r.reasons,
   };
 }
+
+/**
+ * Validate a fuel issue request against basic sanity and vehicle tank capacity.
+ */
+export function validateFuelIssue(
+  quantity: number,
+  fuelCapacity?: number | null
+): { valid: boolean; error?: string } {
+  if (quantity <= 0) {
+    return { valid: false, error: "Fuel quantity must be greater than 0 litres." };
+  }
+  if (fuelCapacity != null && fuelCapacity > 0 && quantity > fuelCapacity * 1.5) {
+    return {
+      valid: false,
+      error: `Fuel quantity (${quantity} L) exceeds plausible tank capacity (${fuelCapacity} L).`,
+    };
+  }
+  return { valid: true };
+}

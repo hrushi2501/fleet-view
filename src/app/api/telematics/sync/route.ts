@@ -3,6 +3,7 @@ import { checkSharedSecret } from "@/lib/auth";
 import { requireApi } from "@/lib/access";
 import { recordSystemAudit } from "@/lib/audit-writer";
 import { syncTataFleetEdge, isTataEnabled, missingConfigKeys } from "@/lib/tata-fleet-edge";
+import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 
 export const dynamic = "force-dynamic";
 // Fleet Edge is polled for the whole fleet; allow room for a slow upstream.
@@ -21,9 +22,19 @@ export async function GET(req: Request) {
   if (!isAuthorized) {
     const sessionAuth = await requireApi("fleet.view");
     if (sessionAuth.ok) {
+      const limit = await reserveRateLimit({
+        scope: "telematics-sync",
+        subject: sessionAuth.access.session.id,
+        limit: 5,
+        windowMs: 60_000,
+      });
+      if (!limit.ok) {
+        return rateLimitResponse(limit.retryInSeconds, "Too many sync requests. Please wait before syncing again.");
+      }
       isAuthorized = true;
     }
   }
+
 
   if (!isAuthorized) {
     return NextResponse.json(

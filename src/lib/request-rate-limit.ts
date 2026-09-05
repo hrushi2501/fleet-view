@@ -7,6 +7,41 @@
  */
 import { db } from "@/lib/db";
 
+/**
+ * Extracts client IP from Request or Headers safely.
+ */
+export function clientIp(req: Request | Headers): string {
+  const headers = "headers" in req ? req.headers : req;
+  const fwd = headers.get("x-forwarded-for");
+  if (fwd) {
+    const first = fwd.split(",")[0]?.trim();
+    if (first) return first;
+  }
+  const real = headers.get("x-real-ip")?.trim();
+  if (real) return real;
+  return "unknown";
+}
+
+/**
+ * Standard HTTP 429 Too Many Requests response with Retry-After header.
+ */
+export function rateLimitResponse(
+  retryInSeconds: number,
+  message: string = "Too many requests. Please slow down and try again.",
+): Response {
+  return Response.json(
+    { error: message, retryInSeconds },
+    {
+      status: 429,
+      headers: {
+        "Retry-After": String(retryInSeconds),
+      },
+    },
+  );
+}
+
+
+
 type Window = { requests: number[] };
 
 export type RateLimitVerdict =

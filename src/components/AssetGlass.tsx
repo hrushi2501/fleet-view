@@ -146,7 +146,7 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
         { label: "Ownership", value: data.ownershipType },
         { label: "Year", value: data.yearMfg ? String(data.yearMfg) : null, numeric: true },
         { label: "Tank capacity", value: data.fuelCapacity > 0 ? `${num(data.fuelCapacity)} L` : null, numeric: true },
-        { label: "Operator", value: data.driver?.name ?? null },
+        { label: "Operator", value: data.driver?.name ?? "No Driver Assigned" },
         { label: "Site", value: data.project ? `${data.project.code} — ${data.project.name}` : null },
         { label: "Acquisition cost", value: data.acquisitionCost > 0 ? inr(data.acquisitionCost) : null, numeric: true },
       ]

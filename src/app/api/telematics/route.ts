@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { checkSharedSecret } from "@/lib/auth";
 import { normaliseReading, assetCacheUpdate, readTelemetryJson } from "@/lib/telemetry-normalization";
 import type { TelemetryPing } from "@/lib/telematics-adapters";
+import { reserveRateLimit, rateLimitResponse, clientIp } from "@/lib/request-rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -169,7 +170,20 @@ export async function POST(req: Request) {
   const body = parsed.value as Record<string, unknown>;
 
   const auth = checkSharedSecret(req, "FLEET_INGEST_KEY", { bodyKey: body.key });
-  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  if (!auth.ok) {
+    const ip = clientIp(req);
+    const limit = await reserveRateLimit({
+      scope: "failed-ingest-key",
+      subject: ip,
+      limit: 20,
+      windowMs: 60_000,
+    });
+    if (!limit.ok) {
+      return rateLimitResponse(limit.retryInSeconds, "Too many unauthorized attempts. Please wait.");
+    }
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
 
   // The whole body is persisted as `raw` and served back on the asset detail
   // API, so the credential must not travel with it — otherwise the ingest key is

@@ -9,6 +9,7 @@ export const queryKeys = {
   // Fleet & Telematics
   fleet: {
     all: ["fleet"] as const,
+    register: () => ["fleet", "register"] as const,
     live: () => ["fleet", "live"] as const,
     detail: (id: string) => ["fleet", "detail", id] as const,
     track: (assetId: string) => ["fleet", "track", assetId] as const,

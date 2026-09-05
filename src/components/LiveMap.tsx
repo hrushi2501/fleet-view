@@ -19,6 +19,7 @@ type Marker = {
   id: string; code: string; name: string; assetClass: string; status: string;
   speed: number; lat: number; lng: number; lastSeen: string; project: string;
   meterValue: number; primaryMeter: string;
+  driverName?: string | null;
 };
 
 const DOT: Record<string, string> = {
@@ -82,6 +83,9 @@ export function LiveMap({ markers }: { markers: Marker[] }) {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-ink-900">{m.code}</p>
                 <p className="truncate text-xs text-slate-400">{ASSET_CLASS_LABEL[m.assetClass] ?? m.assetClass} · {m.project}</p>
+                <p className={cn("truncate text-[11px] font-medium", m.driverName ? "text-emerald-700" : "text-amber-700")}>
+                  {m.driverName ? `Driver: ${m.driverName}` : "No Driver Assigned"}
+                </p>
               </div>
               <div className="text-right text-xs text-slate-500">
                 {m.speed > 0 ? <span className="inline-flex items-center gap-1"><Gauge className="h-3 w-3" />{Math.round(m.speed)}</span> : <span>{num(m.meterValue)} {m.primaryMeter === "SMU" ? "h" : "km"}</span>}
