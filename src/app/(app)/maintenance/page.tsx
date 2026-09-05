@@ -1,8 +1,9 @@
+import { recordScope } from "@/lib/record-access";
 import { db } from "@/lib/db";
 import { StatCard, Card, SectionTitle, Badge, Progress } from "@/components/ui";
 import { Donut } from "@/components/charts";
 import { WorkOrderEntry, WorkOrderStatus } from "@/components/EntryForms";
-import { ScheduleForm, SeedPmButton, RaiseWoButton, CompleteWoForm, DeleteRow, PreOpChecklistForm } from "@/components/MaintTyreForms";
+import { ScheduleForm, SeedPmButton, RaiseWoButton, CompleteWoForm, DeleteRow, PreOpChecklistForm, WoLineForm } from "@/components/MaintTyreForms";
 import { MaintenanceKanban } from "@/components/MaintenanceKanban";
 import { pmDue, reliability, SERVICE_TIERS, FAILURE_CODES, type ScheduleLite, type WoLite } from "@/lib/maintenance";
 import { scoreBreakdownRisk } from "@/lib/analytics";
@@ -42,16 +43,25 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
   since.setDate(since.getDate() - WINDOW_DAYS);
 
 
-  const [wos, assets, schedules, openWos, allWos] = await Promise.all([
+  const [wos, assets, schedules, openWos, allWos, inventoryItems, warehouses] = await Promise.all([
     db.workOrder.findMany({ where: { asset: visible }, include: { asset: true }, orderBy: { reportedAt: "desc" } }),
     db.asset.findMany({ where: visible, orderBy: { code: "asc" } }),
-    db.maintenanceSchedule.findMany({ where: { active: true }, include: { asset: true }, orderBy: { taskName: "asc" } }),
+    db.maintenanceSchedule.findMany({ where: { active: true, asset: visible }, include: { asset: true }, orderBy: { taskName: "asc" } }),
     db.workOrder.findMany({ where: { status: { in: ["Open", "In-Progress"] }, asset: visible }, include: { asset: true, lines: true, checklist: true }, orderBy: { reportedAt: "desc" } }),
-    db.workOrder.findMany({ where: { reportedAt: { gte: since } } }),
+    db.workOrder.findMany({ where: { reportedAt: { gte: since }, asset: visible } }),
+    db.inventoryItem.findMany({ orderBy: { partNo: "asc" } }),
+    db.inventoryWarehouse.findMany({ where: { active: true, ...recordScope("inventoryWarehouse", access) }, orderBy: { code: "asc" } }),
   ]);
 
   const assetOpts = assets.map((a) => ({ id: a.id, label: `${a.code} — ${a.name}` }));
   const classOpts = Object.entries(ASSET_CLASS_LABEL).map(([value, label]) => ({ value, label }));
+  const inventoryItemOpts = inventoryItems.map((i) => ({
+    id: i.id,
+    label: `${i.partNo} — ${i.name} (₹${i.averageCost})`,
+    partNo: i.partNo,
+    averageCost: i.averageCost,
+  }));
+  const warehouseOpts = warehouses.map((w) => ({ id: w.id, label: `${w.code} — ${w.name}` }));
 
   // Work order calculations
   const openJobs = wos.filter((w) => w.status === "Open" || w.status === "In-Progress");
@@ -262,7 +272,7 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
               </Card>
               <Card className="lg:col-span-2">
                 <SectionTitle title="Open &amp; In-Progress Work Orders" subtitle="Prioritized queue" />
-                <div className="max-h-[300px] space-y-2 overflow-y-auto mt-4">
+                <div className="max-h-75 space-y-2 overflow-y-auto mt-4">
                   {openJobs.slice(0, 12).map((w) => (
                     <div key={w.id} className="flex items-center justify-between rounded-lg border border-slate-100 p-2.5 hover:bg-slate-50/50">
                       <div className="min-w-0">
@@ -574,7 +584,10 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
                           {w.technician ? ` · ${w.technician}` : ""}
                         </p>
                       </div>
-                      <CompleteWoForm wo={{ id: w.id, woNo: w.woNo, laborCost: w.laborCost, partsCost: w.partsCost, downtimeHrs: w.downtimeHrs, meterAtService: w.meterAtService }} />
+                      <div className="flex items-center gap-2">
+                        <WoLineForm workOrderId={w.id} inventoryItems={inventoryItemOpts} warehouses={warehouseOpts} />
+                        <CompleteWoForm wo={{ id: w.id, woNo: w.woNo, laborCost: w.laborCost, partsCost: w.partsCost, downtimeHrs: w.downtimeHrs, meterAtService: w.meterAtService }} />
+                      </div>
                     </div>
 
                     {w.lines.length > 0 && (

@@ -36,7 +36,11 @@ function firstExisting(base) {
 export async function resolve(specifier, context, nextResolve) {
   // `next/navigation` only exists inside the Next runtime. Stubbing it keeps
   // the pure logic that happens to live alongside a page guard testable.
-  const NEXT_STUBS = { "next/navigation": "next-navigation.mjs", "next/headers": "next-headers.mjs" };
+  const NEXT_STUBS = {
+    "next/navigation": "next-navigation.mjs",
+    "next/headers": "next-headers.mjs",
+    "next/server": "next-server.mjs",
+  };
   if (NEXT_STUBS[specifier]) {
     return { url: pathToFileURL(path.join(import.meta.dirname, "stubs", NEXT_STUBS[specifier])).href, shortCircuit: true };
   }

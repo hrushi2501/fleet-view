@@ -1,3 +1,4 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { checkSharedSecret } from "@/lib/auth";
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
  * Query live and historical fuel telemetry readings across the fleet.
  * Filter by `assetId` or limit using `?limit=50`.
  */
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const url = new URL(req.url);
   const authSecret = checkSharedSecret(req, "FLEET_INGEST_KEY");
   let isAuthorized = authSecret.ok;
@@ -116,7 +117,7 @@ export async function GET(req: Request) {
  * Accepts webhooks or batch pushes from any telemetry provider (LocoNav,
  * MapMyIndia, Tata Fleet Edge, Generic) via `?provider=CODE`.
  */
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   const auth = checkSharedSecret(req, "FLEET_INGEST_KEY");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
@@ -250,3 +251,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: "Telemetry processing failed" }, { status: 500 });
   }
 }
+
+export const GET = withApiErrors(handleGET);
+export const POST = withApiErrors(handlePOST);

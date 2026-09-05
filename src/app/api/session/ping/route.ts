@@ -1,3 +1,4 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
  * the vehicle is. Tagged MOBILE so nobody later mistakes it for hardware
  * telemetry, and dropped entirely when the fix is too poor to be worth storing.
  */
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   const auth = await getSession();
   if (!auth) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
 
@@ -67,3 +68,5 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ ok: true, stored: true, sessionId: active.id });
 }
+
+export const POST = withApiErrors(handlePOST);

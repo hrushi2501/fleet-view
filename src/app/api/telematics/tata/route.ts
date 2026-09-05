@@ -1,3 +1,5 @@
+import { withApiErrors } from "@/lib/api-error";
+import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { checkSharedSecret } from "@/lib/auth";
@@ -141,7 +143,7 @@ async function resolveAsset(ping: TelemetryPing) {
  * the provider issues none — it read "not ready" on a correctly configured
  * deployment.
  */
-export async function GET() {
+async function handleGET() {
   const urlToken = Boolean(process.env.TATA_PUSH_URL_TOKEN?.trim());
   const secret = Boolean(process.env.TATA_PUSH_KEY?.trim());
   return NextResponse.json({
@@ -299,7 +301,7 @@ function authorisePush(
   };
 }
 
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   const parsed = await readTelemetryJson(req);
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: parsed.status });
   const body = parsed.value;
@@ -320,6 +322,8 @@ export async function POST(req: Request) {
 
   const gate = authorisePush(req, body);
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
+  const limit = await reserveRateLimit({ scope: "tata-push", subject: "provider", limit: 600, windowMs: 60_000 });
+  if (!limit.ok) return rateLimitResponse(limit.retryInSeconds);
 
   const pings = await new TataFleetEdgeAdapter().parsePayload(body);
 
@@ -476,3 +480,6 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ ok: true, accepted, duplicates, unmatched });
 }
+
+export const GET = withApiErrors(handleGET);
+export const POST = withApiErrors(handlePOST);

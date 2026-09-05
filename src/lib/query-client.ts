@@ -1,6 +1,6 @@
 import { QueryClient, defaultShouldDehydrateQuery, isServer } from "@tanstack/react-query";
 
-function makeQueryClient(): QueryClient {
+export function makeQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {
       queries: {
@@ -9,7 +9,7 @@ function makeQueryClient(): QueryClient {
         // Inactive cache entries are garbage collected after 15 minutes
         gcTime: 15 * 60 * 1000,
         // Smart window focus revalidation
-        refetchOnWindowFocus: false,
+        refetchOnWindowFocus: true,
         // Automatically refetch stale queries when network reconnects
         refetchOnReconnect: true,
         // Retry failed queries once before surfacing error

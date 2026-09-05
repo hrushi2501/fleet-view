@@ -1,8 +1,9 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireApi, assetScope, projectIdScope } from "@/lib/access";
 
-export async function GET() {
+async function handleGET() {
   const auth = await requireApi("fleet.view");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
@@ -36,3 +37,5 @@ export async function GET() {
     generatedAt: new Date().toISOString(),
   });
 }
+
+export const GET = withApiErrors(handleGET);

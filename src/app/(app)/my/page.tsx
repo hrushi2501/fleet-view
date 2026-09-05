@@ -74,6 +74,7 @@ export default async function MyWorkPage() {
 
       {vehicle && shift.hasActiveTrip && (
         <DriverQuickHub
+          sessionId={shift.sessionId}
           driverName={driver.name}
           vehicle={{
             id: vehicle.id,

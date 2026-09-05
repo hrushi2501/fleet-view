@@ -17,6 +17,9 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
+import { businessTransaction } from "@/lib/business-transaction";
+import { positiveNumber, finiteNumber } from "@/lib/input-validation";
+import { ActionError, safe } from "@/lib/guard";
 import { requirePage, canSeeAsset } from "@/lib/access";
 import { auditAs } from "@/lib/audit";
 import { driverAccidentNotification, driverProblemNotification } from "@/lib/notification-events";
@@ -66,7 +69,7 @@ export async function reportProblem(fd: FormData) {
     .join(" — ");
 
   const accident = kind === "ACCIDENT";
-  const result = await db.$transaction(async (tx) => {
+  const result = await businessTransaction(access.session, async (tx) => {
     const workOrder = await tx.workOrder.create({
       data: {
       // Date plus randomness rather than a counter: two drivers reporting in the
@@ -150,67 +153,40 @@ export async function reportProblem(fd: FormData) {
   redirect("/my/service?reported=1");
 }
 
-export async function logDriverTrip(fd: FormData) {
+async function logDriverTrip__impl(fd: FormData) {
   const access = await requirePage("my.trips");
-  const driverId = access.driverId;
-  if (!driverId) redirect("/my");
-
+  if (!access.driverId) throw new ActionError("A linked driver account is required.");
   const assetId = String(fd.get("assetId") ?? "").trim();
-  if (!assetId || !(await canSeeAsset(access, assetId))) redirect("/my");
-  const _origin = String(fd.get("origin") ?? "").trim() || "Site Loading Point";
-  const _destination = String(fd.get("destination") ?? "").trim() || "Unloading / Dumping Area";
-  const _material = String(fd.get("material") ?? "").trim() || "Aggregate";
-  const tonnage = parseFloat(String(fd.get("tonnage") ?? "0")) || 0;
-  const distanceKm = parseFloat(String(fd.get("distanceKm") ?? "0")) || 12;
-  const endMeter = parseFloat(String(fd.get("endMeter") ?? "0")) || 0;
-
-  const now = new Date();
-  const startTime = new Date(now.getTime() - 45 * 60000);
-
-  const asset = await db.asset.findFirst({
-    where: { id: assetId },
-    select: { projectId: true },
-  });
-  if (!asset) redirect("/my");
-
-  await db.trip.create({
-    data: {
-      assetId,
-      driverId,
-      projectId: asset?.projectId ?? null,
-      tonnage,
-      distanceKm,
-      status: "Completed",
-      startTime,
-      endTime: now,
-      gpsVerified: true,
-    },
-  });
-
-  if (endMeter > 0 && assetId) {
-    const currentAsset = await db.asset.findUnique({ where: { id: assetId }, select: { meterValue: true } });
-    if (currentAsset && endMeter > currentAsset.meterValue) {
-      await db.asset.update({
-        where: { id: assetId },
-        data: { meterValue: endMeter, lastSeen: now },
-      });
-      await db.meterReading.create({
-        data: {
-          assetId,
-          meterType: "ODOMETER",
-          value: endMeter,
-          source: "MOBILE",
-          recordedBy: access.session.name,
-        },
-      });
+  if (!assetId || !(await canSeeAsset(access, assetId))) throw new ActionError("This is not your assigned machine.");
+  const submissionId = String(fd.get("submissionId") ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(submissionId)) throw new ActionError("Reload the trip form and try again.");
+  const tonnage = positiveNumber(fd.get("tonnage"), "Tonnage");
+  const distanceKm = finiteNumber(fd.get("distanceKm"), "Distance", { min: 0, max: 2000 });
+  const meterText = String(fd.get("endMeter") ?? "").trim();
+  const endMeter = meterText ? finiteNumber(meterText, "Meter", { min: 0 }) : null;
+  await businessTransaction(access.session, async tx => {
+    const previous = await tx.trip.findFirst({ where: { driverId: access.driverId, id: { endsWith: "_" + submissionId } } });
+    if (previous) return;
+    const session = await tx.tripSession.findFirst({ where: { assetId, driverId: access.driverId!, userId: access.session.id, status: "ACTIVE" }, include: { asset: true } });
+    if (!session) throw new ActionError("Check in before recording a haul.");
+    if (endMeter !== null && endMeter < session.asset.meterValue) throw new ActionError("Meter cannot be below the recorded machine meter.");
+    const now = new Date();
+    await tx.trip.create({ data: {
+      id: `haul_${session.id}_${submissionId}`, assetId, driverId: access.driverId, projectId: session.projectId,
+      tonnage, distanceKm, status: "Completed", startTime: now, endTime: now, gpsVerified: false,
+    } });
+    if (endMeter !== null) {
+      await tx.asset.updateMany({ where: { id: assetId, meterValue: { lt: endMeter } }, data: { meterValue: endMeter } });
+      await tx.meterReading.create({ data: {
+        assetId, meterType: session.asset.primaryMeter === "SMU" ? "SMU" : "ODOMETER",
+        value: endMeter, source: "MOBILE", refId: `haul_${session.id}_${submissionId}`, recordedBy: access.session.name,
+      } });
     }
-  }
-
+  });
   revalidatePath("/my");
   revalidatePath("/my/trips");
   revalidatePath("/fleet/trips");
-  revalidatePath("/operations");
   revalidatePath("/");
-
   return { ok: true };
 }
+export const logDriverTrip = safe(logDriverTrip__impl);

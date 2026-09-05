@@ -1,3 +1,4 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -43,7 +44,7 @@ class FuelInputError extends Error {}
  * - Open fuel anomalies & value at risk.
  * - Recent fuel transactions & tank balances.
  */
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const auth = await requireApi("fuel.view");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
@@ -120,7 +121,7 @@ export async function GET(req: Request) {
     });
   } catch (err) {
     console.error("[API] /api/fuel GET error:", err);
-    return NextResponse.json({ error: "Failed to fetch fuel metrics" }, { status: 500 });
+    throw err;
   }
 }
 
@@ -129,7 +130,7 @@ export async function GET(req: Request) {
  *
  * Records a fuel issue or receipt transaction.
  */
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   const auth = await requireApi("fuel.issue");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
@@ -226,6 +227,9 @@ export async function POST(req: Request) {
   } catch (err) {
     if (err instanceof FuelInputError) return NextResponse.json({ error: err.message }, { status: 400 });
     console.error("[API] /api/fuel POST error:", err);
-    return NextResponse.json({ error: "Failed to record fuel transaction" }, { status: 500 });
+    throw err;
   }
 }
+
+export const GET = withApiErrors(handleGET);
+export const POST = withApiErrors(handlePOST);

@@ -18,7 +18,7 @@ function detector(): DetectorConstructor | null {
  * A separate, deliberately red end-of-trip control. It cannot submit an end
  * request until the driver scans (or types) the sticker of their active vehicle.
  */
-export function DriverTripEndScanner({ vehicleCode }: { vehicleCode: string }) {
+export function DriverTripEndScanner({ vehicleCode, sessionId }: { vehicleCode: string; sessionId?: string }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"camera" | "code">("camera");
   const [code, setCode] = useState("");
@@ -58,7 +58,7 @@ export function DriverTripEndScanner({ vehicleCode }: { vehicleCode: string }) {
     try {
       const position = await location();
       const response = await fetch("/api/session/checkout", {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token, ...position }),
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token, sessionId, ...position }),
       });
       const result = await response.json().catch(() => ({})) as { ok?: boolean; error?: string; distanceKm?: number; source?: string };
       if (!response.ok || !result.ok) throw new Error(result.error ?? "Trip end could not be confirmed.");
@@ -67,9 +67,9 @@ export function DriverTripEndScanner({ vehicleCode }: { vehicleCode: string }) {
       router.refresh();
     } catch (caught) {
       lockedRef.current = false;
-      toast.error("Trip is still active", caught instanceof Error ? caught.message : "Please scan the cabin sticker again.");
+      toast.error("Trip end not confirmed", caught instanceof Error ? caught.message : "Please scan the cabin sticker again.");
     } finally { setPending(false); }
-  }, [close, location, router, stopCamera, toast, vehicleCode]);
+  }, [close, location, router, stopCamera, toast, vehicleCode, sessionId]);
 
   const startCamera = useCallback(async () => {
     const BarcodeDetector = detector();

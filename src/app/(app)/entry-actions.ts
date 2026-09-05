@@ -1,6 +1,10 @@
 "use server";
 
 import { db } from "@/lib/db";
+import { businessTransaction } from "@/lib/business-transaction";
+import { formNumber } from "@/lib/input-validation";
+import { assertRecordAccess, assertFormAccess, assertGlobalAccess } from "@/lib/record-access";
+import { changeWorkOrderStatus } from "@/lib/work-order-service";
 import { revalidatePath } from "next/cache";
 import { hashPassword, verifyPassword, getSession, passwordPolicyError, revokeSessions } from "@/lib/auth";
 import { getDieselRate } from "@/lib/settings";
@@ -18,7 +22,7 @@ async function uploadPhoto(file: FormDataEntryValue | null, prefix: string): Pro
 }
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
-const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
+const n = formNumber;
 
 /**
  * A number field that may legitimately be blank.
@@ -104,6 +108,7 @@ async function saveAsset__impl(id: string | null, fd: FormData) {
 
 async function deleteAsset__impl(id: string) {
   const access = await requireAction("fleet.delete");
+  await assertRecordAccess(access, "asset", id);
   const asset = await db.asset.findUnique({
     where: { id },
     select: { id: true, code: true, status: true, decommissionedOn: true },
@@ -116,7 +121,7 @@ async function deleteAsset__impl(id: string) {
   // evidence attached. Removing those rows makes operational history and later
   // financial reconciliation impossible, so the register's former "delete" is
   // intentionally a retirement operation.
-  await db.$transaction(async (tx) => {
+  await businessTransaction(access.session, async (tx) => {
     await tx.tripSession.updateMany({
       where: { assetId: id, status: "ACTIVE" },
       data: { status: "COMPLETED", endedAt: now, endedBy: "ADMIN" },
@@ -153,7 +158,9 @@ async function deleteAsset__impl(id: string) {
 
 /* ----------------------------- DRIVERS ----------------------------- */
 async function saveDriver__impl(id: string | null, fd: FormData) {
-  await requireAction("people.edit");
+  const scopeAccess = await requireAction("people.edit");
+  await assertFormAccess(scopeAccess, fd);
+  if (id) await assertRecordAccess(scopeAccess, "driver", id);
   const phone = s(fd, "phone");
 
   // Phone format validation — 10-digit Indian mobile number (no country code).
@@ -253,7 +260,8 @@ async function saveDriver__impl(id: string | null, fd: FormData) {
 }
 
 async function deleteDriver__impl(id: string) {
-  await requireAction("people.edit");
+  const scopeAccess = await requireAction("people.edit");
+  await assertRecordAccess(scopeAccess, "driver", id);
   const now = new Date();
   await db.tripSession.updateMany({
     where: { driverId: id, status: "ACTIVE" },
@@ -271,6 +279,7 @@ async function deleteDriver__impl(id: string) {
 /* ----------------------------- FUEL ----------------------------- */
 async function saveFuel__impl(fd: FormData) {
   const access = await requireAction("fuel.issue");
+  await assertFormAccess(access, fd);
   const type = s(fd, "type") || "ISSUE";
   const quantity = n(fd, "quantity");
   const rate = n(fd, "rate") || (await getDieselRate());
@@ -334,7 +343,7 @@ async function saveFuel__impl(fd: FormData) {
       })
     : null;
 
-  await db.$transaction(async (tx) => {
+  await businessTransaction(access.session, async (tx) => {
     await tx.fuelTransaction.create({
       data: {
         type,
@@ -402,7 +411,8 @@ async function saveFuel__impl(fd: FormData) {
 
 /* ----------------------------- SERVICE / REPAIR PHOTOS (driver) ----------------------------- */
 async function saveServicePhotos__impl(fd: FormData) {
-  await requireAction("maintenance.edit");
+  const scopeAccess = await requireAction("maintenance.edit");
+  await assertFormAccess(scopeAccess, fd);
   const assetId = s(fd, "assetId");
   if (!assetId) throw new ActionError("Select a vehicle.");
   const collect = async (field: string, prefix: string) => {
@@ -430,7 +440,9 @@ async function saveServicePhotos__impl(fd: FormData) {
 }
 
 async function setDieselRate__impl(fd: FormData) {
-  await requireAction("admin.settings");
+  const scopeAccess = await requireAction("admin.settings");
+  await assertFormAccess(scopeAccess, fd);
+  assertGlobalAccess(scopeAccess);
   const session = await getSession();
   if (session?.role !== "Admin") throw new ActionError("Only admins can set the rate.");
   const rate = n(fd, "rate");
@@ -441,7 +453,9 @@ async function setDieselRate__impl(fd: FormData) {
 }
 
 async function updateFuel__impl(id: string, fd: FormData) {
-  await requireAction("fuel.issue");
+  const scopeAccess = await requireAction("fuel.issue");
+  await assertFormAccess(scopeAccess, fd);
+  await assertRecordAccess(scopeAccess, "fuelTransaction", id);
   const quantity = n(fd, "quantity");
   const rate = n(fd, "rate") || 92.5;
   const data: { quantity: number; rate: number; amount: number; meterValue: number; date?: Date } = {
@@ -455,7 +469,8 @@ async function updateFuel__impl(id: string, fd: FormData) {
 }
 
 async function deleteFuel__impl(id: string) {
-  await requireAction("fuel.approve");
+  const scopeAccess = await requireAction("fuel.approve");
+  await assertRecordAccess(scopeAccess, "fuelTransaction", id);
   await db.fuelTransaction.delete({ where: { id } });
   revalidatePath("/fuel");
   revalidatePath("/");
@@ -463,14 +478,15 @@ async function deleteFuel__impl(id: string) {
 
 /* ----------------------------- WORK ORDER ----------------------------- */
 async function saveWorkOrder__impl(fd: FormData) {
-  await requireAction("maintenance.edit");
+  const scopeAccess = await requireAction("maintenance.edit");
+  await assertFormAccess(scopeAccess, fd);
   const labor = n(fd, "laborCost");
   const parts = n(fd, "partsCost");
   const assetId = s(fd, "assetId");
   const type = s(fd, "type") || "PM";
   const status = s(fd, "status") || "Open";
 
-  await db.$transaction(async (tx) => {
+  await businessTransaction(scopeAccess.session, async (tx) => {
     await tx.workOrder.create({
       data: {
         woNo: `WO-${Date.now().toString().slice(-8)}`,
@@ -501,43 +517,18 @@ async function saveWorkOrder__impl(fd: FormData) {
 }
 
 async function updateWorkOrderStatus__impl(id: string, status: string) {
-  await requireAction("maintenance.edit");
-  const wo = await db.workOrder.findUnique({ where: { id }, include: { asset: true } });
-  if (!wo) throw new ActionError("Work order not found");
-
-  await db.workOrder.update({
-    where: { id },
-    data: { status, completedAt: status === "Completed" || status === "Closed" ? new Date() : null },
-  });
-
-  if (wo.assetId) {
-    if (status === "Completed" || status === "Closed") {
-      // Check if all breakdown work orders on this asset are now done
-      if (wo.asset?.status === "Breakdown" || wo.asset?.status === "Under-Maintenance") {
-        const remainingOpen = await db.workOrder.count({
-          where: {
-            assetId: wo.assetId,
-            id: { not: wo.id },
-            status: { in: ["Open", "In-Progress"] },
-            type: { in: ["BREAKDOWN", "REPAIR"] },
-          },
-        });
-        if (remainingOpen === 0) {
-          await db.asset.update({ where: { id: wo.assetId }, data: { status: "Active" } });
-        }
-      }
-    } else if (wo.type === "BREAKDOWN" && (status === "Open" || status === "In-Progress")) {
-      await db.asset.update({ where: { id: wo.assetId }, data: { status: "Breakdown" } });
-    }
-  }
-
+  const access = await requireAction("maintenance.edit");
+  await changeWorkOrderStatus(access, id, status);
   revalidatePath("/maintenance");
+  revalidatePath("/fleet");
+  revalidatePath("/costs");
   revalidatePath("/");
 }
 
 /* ----------------------------- COMPLIANCE ----------------------------- */
 async function saveCompliance__impl(fd: FormData) {
-  await requireAction("compliance.edit");
+  const scopeAccess = await requireAction("compliance.edit");
+  await assertFormAccess(scopeAccess, fd);
   const expiry = new Date(s(fd, "expiryDate") || Date.now());
   await db.complianceDoc.create({
     data: {
@@ -556,7 +547,9 @@ async function saveCompliance__impl(fd: FormData) {
 }
 
 async function renewComplianceDoc__impl(id: string, fd: FormData) {
-  await requireAction("compliance.edit");
+  const scopeAccess = await requireAction("compliance.edit");
+  await assertFormAccess(scopeAccess, fd);
+  await assertRecordAccess(scopeAccess, "complianceDoc", id);
   const expiry = new Date(s(fd, "expiryDate") || Date.now());
   const number = s(fd, "number");
   const issueDateStr = s(fd, "issueDate");
@@ -581,7 +574,8 @@ async function renewComplianceDoc__impl(id: string, fd: FormData) {
 
 /* ----------------------------- USERS / ACCESS ----------------------------- */
 async function saveUser__impl(fd: FormData) {
-  await requireAction("admin.users");
+  const scopeAccess = await requireAction("admin.users");
+  await assertFormAccess(scopeAccess, fd);
   const email = s(fd, "email").toLowerCase();
   const existing = await db.user.findUnique({ where: { email } });
   if (existing) throw new ActionError("A user with this email already exists.");
@@ -699,7 +693,9 @@ async function deleteUser__impl(id: string) {
 
 /* ----------------------------- PROJECT ----------------------------- */
 async function saveProject__impl(fd: FormData) {
-  await requireAction("fleet.edit");
+  const scopeAccess = await requireAction("fleet.edit");
+  await assertFormAccess(scopeAccess, fd);
+  assertGlobalAccess(scopeAccess);
   const code = s(fd, "code");
   const name = s(fd, "name");
   if (!code || !name) throw new ActionError("Project code and name are required");
@@ -741,7 +737,9 @@ async function saveProject__impl(fd: FormData) {
 }
 
 async function updateProject__impl(id: string, fd: FormData) {
-  await requireAction("fleet.edit");
+  const scopeAccess = await requireAction("fleet.edit");
+  await assertFormAccess(scopeAccess, fd);
+  await assertRecordAccess(scopeAccess, "project", id);
   const code = s(fd, "code");
   const name = s(fd, "name");
   if (!code || !name) throw new ActionError("Project code and name are required");
@@ -788,12 +786,13 @@ async function updateProject__impl(id: string, fd: FormData) {
 }
 
 async function deleteProject__impl(id: string) {
-  await requireAction("fleet.edit");
+  const scopeAccess = await requireAction("fleet.edit");
+  await assertRecordAccess(scopeAccess, "project", id);
   const project = await db.project.findUnique({ where: { id } });
   if (!project) throw new ActionError("Project not found");
 
   // ACID: single transaction for all cascade cleanup across all 15 project relations
-  await db.$transaction(async (tx) => {
+  await businessTransaction(scopeAccess.session, async (tx) => {
     // 1. Unlink optional relations (set projectId to null so historical logs remain intact)
     await tx.asset.updateMany({ where: { projectId: id }, data: { projectId: null } });
     await tx.trip.updateMany({ where: { projectId: id }, data: { projectId: null } });

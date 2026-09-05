@@ -1,3 +1,4 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { checkSharedSecret } from "@/lib/auth";
 import { requireApi } from "@/lib/access";
@@ -15,7 +16,7 @@ export const maxDuration = 120;
  * Called by Vercel Cron (sends `Authorization: Bearer ${CRON_SECRET}`) or
  * by internal worker / manual admin check.
  */
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const authSecret = checkSharedSecret(req, "CRON_SECRET");
   let isAuthorized = authSecret.ok;
 
@@ -71,3 +72,5 @@ export async function GET(req: Request) {
   }
   return NextResponse.json(result, { status: result.ok ? 200 : 502 });
 }
+
+export const GET = withApiErrors(handleGET);

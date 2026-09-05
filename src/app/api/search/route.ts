@@ -1,3 +1,4 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getAccess, assetScope, projectScope } from "@/lib/access";
@@ -15,7 +16,7 @@ export interface SearchResultItem {
   href: string;
 }
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   try {
     const access = await getAccess();
     if (!access) {
@@ -227,6 +228,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ results });
   } catch (error) {
     console.error("Search API error:", error);
-    return NextResponse.json({ error: "Search failed" }, { status: 500 });
+    throw error;
   }
 }
+
+export const GET = withApiErrors(handleGET);

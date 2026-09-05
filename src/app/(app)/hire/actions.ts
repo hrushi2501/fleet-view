@@ -1,12 +1,15 @@
 "use server";
 
 import { db } from "@/lib/db";
+import { businessTransaction } from "@/lib/business-transaction";
+import { formNumber } from "@/lib/input-validation";
+import { assertFormAccess, assertRecordAccess } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { requireAction, ActionError, safe } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
-const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
+const n = formNumber;
 const b = (fd: FormData, k: string) => fd.get(k) === "on" || fd.get(k) === "true";
 const dt = (fd: FormData, k: string) => (s(fd, k) ? new Date(s(fd, k)) : new Date());
 
@@ -18,7 +21,9 @@ function refresh() {
 /* -------------------------------- contracts -------------------------------- */
 
 async function saveContract__impl(id: string | null, fd: FormData) {
-  await requireAction("hire.edit");
+  const scopeAccess = await requireAction("hire.edit");
+  await assertFormAccess(scopeAccess, fd);
+  if (id) await assertRecordAccess(scopeAccess, "hireContract", id);
   const data = {
     assetId: s(fd, "assetId"),
     vendor: s(fd, "vendor"),
@@ -43,7 +48,8 @@ async function saveContract__impl(id: string | null, fd: FormData) {
 }
 
 async function deleteContract__impl(id: string) {
-  await requireAction("hire.edit");
+  const scopeAccess = await requireAction("hire.edit");
+  await assertRecordAccess(scopeAccess, "hireContract", id);
   await db.hireContract.delete({ where: { id } });
   refresh();
 }
@@ -52,7 +58,8 @@ async function deleteContract__impl(id: string) {
 
 /** One day of actual work. Upserted so re-entering a date corrects rather than duplicates. */
 async function saveLog__impl(fd: FormData) {
-  await requireAction("hire.edit");
+  const scopeAccess = await requireAction("hire.edit");
+  await assertFormAccess(scopeAccess, fd);
   const contractId = s(fd, "contractId");
   if (!contractId) throw new ActionError("Contract is required");
   const date = dt(fd, "date");
@@ -80,7 +87,8 @@ async function saveLog__impl(fd: FormData) {
 }
 
 async function deleteLog__impl(id: string) {
-  await requireAction("hire.edit");
+  const scopeAccess = await requireAction("hire.edit");
+  await assertRecordAccess(scopeAccess, "hireLog", id);
   await db.hireLog.delete({ where: { id } });
   refresh();
 }
@@ -88,7 +96,9 @@ async function deleteLog__impl(id: string) {
 /* -------------------------------- new features -------------------------------- */
 
 async function saveHireInspection__impl(contractId: string, fd: FormData) {
-  await requireAction("hire.edit");
+  const scopeAccess = await requireAction("hire.edit");
+  await assertFormAccess(scopeAccess, fd);
+  await assertRecordAccess(scopeAccess, "hireContract", contractId);
   if (!contractId) throw new ActionError("Contract is required");
   const session = await getSession();
   const data = {
@@ -110,7 +120,9 @@ async function saveHireInspection__impl(contractId: string, fd: FormData) {
 }
 
 async function saveContractAmendment__impl(contractId: string, fd: FormData) {
-  await requireAction("hire.edit");
+  const scopeAccess = await requireAction("hire.edit");
+  await assertFormAccess(scopeAccess, fd);
+  await assertRecordAccess(scopeAccess, "hireContract", contractId);
   if (!contractId) throw new ActionError("Contract is required");
   const session = await getSession();
   const newRate = n(fd, "newRate");
@@ -118,7 +130,7 @@ async function saveContractAmendment__impl(contractId: string, fd: FormData) {
   if (newRate <= 0) throw new ActionError("New rate must be greater than zero.");
   if (!reason) throw new ActionError("Reason is required.");
 
-  await db.$transaction(async (tx) => {
+  await businessTransaction(scopeAccess.session, async (tx) => {
     const contract = await tx.hireContract.findUnique({ where: { id: contractId }, select: { rate: true } });
     if (!contract) throw new ActionError("Contract was not found.");
     await tx.hireContractAmendment.create({
@@ -137,7 +149,8 @@ async function saveContractAmendment__impl(contractId: string, fd: FormData) {
 }
 
 async function saveHirePayment__impl(fd: FormData) {
-  await requireAction("hire.approve");
+  const scopeAccess = await requireAction("hire.approve");
+  await assertFormAccess(scopeAccess, fd);
   const contractId = s(fd, "contractId") || null;
   const data = {
     contractId,
@@ -155,7 +168,8 @@ async function saveHirePayment__impl(fd: FormData) {
 }
 
 async function approveHireLog__impl(id: string, status: string) {
-  await requireAction("hire.approve");
+  const scopeAccess = await requireAction("hire.approve");
+  await assertRecordAccess(scopeAccess, "hireLog", id);
   const session = await getSession();
   if (!new Set(["DRAFT", "SUBMITTED", "APPROVED", "REJECTED"]).has(status)) {
     throw new ActionError("Invalid approval status.");
@@ -174,19 +188,22 @@ async function approveHireLog__impl(id: string, status: string) {
 
 
 async function deleteInspection__impl(id: string) {
-  await requireAction("hire.edit");
+  const scopeAccess = await requireAction("hire.edit");
+  await assertRecordAccess(scopeAccess, "hireInspection", id);
   await db.hireInspection.delete({ where: { id } });
   refresh();
 }
 
 async function deleteAmendment__impl(id: string) {
-  await requireAction("hire.edit");
+  const scopeAccess = await requireAction("hire.edit");
+  await assertRecordAccess(scopeAccess, "hireContractAmendment", id);
   await db.hireContractAmendment.delete({ where: { id } });
   refresh();
 }
 
 async function deletePayment__impl(id: string) {
-  await requireAction("hire.approve");
+  const scopeAccess = await requireAction("hire.approve");
+  await assertRecordAccess(scopeAccess, "hirePayment", id);
   await db.hirePayment.delete({ where: { id } });
   refresh();
 }

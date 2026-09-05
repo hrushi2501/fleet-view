@@ -1,3 +1,4 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { requireApi } from "@/lib/access";
 import {
@@ -16,7 +17,7 @@ export const dynamic = "force-dynamic";
  * Reads live database status, schema alignment against Prisma DMMF,
  * Supabase PostgREST security posture, and database ping latency.
  */
-export async function GET() {
+async function handleGET() {
   const auth = await requireApi("admin.audit");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
@@ -41,7 +42,7 @@ export async function GET() {
  * Triggers a full database audit sweep, prunes expired rate limit rows,
  * and writes a durable SYSTEM_HEALTH event to the AuditEvent log.
  */
-export async function POST() {
+async function handlePOST() {
   const auth = await requireApi("admin.settings");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
@@ -63,3 +64,6 @@ export async function POST() {
 
   return NextResponse.json({ ok: true, ...result });
 }
+
+export const GET = withApiErrors(handleGET);
+export const POST = withApiErrors(handlePOST);

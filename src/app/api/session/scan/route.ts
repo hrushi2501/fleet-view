@@ -1,5 +1,9 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { businessTransaction } from "@/lib/business-transaction";
+import { completeDuty } from "@/lib/trip-service";
+import { ActionError } from "@/lib/action-error";
 import { getAccess } from "@/lib/access";
 import {
   evaluateScan,
@@ -23,7 +27,7 @@ export const dynamic = "force-dynamic";
  * returns them as warnings rather than refusing, because a system that blocks a
  * driver at 6am with no override just gets worked around.
  */
-export async function POST(req: Request) {
+async function handlePost(req: Request) {
   const access = await getAccess();
   if (!access) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   if (access.group !== "DRIVER") return NextResponse.json({ error: "Only a driver account can check in to a vehicle." }, { status: 403 });
@@ -76,57 +80,37 @@ export async function POST(req: Request) {
   let tripSession: { id: string };
   let outcome: ReturnType<typeof evaluateScan>;
   try {
-    const result = await db.$transaction(async (tx) => {
+    const result = await businessTransaction(access.session, async (tx) => {
+      const freshAsset = await tx.asset.findUniqueOrThrow({ where: { id: asset.id } });
+      const eligibility = isAssetCheckinAllowed(freshAsset.status, freshAsset.decommissionedOn);
+      if (!eligibility.allowed) throw new ActionError(eligibility.reason!);
+      const meterCheck = validateOdometerAtScan(manualOdo, freshAsset.meterValue);
+      if (!meterCheck.valid) throw new ActionError(meterCheck.error!);
       const now = new Date();
       const allOpen = await tx.tripSession.findMany({ where: { status: "ACTIVE" } });
       const rows = allOpen.map((s): SessionLite => ({ id: s.id, assetId: s.assetId, driverId: s.driverId, startedAt: s.startedAt, endedAt: s.endedAt, status: s.status }));
       const stale = staleSessions(rows, now);
       if (stale.length) {
         await tx.tripSession.updateMany({ where: { id: { in: stale.map((s) => s.id) }, status: "ACTIVE" }, data: { status: "ABANDONED", endedAt: now, endedBy: "AUTO" } });
-        await tx.asset.updateMany({ where: { id: { in: stale.map((s) => s.assetId) } }, data: { driverId: null } });
+        for (const old of stale) await tx.asset.updateMany({ where: { id: old.assetId, driverId: old.driverId }, data: { driverId: null } });
       }
       const current = rows.filter((s) => !stale.some((old) => old.id === s.id));
       const decision = evaluateScan(asset.id, person.id, current, now);
       if (!decision.ok) return { outcome: decision, session: null };
       if (decision.action === "START" && decision.releaseSessionId) {
-        const oldSession = await tx.tripSession.findUnique({
-          where: { id: decision.releaseSessionId },
-          select: { id: true, assetId: true, driverId: true, projectId: true, startedAt: true, startOdometer: true },
-        });
-        if (oldSession) {
-          await tx.tripSession.update({
-            where: { id: decision.releaseSessionId },
-            data: { status: "COMPLETED", endedAt: now, endedBy: "AUTO" },
-          });
-          await tx.asset.update({
-            where: { id: oldSession.assetId },
-            data: { driverId: null },
-          });
-          await tx.trip.create({
-            data: {
-              assetId: oldSession.assetId,
-              driverId: oldSession.driverId,
-              projectId: oldSession.projectId,
-              startTime: oldSession.startedAt,
-              endTime: now,
-              distanceKm: 0,
-              status: "Completed",
-              gpsVerified: false,
-            },
-          });
-        }
+        await completeDuty(tx, decision.releaseSessionId, access.session, { endedBy: "AUTO" });
       }
       if (decision.action === "RESUME") {
         return { outcome: decision, session: current.find((s) => s.assetId === asset.id && s.driverId === person.id)! };
       }
       const session = await tx.tripSession.create({ data: {
-        assetId: asset.id, driverId: person.id, userId: access.session.id, projectId: asset.projectId,
-        startLat: lat, startLng: lng, startOdometer: manualOdo ?? asset.meterValue,
+        assetId: asset.id, driverId: person.id, userId: access.session.id, projectId: freshAsset.projectId,
+        startLat: lat, startLng: lng, startOdometer: manualOdo ?? freshAsset.meterValue,
         trackingSource: asset.deviceId ? "GPS" : lat != null ? "MOBILE" : "NONE", scanMethod: "QR",
       } });
       await tx.asset.update({ where: { id: asset.id }, data: { driverId: person.id } });
       return { outcome: decision, session };
-    }, { isolationLevel: "Serializable", maxWait: 5000, timeout: 10000 });
+    });
     outcome = result.outcome;
     if (!outcome.ok || !result.session) return NextResponse.json({ error: outcome.ok ? "Vehicle check-in could not be completed." : outcome.reason, blockingSessionId: outcome.ok ? undefined : outcome.blockingSessionId }, { status: 409 });
     tripSession = result.session;
@@ -173,3 +157,5 @@ export async function POST(req: Request) {
     cautions: el.warnings,
   });
 }
+
+export const POST = withApiErrors(handlePost);

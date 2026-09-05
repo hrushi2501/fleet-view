@@ -1,3 +1,4 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { requirePermission } from "@/lib/auth";
 import { createTelemetryAdapter } from "@/lib/telemetry-ingestion";
@@ -10,7 +11,7 @@ import { reserveRateLimit } from "@/lib/request-rate-limit";
  * against real drivers. Gated on `fleet.view`, the permission every non-driver
  * role holds — the UI poller that calls this sits on pages those roles use.
  */
-export async function POST() {
+async function handlePOST() {
   const auth = await requirePermission("fleet.view");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
@@ -43,6 +44,8 @@ export async function POST() {
     return NextResponse.json({ ok: true, processed: stream.length, simulated: adapter.simulated });
   } catch (error) {
     console.error("[API] /insight/ai-scan error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    throw error;
   }
 }
+
+export const POST = withApiErrors(handlePOST);

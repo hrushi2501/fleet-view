@@ -12,10 +12,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
+import { isActionError } from "@/lib/action-result";
 import { logDriverTrip } from "@/app/(app)/my/actions";
 import { DriverTripEndScanner } from "@/components/DriverTripEndScanner";
 
 interface DriverQuickHubProps {
+  sessionId?: string;
   driverName?: string;
   vehicle: {
     id: string;
@@ -34,17 +36,19 @@ interface DriverQuickHubProps {
 export function DriverQuickHub({
   driverName: _driverName,
   vehicle,
+  sessionId,
   expiredDocsCount: _expiredDocsCount,
   overdueServiceCount: _overdueServiceCount,
 }: DriverQuickHubProps) {
+  const [submissionId, setSubmissionId] = useState(() => crypto.randomUUID());
   const [tripModalOpen, setTripModalOpen] = useState(false);
   const [tripForm, setTripForm] = useState({
-    origin: "Quarry Pit #2",
-    destination: "Crusher Plant A",
-    material: "Aggregate 20mm",
-    tonnage: "32.5",
-    distanceKm: "14",
-    endMeter: String(vehicle.meterValue + 14),
+    origin: "",
+    destination: "",
+    material: "",
+    tonnage: "",
+    distanceKm: "",
+    endMeter: "",
   });
 
   // Periodic background telemetry ping from driver device while shift is active
@@ -100,6 +104,7 @@ export function DriverQuickHub({
     e.preventDefault();
     const fd = new FormData();
     fd.set("assetId", vehicle.id);
+    fd.set("submissionId", submissionId);
     fd.set("origin", tripForm.origin);
     fd.set("destination", tripForm.destination);
     fd.set("material", tripForm.material);
@@ -109,8 +114,10 @@ export function DriverQuickHub({
 
     startTransition(async () => {
       try {
-        await logDriverTrip(fd);
-        toast.success(`✓ Trip recorded: ${tripForm.origin} ➔ ${tripForm.destination} (${tripForm.tonnage} MT)`);
+        const result = await logDriverTrip(fd);
+        if (isActionError(result)) { toast.error(result.error); return; }
+        setSubmissionId(crypto.randomUUID());
+        toast.success(`Trip recorded: ${tripForm.tonnage} tonnes, ${tripForm.distanceKm} km.`);
         setTripModalOpen(false);
         router.refresh();
       } catch (err: unknown) {
@@ -128,7 +135,7 @@ export function DriverQuickHub({
             <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-300 animate-ping" />
             <span className="text-xs font-bold uppercase tracking-wider text-emerald-100">Duty Active</span>
           </div>
-          <DriverTripEndScanner vehicleCode={vehicle.code} />
+          <DriverTripEndScanner vehicleCode={vehicle.code} sessionId={sessionId} />
         </div>
 
         <div className="mt-3 flex items-baseline justify-between">

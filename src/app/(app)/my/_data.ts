@@ -281,6 +281,7 @@ export type ShiftState = {
   onDuty: boolean;
   /** An actual open QR trip, as distinct from attendance marked present. */
   hasActiveTrip: boolean;
+  sessionId?: string;
   label: string;
   detail: string;
   tone: Tone;
@@ -300,7 +301,7 @@ export async function myShift(driverId: string, now: Date = new Date()): Promise
     db.tripSession.findFirst({
       where: { driverId, status: "ACTIVE" },
       orderBy: { startedAt: "desc" },
-      select: { startedAt: true },
+      select: { id: true, startedAt: true },
     }),
     db.attendance.findFirst({
       where: { driverId, date: { gte: dayStart } },
@@ -313,7 +314,7 @@ export async function myShift(driverId: string, now: Date = new Date()): Promise
     const since = session.startedAt.toLocaleTimeString("en-IN", {
       timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: true,
     });
-    return { onDuty: true, hasActiveTrip: true, label: "On duty", detail: `Shift ${since} se chalu hai`, tone: "ok" };
+    return { onDuty: true, hasActiveTrip: true, sessionId: session.id, label: "On duty", detail: `Shift ${since} se chalu hai`, tone: "ok" };
   }
 
   if (attendance) {

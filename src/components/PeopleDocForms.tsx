@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { X, Plus, Loader2, Trash2, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { saveCompetency, deleteCompetency, saveViolation, updateViolation, deleteViolation, saveDocument, deleteDocument, refreshDocStatuses } from "@/app/(app)/drivers/actions";
+import { useToast } from "@/components/Toast";
+import { isActionError } from "@/lib/action-result";
 
 type Opt = { id: string; label: string };
 
@@ -75,11 +77,12 @@ export function CompetencyForm({ drivers, classes }: { drivers: Opt[]; classes: 
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
   return (
     <>
       <Trigger onClick={() => setOpen(true)} tone="ghost"><Plus className="h-4 w-4" /> Add Competency</Trigger>
       <Modal open={open} onClose={() => setOpen(false)} title="Clear an Operator for a Machine Class" subtitle="Assignment refuses machine classes a person has no recorded competency for.">
-        <form action={(fd) => start(async () => { const result = await saveCompetency(fd); if (isActionError(result)) { alert(result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
+        <form action={(fd) => start(async () => { const result = await saveCompetency(fd); if (isActionError(result)) { toast.error(result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
           <Sel label="Person" name="driverId" required options={drivers.map((d) => ({ value: d.id, label: d.label }))} />
           <Sel label="Machine Class" name="assetClass" required options={classes} />
           <Sel label="Level" name="level" required options={[
@@ -100,11 +103,12 @@ export function ViolationForm({ drivers, assets }: { drivers: Opt[]; assets: Opt
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
   return (
     <>
       <Trigger onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Record Violation</Trigger>
       <Modal open={open} onClose={() => setOpen(false)} title="Record a Safety or Conduct Event" subtitle="Points feed the safety score and decay over a year, so a driver can recover from a bad patch.">
-        <form action={(fd) => start(async () => { const result = await saveViolation(fd); if (isActionError(result)) { alert(result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
+        <form action={(fd) => start(async () => { const result = await saveViolation(fd); if (isActionError(result)) { toast.error(result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
           <Sel label="Person" name="driverId" required options={drivers.map((d) => ({ value: d.id, label: d.label }))} />
           <Sel label="Machine" name="assetId" options={[{ value: "", label: "— None —" }, ...assets.map((a) => ({ value: a.id, label: a.label }))]} />
           <Sel label="Type" name="type" required options={[
@@ -138,11 +142,12 @@ export function ViolationAction({ v }: { v: { id: string; status: string; action
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
   return (
     <>
       <button onClick={() => setOpen(true)} className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">Action</button>
       <Modal open={open} onClose={() => setOpen(false)} title="Close Out Violation" subtitle="Dismissing a violation removes its points from the safety score.">
-        <form action={(fd) => start(async () => { const result = await updateViolation(v.id, fd); if (isActionError(result)) { alert(result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
+        <form action={(fd) => start(async () => { const result = await updateViolation(v.id, fd); if (isActionError(result)) { toast.error(result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
           <Sel label="Status" name="status" required defaultValue={v.status} options={[
             { value: "OPEN", label: "Open" }, { value: "ACTIONED", label: "Actioned" }, { value: "DISMISSED", label: "Dismissed — not counted" },
           ]} />
@@ -164,6 +169,7 @@ export function DocumentForm({ assets, docTypes, preset }: { assets: Opt[]; docT
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
   return (
     <>
       {preset ? (
@@ -174,7 +180,7 @@ export function DocumentForm({ assets, docTypes, preset }: { assets: Opt[]; docT
         <Trigger onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Add Document</Trigger>
       )}
       <Modal open={open} onClose={() => setOpen(false)} title={preset?.supersedesId ? "Renew Document" : "Add Compliance Document"} subtitle="Renewals chain to the old record rather than overwriting it, so history stays traceable.">
-        <form action={(fd) => start(async () => { const result = await saveDocument(fd); if (isActionError(result)) { alert(result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
+        <form action={(fd) => start(async () => { const result = await saveDocument(fd); if (isActionError(result)) { toast.error(result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
           <Sel label="Machine" name="assetId" required defaultValue={preset?.assetId} options={assets.map((a) => ({ value: a.id, label: a.label }))} />
           <Sel label="Document Type" name="docType" required defaultValue={preset?.docType} options={docTypes} />
           <Inp label="Document Number" name="number" required />
@@ -215,9 +221,7 @@ export function RefreshStatusButton() {
   );
 }
 
-import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { isActionError } from "@/lib/action-result";
 
 export function DeleteRow({ id, kind }: { id: string; kind: "competency" | "violation" | "document" }) {
   const [open, setOpen] = useState(false);

@@ -223,13 +223,14 @@ export function SeedRulesButton() {
   const [pending, start] = useTransition();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   return (
     <button
       onClick={() =>
         start(async () => {
           const result = await seedRules();
-          if (isActionError(result)) { alert(result.error); return; }
+          if (isActionError(result)) { toast.error(result.error); return; }
           await invalidateLossPreventionQueries(queryClient);
           router.refresh();
         })
@@ -263,6 +264,7 @@ export function RuleEditor({
   const [pending, start] = useTransition();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   return (
     <>
@@ -282,7 +284,7 @@ export function RuleEditor({
           action={(fd) =>
             start(async () => {
               const result = await updateRule(rule.id, fd);
-              if (isActionError(result)) { alert(result.error); return; }
+              if (isActionError(result)) { toast.error(result.error); return; }
               setOpen(false);
               await invalidateLossPreventionQueries(queryClient);
               router.refresh();
@@ -336,6 +338,7 @@ export function NewCaseForm({ assets, drivers }: { assets: Opt[]; drivers: Opt[]
   const [pending, start] = useTransition();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   return (
     <>
@@ -355,7 +358,7 @@ export function NewCaseForm({ assets, drivers }: { assets: Opt[]; drivers: Opt[]
           action={(fd) =>
             start(async () => {
               const result = await createCase(fd);
-              if (isActionError(result)) { alert(result.error); return; }
+              if (isActionError(result)) { toast.error(result.error); return; }
               setOpen(false);
               await invalidateLossPreventionQueries(queryClient);
               router.refresh();
@@ -426,6 +429,7 @@ export function CaseStatusForm({
   const [pending, start] = useTransition();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   return (
     <>
@@ -445,7 +449,7 @@ export function CaseStatusForm({
           action={(fd) =>
             start(async () => {
               const result = await updateCase(c.id, fd);
-              if (isActionError(result)) { alert(result.error); return; }
+              if (isActionError(result)) { toast.error(result.error); return; }
               setOpen(false);
               await invalidateLossPreventionQueries(queryClient, c.id);
               router.refresh();
@@ -494,13 +498,14 @@ export function NoteForm({ caseId }: { caseId: string }) {
   const [pending, start] = useTransition();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   return (
     <form
       action={(fd) =>
         start(async () => {
           const result = await addNote(caseId, fd);
-          if (isActionError(result)) { alert(result.error); return; }
+          if (isActionError(result)) { toast.error(result.error); return; }
           await invalidateLossPreventionQueries(queryClient, caseId);
           router.refresh();
         })
@@ -524,6 +529,7 @@ export function EvidenceForm({ caseId }: { caseId: string }) {
   const [pending, start] = useTransition();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   return (
     <>
@@ -544,7 +550,7 @@ export function EvidenceForm({ caseId }: { caseId: string }) {
           action={(fd) =>
             start(async () => {
               const result = await addEvidence(caseId, fd);
-              if (isActionError(result)) { alert(result.error); return; }
+              if (isActionError(result)) { toast.error(result.error); return; }
               setOpen(false);
               await invalidateLossPreventionQueries(queryClient, caseId);
               router.refresh();
@@ -585,6 +591,7 @@ export function RecoveryForm({ caseId }: { caseId: string }) {
   const [pending, start] = useTransition();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   return (
     <>
@@ -604,7 +611,7 @@ export function RecoveryForm({ caseId }: { caseId: string }) {
           action={(fd) =>
             start(async () => {
               const result = await addRecovery(caseId, fd);
-              if (isActionError(result)) { alert(result.error); return; }
+              if (isActionError(result)) { toast.error(result.error); return; }
               setOpen(false);
               await invalidateLossPreventionQueries(queryClient, caseId);
               router.refresh();

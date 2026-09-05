@@ -100,7 +100,7 @@ async function loadProjectScope(userId: string): Promise<string[] | null> {
   if (!row?.value) return null;
   try {
     const parsed = JSON.parse(row.value);
-    return Array.isArray(parsed) ? parsed.filter((x) => typeof x === "string") : null;
+    return Array.isArray(parsed) && parsed.every((x) => typeof x === "string" && x.length > 0) ? parsed : [];
   } catch {
     // A corrupt scope must not silently widen access.
     return [];

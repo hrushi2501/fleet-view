@@ -1,3 +1,4 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -11,7 +12,7 @@ import { notificationScope } from "@/lib/notification-feed";
  * acknowledging really wants its own `alerts.manage` permission in the
  * catalogue, which is a change for the owners of `rbac.ts` consumers to make.
  */
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
   const auth = await requireApi("fleet.view");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
@@ -64,11 +65,11 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("[API] /insight/alerts GET error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    throw error;
   }
 }
 
-export async function PATCH(request: NextRequest) {
+async function handlePATCH(request: NextRequest) {
   const auth = await requireApi("fleet.view");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
@@ -104,6 +105,9 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("[API] /insight/alerts PATCH error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    throw error;
   }
 }
+
+export const GET = withApiErrors(handleGET);
+export const PATCH = withApiErrors(handlePATCH);

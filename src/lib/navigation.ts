@@ -117,6 +117,7 @@ export const MODULES: NavItem[] = [
     permission: "maintenance.view",
     children: [
       { href: "/maintenance", label: "Service & Repairs", permission: "maintenance.view" },
+      { href: "/maintenance/inventory", label: "Parts & Stores", permission: "maintenance.view" },
       { href: "/maintenance/tyres", label: "Tyres & Parts", permission: "maintenance.view" },
       { href: "/maintenance/reminders", label: "Service Due", permission: "maintenance.view" },
     ],

@@ -238,6 +238,7 @@ export function ScheduleForm({
   const [pending, start] = useTransition();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const tierOpts = Object.values(SERVICE_TIERS).map((t) => ({ value: t.tier, label: t.name }));
 
   return (
@@ -256,7 +257,7 @@ export function ScheduleForm({
           action={(fd) =>
             start(async () => {
               const result = await saveSchedule(schedule?.id ?? null, fd);
-              if (isActionError(result)) { alert(result.error); return; }
+              if (isActionError(result)) { toast.error(result.error); return; }
               setOpen(false);
               await invalidateMaintenanceQueries(queryClient);
               router.refresh();
@@ -380,13 +381,14 @@ export function RaiseWoButton({ scheduleId }: { scheduleId: string }) {
   const [pending, start] = useTransition();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   return (
     <button
       onClick={() =>
         start(async () => {
           const result = await raiseWoFromSchedule(scheduleId);
-          if (isActionError(result)) { alert(result.error); return; }
+          if (isActionError(result)) { toast.error(result.error); return; }
           await invalidateMaintenanceQueries(queryClient);
           router.refresh();
         })
@@ -416,6 +418,7 @@ export function CompleteWoForm({
   const [pending, start] = useTransition();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const failureOpts = [
     { value: "", label: "— Select Failure Code (if breakdown) —" },
     ...FAILURE_CODES.map((f) => ({ value: f.code, label: `${f.label} (${f.category})` })),
@@ -439,7 +442,7 @@ export function CompleteWoForm({
           action={(fd) =>
             start(async () => {
               const result = await completeWorkOrder(wo.id, fd);
-              if (isActionError(result)) { alert(result.error); return; }
+              if (isActionError(result)) { toast.error(result.error); return; }
               setOpen(false);
               await invalidateMaintenanceQueries(queryClient);
               await invalidateFleetQueries(queryClient);
@@ -653,6 +656,7 @@ export function WoLineForm({
   const [selectedItemId, setSelectedItemId] = useState("");
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const selectedItem = inventoryItems.find((i) => i.id === selectedItemId);
 
@@ -678,7 +682,7 @@ export function WoLineForm({
                 fd.set("partNo", selectedItem.partNo);
               }
               const result = await addWoLine(workOrderId, fd);
-              if (isActionError(result)) { alert(result.error); return; }
+              if (isActionError(result)) { toast.error(result.error); return; }
               setOpen(false);
               await invalidateMaintenanceQueries(queryClient);
               router.refresh();
@@ -771,13 +775,14 @@ export function ChecklistToggle({ id, done }: { id: string; done: boolean }) {
   const [pending, start] = useTransition();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   return (
     <button
       onClick={() =>
         start(async () => {
           const result = await toggleChecklistItem(id, !done);
-          if (isActionError(result)) { alert(result.error); return; }
+          if (isActionError(result)) { toast.error(result.error); return; }
           await invalidateMaintenanceQueries(queryClient);
           router.refresh();
         })
@@ -800,13 +805,14 @@ export function ChecklistForm({ workOrderId }: { workOrderId: string }) {
   const [pending, start] = useTransition();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   return (
     <form
       action={(fd) =>
         start(async () => {
           const result = await addChecklistItem(workOrderId, fd);
-          if (isActionError(result)) { alert(result.error); return; }
+          if (isActionError(result)) { toast.error(result.error); return; }
           await invalidateMaintenanceQueries(queryClient);
           router.refresh();
         })
@@ -856,6 +862,7 @@ export function TyreForm({
   const [status, setStatus] = useState(tyre?.status ?? "IN_STOCK");
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   return (
     <>
@@ -873,7 +880,7 @@ export function TyreForm({
           action={(fd) =>
             start(async () => {
               const result = await saveTyre(tyre?.id ?? null, fd);
-              if (isActionError(result)) { alert(result.error); return; }
+              if (isActionError(result)) { toast.error(result.error); return; }
               setOpen(false);
               await invalidateMaintenanceQueries(queryClient);
               router.refresh();
@@ -969,6 +976,7 @@ export function TyreActionForm({
   const [pending, start] = useTransition();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const meta = {
     FIT: {
@@ -1003,7 +1011,7 @@ export function TyreActionForm({
           action={(fd) =>
             start(async () => {
               const result = await meta.fn(fd);
-              if (isActionError(result)) { alert(result.error); return; }
+              if (isActionError(result)) { toast.error(result.error); return; }
               setOpen(false);
               await invalidateMaintenanceQueries(queryClient);
               await invalidateFleetQueries(queryClient);
@@ -1113,6 +1121,7 @@ export function ComponentForm({
   const [status, setStatus] = useState(component?.status ?? "IN_STOCK");
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   return (
     <>
@@ -1130,7 +1139,7 @@ export function ComponentForm({
           action={(fd) =>
             start(async () => {
               const result = await saveComponent(component?.id ?? null, fd);
-              if (isActionError(result)) { alert(result.error); return; }
+              if (isActionError(result)) { toast.error(result.error); return; }
               setOpen(false);
               await invalidateMaintenanceQueries(queryClient);
               router.refresh();
@@ -1246,6 +1255,7 @@ export function ComponentActionForm({
   const [pending, start] = useTransition();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   return (
     <>
@@ -1262,7 +1272,7 @@ export function ComponentActionForm({
           action={(fd) =>
             start(async () => {
               const result = await transferComponent(fd);
-              if (isActionError(result)) { alert(result.error); return; }
+              if (isActionError(result)) { toast.error(result.error); return; }
               setOpen(false);
               await invalidateMaintenanceQueries(queryClient);
               router.refresh();

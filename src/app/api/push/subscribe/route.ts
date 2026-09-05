@@ -1,3 +1,4 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
@@ -5,7 +6,7 @@ import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -31,3 +32,5 @@ export async function POST(req: Request) {
   });
   return NextResponse.json({ ok: true });
 }
+
+export const POST = withApiErrors(handlePOST);

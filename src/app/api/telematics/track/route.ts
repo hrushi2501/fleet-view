@@ -1,3 +1,4 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireApi, canSeeAsset } from "@/lib/access";
@@ -22,7 +23,7 @@ const MAX_POINTS = 4000;
  * GET /api/telematics/track?assetId=…&date=YYYY-MM-DD
  *   date defaults to today in the business timezone.
  */
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const auth = await requireApi("fleet.view");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
@@ -109,3 +110,5 @@ export async function GET(req: Request) {
     { headers: { "Cache-Control": "no-store, max-age=0" } },
   );
 }
+
+export const GET = withApiErrors(handleGET);

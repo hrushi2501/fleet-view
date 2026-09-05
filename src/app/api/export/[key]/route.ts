@@ -1,3 +1,4 @@
+import { withApiErrors } from "@/lib/api-error";
 import { db } from "@/lib/db";
 import { requireApi, assetScope, projectIdScope } from "@/lib/access";
 import { toCsv } from "@/lib/reporting";
@@ -17,7 +18,7 @@ const MAX_ROWS = 5000;
  * log because "who took a copy of the vendor rates" is a question that gets
  * asked after someone leaves.
  */
-export async function GET(_req: Request, ctx: { params: Promise<{ key: string }> }) {
+async function handleGET(_req: Request, ctx: { params: Promise<{ key: string }> }) {
   // Same rule as before — `reports.export`, with the legacy-Admin fallback while
   // roles are being installed — now expressed through the shared gate so every
   // route resolves permissions the same way.
@@ -179,3 +180,5 @@ export async function GET(_req: Request, ctx: { params: Promise<{ key: string }>
     },
   });
 }
+
+export const GET = withApiErrors(handleGET);

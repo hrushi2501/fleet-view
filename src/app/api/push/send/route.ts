@@ -1,3 +1,4 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { requireApi } from "@/lib/access";
 import { sendPushToAll } from "@/lib/push";
@@ -5,7 +6,7 @@ import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   const auth = await requireApi("admin.settings");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
@@ -28,3 +29,5 @@ export async function POST(req: Request) {
   });
   return NextResponse.json({ ok: true, ...result });
 }
+
+export const POST = withApiErrors(handlePOST);

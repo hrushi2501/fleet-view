@@ -1,7 +1,10 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getAccess } from "@/lib/access";
-import { reconstructPath, validateOdometerAtCheckout, type ReadingLite } from "@/lib/telematics";
+import { completeDuty } from "@/lib/trip-service";
+import { businessTransaction } from "@/lib/business-transaction";
+import { finiteNumber } from "@/lib/input-validation";
 import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +16,7 @@ export const dynamic = "force-dynamic";
  * the odometer difference where they do not — a vehicle with no GPS still
  * produces a usable trip record, just a coarser one.
  */
-export async function POST(req: Request) {
+async function handlePost(req: Request) {
   const access = await getAccess();
   if (!access) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   if (access.group !== "DRIVER") return NextResponse.json({ error: "Only a driver account can end a vehicle trip." }, { status: 403 });
@@ -42,93 +45,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "An administrator must add this driver before a trip can be checked out." }, { status: 409 });
   }
 
-  const active = body.sessionId
-    ? await db.tripSession.findFirst({
-      // A posted id is a claim, not authority. Without this predicate, one
-      // authenticated driver could close another driver's active shift.
-      where: { id: String(body.sessionId), driverId: person.id, status: "ACTIVE" },
-      include: { asset: { select: { qrToken: true } } },
-    })
-    : await db.tripSession.findFirst({ where: { driverId: person.id, status: "ACTIVE" }, orderBy: { startedAt: "desc" }, include: { asset: { select: { qrToken: true } } } });
-
-  if (!active || active.status !== "ACTIVE") {
-    return NextResponse.json({ error: "No active trip to check out of." }, { status: 404 });
-  }
-  if (!active.asset.qrToken || active.asset.qrToken !== token) {
-    return NextResponse.json({ error: "This is not the QR sticker for your active vehicle. Scan the sticker inside the current cabin." }, { status: 409 });
-  }
-
-  const num = (k: string) => (body[k] != null && isFinite(Number(body[k])) ? Number(body[k]) : null);
-  const endOdo = num("odometer");
-
-  const odoCheck = validateOdometerAtCheckout(endOdo, active.startOdometer);
-  if (!odoCheck.valid) {
-    return NextResponse.json({ error: odoCheck.error }, { status: 400 });
-  }
-
-  // Explicit columns: `reconstructPath` uses eight of them, and the row also
-  // carries `raw`, the full provider payload. A long shift is thousands of
-  // samples, so pulling the blob for each was the bulk of this request.
-  const readings = await db.telemetryReading.findMany({
-    where: { sessionId: active.id },
-    orderBy: { recordedAt: "asc" },
-    select: {
-      id: true, recordedAt: true, lat: true, lng: true, speedKph: true,
-      odometerKm: true, fuelLevelPct: true, ignitionOn: true, source: true,
-    },
-  });
-  const path = reconstructPath(readings.map((r): ReadingLite => ({
-    id: r.id, recordedAt: r.recordedAt, lat: r.lat, lng: r.lng, speedKph: r.speedKph,
-    odometerKm: r.odometerKm, fuelLevelPct: r.fuelLevelPct, ignitionOn: r.ignitionOn, source: r.source,
-  })));
-
-  // Prefer the tracked path; fall back to the meter when there was no GPS.
-  const odoDistance = endOdo != null && active.startOdometer != null ? Math.max(0, endOdo - active.startOdometer) : 0;
-  const distanceKm = path.distanceKm > 0.05 ? path.distanceKm : odoDistance;
-
-  const closed = await db.tripSession.update({
-    where: { id: active.id },
-    data: {
-      status: "COMPLETED", endedAt: new Date(), endedBy: "DRIVER",
-      endLat: num("lat"), endLng: num("lng"), endOdometer: endOdo,
-      distanceKm, notes: body.notes ? String(body.notes).slice(0, 2000) : undefined,
-    },
-  });
-
-  // A completed session becomes a Trip so it appears in the operational history.
-  await db.trip.create({
-    data: {
-      assetId: closed.assetId, driverId: closed.driverId, projectId: closed.projectId,
-      startTime: closed.startedAt, endTime: closed.endedAt!,
-      distanceKm, idleHours: path.idleMinutes / 60,
-      gpsVerified: path.points > 1, status: "Completed",
-    },
-  });
-
-  // Explicitly unbind the driver from the asset on checkout so it doesn't remain claimed.
-  const asset = await db.asset.findUnique({ where: { id: closed.assetId } });
-  await db.asset.update({
-    where: { id: closed.assetId },
-    data: {
-      driverId: null,
-      ...(endOdo != null && asset && endOdo > asset.meterValue ? { meterValue: endOdo } : {}),
-    },
-  });
-
-  if (endOdo != null && endOdo > 0) {
-    await db.meterReading.create({
-      data: { assetId: closed.assetId, meterType: "ODOMETER", value: endOdo, source: "GPS", refId: closed.id, recordedBy: access.session.name },
+  const result = await businessTransaction(access.session, async tx => {
+    const active = await tx.tripSession.findFirst({
+      where: { driverId: person.id, userId: access.session.id,
+        ...(body.sessionId ? { id: String(body.sessionId) } : { status: "ACTIVE" }),
+        asset: { qrToken: token },
+      },
+      orderBy: { startedAt: "desc" },
     });
-  }
-
-  return NextResponse.json({
-    ok: true,
-    sessionId: closed.id,
-    distanceKm: Number(distanceKm.toFixed(2)),
-    source: path.points > 1 ? "GPS path" : odoDistance > 0 ? "odometer difference" : "no distance recorded",
-    points: path.points,
-    discardedPoints: path.discarded,
-    movingMinutes: Math.round(path.movingMinutes),
-    idleMinutes: Math.round(path.idleMinutes),
+    if (!active) return null;
+    const optional = (key: string, min: number, max?: number) => body[key] == null || body[key] === "" ? null : finiteNumber(body[key], key, { min, max });
+    return completeDuty(tx, active.id, access.session, {
+      odometer: optional("odometer", 0), lat: optional("lat", -90, 90), lng: optional("lng", -180, 180),
+      endedBy: "DRIVER", notes: body.notes ? String(body.notes).slice(0, 2000) : undefined,
+    });
   });
+  if (!result) return NextResponse.json({ error: "No matching duty was found. Check the cabin code and reload." }, { status: 404 });
+  return NextResponse.json({ ok: true, ...result });
 }
+
+export const POST = withApiErrors(handlePost);

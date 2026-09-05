@@ -1,6 +1,8 @@
 "use server";
 
 import { db } from "@/lib/db";
+import { formNumber } from "@/lib/input-validation";
+import { fuelAnomalyScope, recordScope, assertGlobalAccess, assertFormAccess, assertRecordAccess } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { getDieselRate } from "@/lib/settings";
@@ -9,7 +11,7 @@ import { requireAction, ActionError, safe } from "@/lib/guard";
 import { transition } from "@/lib/transition";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
-const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
+const n = formNumber;
 
 function refresh(id?: string) {
   revalidatePath("/loss-prevention");
@@ -20,7 +22,8 @@ function refresh(id?: string) {
 
 /** Installs the shipped rule library. Safe to call repeatedly. */
 async function seedRules__impl() {
-  await requireAction("admin.settings");
+  const scopeAccess = await requireAction("admin.settings");
+  assertGlobalAccess(scopeAccess);
   for (const r of DEFAULT_RULES) {
     await db.controlRule.upsert({
       where: { code: r.code },
@@ -32,7 +35,9 @@ async function seedRules__impl() {
 }
 
 async function updateRule__impl(id: string, fd: FormData) {
-  await requireAction("admin.settings");
+  const scopeAccess = await requireAction("admin.settings");
+  await assertFormAccess(scopeAccess, fd);
+  assertGlobalAccess(scopeAccess);
   await db.controlRule.update({
     where: { id },
     data: {
@@ -52,7 +57,8 @@ async function updateRule__impl(id: string, fd: FormData) {
  * Idempotent via `signalKey`, so it's safe to run on a schedule or on demand.
  */
 async function runScan__impl() {
-  await requireAction("loss.investigate");
+  const scopeAccess = await requireAction("loss.investigate");
+  assertGlobalAccess(scopeAccess);
   const session = await getSession();
   const dieselRate = await getDieselRate();
 
@@ -176,7 +182,8 @@ async function runScan__impl() {
 /* ---------------------------------- cases ---------------------------------- */
 
 async function createCase__impl(fd: FormData) {
-  await requireAction("loss.investigate");
+  const scopeAccess = await requireAction("loss.investigate");
+  await assertFormAccess(scopeAccess, fd);
   const session = await getSession();
   const seq = await db.fraudCase.count();
   const c = await db.fraudCase.create({
@@ -213,7 +220,9 @@ async function createCase__impl(fd: FormData) {
  * case and the segregation existed only on paper.
  */
 async function updateCase__impl(id: string, fd: FormData) {
-  await requireAction("loss.investigate");
+  const scopeAccess = await requireAction("loss.investigate");
+  await assertFormAccess(scopeAccess, fd);
+  await assertRecordAccess(scopeAccess, "fraudCase", id);
   const session = await getSession();
   const status = s(fd, "status");
   const prev = await db.fraudCase.findUnique({ where: { id }, select: { status: true } });
@@ -249,7 +258,9 @@ async function updateCase__impl(id: string, fd: FormData) {
 }
 
 async function addNote__impl(id: string, fd: FormData) {
-  await requireAction("loss.investigate");
+  const scopeAccess = await requireAction("loss.investigate");
+  await assertFormAccess(scopeAccess, fd);
+  await assertRecordAccess(scopeAccess, "fraudCase", id);
   const session = await getSession();
   const note = s(fd, "note");
   if (!note) return;
@@ -258,7 +269,9 @@ async function addNote__impl(id: string, fd: FormData) {
 }
 
 async function addEvidence__impl(id: string, fd: FormData) {
-  await requireAction("loss.investigate");
+  const scopeAccess = await requireAction("loss.investigate");
+  await assertFormAccess(scopeAccess, fd);
+  await assertRecordAccess(scopeAccess, "fraudCase", id);
   const session = await getSession();
   await db.caseEvidence.create({
     data: {
@@ -276,7 +289,9 @@ async function addEvidence__impl(id: string, fd: FormData) {
 
 /** Records money actually clawed back and rolls it up onto the case. */
 async function addRecovery__impl(id: string, fd: FormData) {
-  await requireAction("loss.close");
+  const scopeAccess = await requireAction("loss.close");
+  await assertFormAccess(scopeAccess, fd);
+  await assertRecordAccess(scopeAccess, "fraudCase", id);
   const session = await getSession();
   const amount = n(fd, "amount");
   if (amount <= 0) return;
@@ -302,7 +317,8 @@ async function addRecovery__impl(id: string, fd: FormData) {
 }
 
 async function deleteCase__impl(id: string) {
-  await requireAction("loss.close");
+  const scopeAccess = await requireAction("loss.close");
+  await assertRecordAccess(scopeAccess, "fraudCase", id);
   await db.fraudCase.delete({ where: { id } });
   revalidatePath("/loss-prevention");
 }
@@ -333,20 +349,21 @@ export type MeterRollbackSignal = {
  * consolidated fraud intelligence panel on the Loss Prevention page.
  */
 export async function getFraudIntelligence() {
-  await requireAction("loss.view");
+  const access = await requireAction("loss.view");
+  const anomalyScope = await fuelAnomalyScope(access);
   const [anomalies, fuelTxns, assets, tanks] = await Promise.all([
     db.fuelAnomaly.findMany({
-      where: { status: { in: ["OPEN", "INVESTIGATING"] } },
+      where: { ...anomalyScope, status: { in: ["OPEN", "INVESTIGATING"] } },
       orderBy: { valueAtRisk: "desc" },
       take: 20,
     }),
     db.fuelTransaction.findMany({
-      where: { type: "ISSUE" },
+      where: { type: "ISSUE", ...recordScope("fuelTransaction", access) },
       include: { asset: { select: { code: true } } },
       orderBy: { date: "asc" },
     }),
-    db.asset.findMany({ select: { id: true, code: true } }),
-    db.fuelTank.findMany({ select: { id: true, name: true } }),
+    db.asset.findMany({ where: recordScope("asset", access), select: { id: true, code: true } }),
+    db.fuelTank.findMany({ where: recordScope("fuelTank", access), select: { id: true, name: true } }),
   ]);
 
   const assetMap = new Map(assets.map((a) => [a.id, a.code]));

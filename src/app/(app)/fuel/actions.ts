@@ -1,6 +1,9 @@
 "use server";
 
 import { db } from "@/lib/db";
+import { businessTransaction } from "@/lib/business-transaction";
+import { formNumber } from "@/lib/input-validation";
+import { assertRecordAccess, assertFormAccess, assertGlobalAccess } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { getDieselRate } from "@/lib/settings";
@@ -10,7 +13,7 @@ import { transition } from "@/lib/transition";
 import { uploadPrivateFile } from "@/lib/private-upload";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
-const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
+const n = formNumber;
 const d = (fd: FormData, k: string) => (s(fd, k) ? new Date(s(fd, k)) : new Date());
 
 async function uploadPhoto(file: FormDataEntryValue | null, prefix: string): Promise<string | null> {
@@ -47,7 +50,8 @@ async function saveTank__impl(id: string | null, fd: FormData) {
 }
 
 async function deleteTank__impl(id: string) {
-  await requireAction("fuel.reconcile");
+  const scopeAccess = await requireAction("fuel.reconcile");
+  await assertRecordAccess(scopeAccess, "fuelTank", id);
   await db.fuelTank.delete({ where: { id } });
   refresh();
 }
@@ -56,7 +60,8 @@ async function deleteTank__impl(id: string) {
 
 /** Bulk diesel delivery in. Shortfall (invoiced − actually dipped in) is the control point. */
 async function saveReceipt__impl(fd: FormData) {
-  await requireAction("fuel.receipt");
+  const scopeAccess = await requireAction("fuel.receipt");
+  await assertFormAccess(scopeAccess, fd);
   const qtyInvoiced = n(fd, "qtyInvoiced");
   const qtyReceived = n(fd, "qtyReceived") || qtyInvoiced;
   const rate = n(fd, "rate") || (await getDieselRate());
@@ -68,7 +73,7 @@ async function saveReceipt__impl(fd: FormData) {
   const shortfall = Math.max(0, qtyInvoiced - qtyReceived);
 
   // Wrap in ACID transaction for database consistency
-  await db.$transaction(async (tx) => {
+  await businessTransaction(scopeAccess.session, async (tx) => {
     await tx.fuelReceipt.create({
       data: {
         tankId,
@@ -112,8 +117,9 @@ async function saveReceipt__impl(fd: FormData) {
 }
 
 async function deleteReceipt__impl(id: string) {
-  await requireAction("fuel.receipt");
-  await db.$transaction(async (tx) => {
+  const scopeAccess = await requireAction("fuel.receipt");
+  await assertRecordAccess(scopeAccess, "fuelReceipt", id);
+  await businessTransaction(scopeAccess.session, async (tx) => {
     const r = await tx.fuelReceipt.findUnique({ where: { id } });
     if (r) {
       await tx.fuelTank.update({ where: { id: r.tankId }, data: { currentLevel: { decrement: r.qtyReceived } } });
@@ -127,14 +133,15 @@ async function deleteReceipt__impl(id: string) {
 
 /** Physical dipstick reading — the ground truth. Re-anchors the tank's book balance. */
 async function saveDip__impl(fd: FormData) {
-  await requireAction("fuel.receipt");
+  const scopeAccess = await requireAction("fuel.receipt");
+  await assertFormAccess(scopeAccess, fd);
   const tankId = s(fd, "tankId");
   if (!tankId) throw new ActionError("Tank is required");
   const level = n(fd, "level");
   const photo = await uploadPhoto(fd.get("photo"), "dip");
   const session = await getSession();
 
-  await db.$transaction(async (tx) => {
+  await businessTransaction(scopeAccess.session, async (tx) => {
     await tx.tankDip.create({
       data: {
         tankId,
@@ -151,7 +158,8 @@ async function saveDip__impl(fd: FormData) {
 }
 
 async function deleteDip__impl(id: string) {
-  await requireAction("fuel.receipt");
+  const scopeAccess = await requireAction("fuel.receipt");
+  await assertRecordAccess(scopeAccess, "tankDip", id);
   await db.tankDip.delete({ where: { id } });
   refresh();
 }
@@ -164,7 +172,8 @@ async function deleteDip__impl(id: string) {
  * Raises/updates an anomaly when the gap is beyond tolerance.
  */
 async function runReconciliation__impl(tankId: string, fromStr?: string, toStr?: string) {
-  await requireAction("fuel.reconcile");
+  const scopeAccess = await requireAction("fuel.reconcile");
+  await assertRecordAccess(scopeAccess, "fuelTank", tankId);
   const from = fromStr ? new Date(fromStr) : undefined;
   const to = toStr ? new Date(toStr) : undefined;
 
@@ -194,7 +203,7 @@ async function runReconciliation__impl(tankId: string, fromStr?: string, toStr?:
   const rate = await getDieselRate();
   const anomaly = scoreTankRecon(recon, rate);
 
-  await db.$transaction(async (tx) => {
+  await businessTransaction(scopeAccess.session, async (tx) => {
 
 
     await tx.fuelReconciliation.create({
@@ -292,7 +301,9 @@ async function updateAnomaly__impl(id: string, fd: FormData) {
 /* ---------------------------------- norms ---------------------------------- */
 
 async function saveNorm__impl(fd: FormData) {
-  await requireAction("fuel.reconcile");
+  const scopeAccess = await requireAction("fuel.reconcile");
+  await assertFormAccess(scopeAccess, fd);
+  assertGlobalAccess(scopeAccess);
   const assetClass = s(fd, "assetClass") || null;
   const unit = s(fd, "unit") || "KMPL";
   const data = {

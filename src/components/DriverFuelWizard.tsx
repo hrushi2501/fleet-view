@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveFuel, saveServicePhotos } from "@/app/(app)/entry-actions";
 import { isActionError } from "@/lib/action-result";
+import { useToast } from "@/components/Toast";
 import { PushButton } from "@/components/PushButton";
 import { Truck, Camera, Check, ArrowLeft, Delete, Volume2, Fuel, LogOut, Loader2, CircleCheck, Wrench, X, Pencil, Sparkles } from "lucide-react";
 
@@ -158,6 +159,7 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
   const [oldPhotos, setOldPhotos] = useState<File[]>([]);
   const [newPhotos, setNewPhotos] = useState<File[]>([]);
   const [pending, start] = useTransition();
+  const toast = useToast();
   const router = useRouter();
   const camRef = useRef<HTMLInputElement>(null);
   const repairRef = useRef<HTMLInputElement>(null);
@@ -262,7 +264,7 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
         if (odo) fd.set("odometerPhoto", await compressImage(odo));
         if (pump) fd.set("pumpPhoto", await compressImage(pump));
         const result = await saveFuel(fd);
-        if (isActionError(result)) { alert(result.error); return; }
+        if (isActionError(result)) { toast.error(result.error); return; }
         buzz([40, 50, 80]); setStep("done"); router.refresh();
       } catch { /* stay on review */ }
     });
@@ -277,7 +279,7 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
         for (const f of oldPhotos) fd.append("oldPhotos", await compressImage(f));
         for (const f of newPhotos) fd.append("newPhotos", await compressImage(f));
         const result = await saveServicePhotos(fd);
-        if (isActionError(result)) { alert(result.error); return; }
+        if (isActionError(result)) { toast.error(result.error); return; }
         buzz([40, 50, 80]); setStep("done"); router.refresh();
       } catch { setStep("rnew"); }
     });
@@ -336,10 +338,10 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
           <a href="/api/auth/logout" className="rounded-xl bg-white/10 p-3"><LogOut className="h-6 w-6" /></a>
         </header>
         <div className="p-5">
-          <button onClick={() => { setMode("fuel"); setStep("vehicle"); }} className="flex w-full flex-col items-center gap-3 rounded-3xl bg-gradient-to-br from-brand-500 to-brand-700 py-10 text-white shadow-xl shadow-brand-500/30 active:scale-[0.98]">
+          <button onClick={() => { setMode("fuel"); setStep("vehicle"); }} className="flex w-full flex-col items-center gap-3 rounded-3xl bg-linear-to-br from-brand-500 to-brand-700 py-10 text-white shadow-xl shadow-brand-500/30 active:scale-[0.98]">
             <Fuel className="h-16 w-16" /><span className="text-3xl font-extrabold">डीज़ल भरें</span><span className="text-base opacity-90">+ Add Diesel</span>
           </button>
-          <button onClick={() => { setMode("repair"); setStep("vehicle"); }} className="mt-4 flex w-full flex-col items-center gap-3 rounded-3xl bg-gradient-to-br from-amber-500 to-orange-600 py-10 text-white shadow-xl shadow-amber-500/30 active:scale-[0.98]">
+          <button onClick={() => { setMode("repair"); setStep("vehicle"); }} className="mt-4 flex w-full flex-col items-center gap-3 rounded-3xl bg-linear-to-br from-amber-500 to-orange-600 py-10 text-white shadow-xl shadow-amber-500/30 active:scale-[0.98]">
             <Wrench className="h-16 w-16" /><span className="text-3xl font-extrabold">मरम्मत फोटो</span><span className="text-base opacity-90">+ Repair Part Photos</span>
           </button>
           <div className="mt-4 flex flex-wrap justify-center gap-2">

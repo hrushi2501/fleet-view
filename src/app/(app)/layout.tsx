@@ -5,6 +5,7 @@ import { getAccess } from "@/lib/access";
 import { navFor } from "@/lib/navigation";
 import { getNotificationFeed } from "@/lib/notification-feed";
 import { redirect } from "next/navigation";
+import { QueryProvider } from "@/components/QueryProvider";
 
 /**
  * Resolves who the caller is once, and hands the navigation their own menu.
@@ -25,6 +26,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const notificationFeed = await getNotificationFeed(access);
 
   return (
+    <QueryProvider key={JSON.stringify([access.session.id, access.driverId, access.projectIds, access.codes])}>
     <ToastProvider>
       <div className="min-h-screen">
         <Sidebar items={items} isDriver={isDriver} />
@@ -40,5 +42,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       </div>
     </ToastProvider>
+    </QueryProvider>
   );
 }

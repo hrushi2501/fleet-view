@@ -1,3 +1,5 @@
+import { recordScope } from "@/lib/record-access";
+import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireApi, assetScope } from "@/lib/access";
@@ -9,19 +11,20 @@ import { getFraudIntelligence } from "@/app/(app)/loss-prevention/actions";
  * anyone who could reach the URL — it names drivers and vendors under suspicion,
  * which is both the client's commercial data and a personal-data exposure.
  */
-export async function GET() {
+async function handleGET() {
   const auth = await requireApi("loss.view");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   try {
     const [cases, assets, drivers, fraudIntel] = await Promise.all([
       db.fraudCase.findMany({
+        where: recordScope("fraudCase", auth.access),
         include: { asset: { select: { code: true } }, driver: { select: { name: true } }, _count: { select: { evidence: true, recoveries: true } } },
         orderBy: [{ status: "asc" }, { score: "desc" }, { openedAt: "desc" }],
         take: 2000,
       }),
       db.asset.findMany({ where: assetScope(auth.access), select: { id: true, code: true, registrationNo: true, name: true } }),
-      db.driver.findMany({ select: { id: true, name: true, empCode: true } }),
+      db.driver.findMany({ where: recordScope("driver", auth.access), select: { id: true, name: true, empCode: true } }),
       getFraudIntelligence(),
     ]);
 
@@ -38,6 +41,8 @@ export async function GET() {
     return NextResponse.json({ scorecard: sc, offenders, fraudIntel, cases });
   } catch (error) {
     console.error("[API] /insight/loss-prevention error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    throw error;
   }
 }
+
+export const GET = withApiErrors(handleGET);

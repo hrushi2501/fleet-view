@@ -1,3 +1,4 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { checkSharedSecret } from "@/lib/auth";
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 // Called by Vercel Cron (sends Authorization: Bearer ${CRON_SECRET}) or manually
 // with ?key=. Fails closed when CRON_SECRET is unset — an unauthenticated
 // trigger here pushes a notification to every subscribed device.
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const auth = checkSharedSecret(req, "CRON_SECRET");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
@@ -40,6 +41,8 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, dbAudit: sweep.dbAudit, ...result });
   } catch (err) {
     console.error("[API] /push/cron error:", err);
-    return NextResponse.json({ ok: false, error: "Failed to process push cron" }, { status: 500 });
+    throw err;
   }
 }
+
+export const GET = withApiErrors(handleGET);

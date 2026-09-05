@@ -1,3 +1,4 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { checkSharedSecret } from "@/lib/auth";
@@ -161,7 +162,7 @@ async function ingestOne(body: Record<string, unknown>) {
   };
 }
 
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   const parsed = await readTelemetryJson(req);
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: parsed.status });
   if (!parsed.value || typeof parsed.value !== "object" || Array.isArray(parsed.value)) {
@@ -189,6 +190,8 @@ export async function POST(req: Request) {
   // API, so the credential must not travel with it — otherwise the ingest key is
   // readable by every signed-in user.
   delete body.key;
+  const limit = await reserveRateLimit({ scope: "device-ingest", subject: "provider", limit: 600, windowMs: 60_000 });
+  if (!limit.ok) return rateLimitResponse(limit.retryInSeconds);
 
   if (Array.isArray(body.readings)) {
     const results = [];
@@ -209,3 +212,5 @@ export async function POST(req: Request) {
   const r = await ingestOne(body);
   return r.ok ? NextResponse.json(r) : NextResponse.json({ error: r.error }, { status: r.error === "asset not found" ? 404 : 400 });
 }
+
+export const POST = withApiErrors(handlePOST);

@@ -1,3 +1,4 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireApi, canSeeAsset } from "@/lib/access";
@@ -20,7 +21,7 @@ function redactRaw(raw: unknown): unknown {
   return out;
 }
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handleGET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   // Previously this asked only whether a session existed. Any signed-in
   // account — a driver included — could read any vehicle by id: its position,
   // driver, costs, documents and full telemetry payload.
@@ -153,3 +154,5 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     },
   });
 }
+
+export const GET = withApiErrors(handleGET);

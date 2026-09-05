@@ -1,3 +1,7 @@
+import { fuelAnomalyScope, recordScope } from "@/lib/record-access";
+import { finiteNumber, oneOf } from "@/lib/input-validation";
+import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
+import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireApi } from "@/lib/access";
@@ -9,20 +13,22 @@ export const dynamic = "force-dynamic";
  *
  * Query open or resolved fuel anomalies across the fleet.
  */
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const auth = await requireApi("fuel.view");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   try {
     const url = new URL(req.url);
     const status = url.searchParams.get("status") || "OPEN";
+    const scope = await fuelAnomalyScope(auth.access);
 
     const [anomalies, assets, tanks] = await Promise.all([
       db.fuelAnomaly.findMany({
-        where: status === "ALL" ? {} : { status },
+        where: { ...scope, ...(status === "ALL" ? {} : { status }) },
         orderBy: [{ score: "desc" }, { detectedAt: "desc" }],
       }),
       db.asset.findMany({
+        where: recordScope("asset", auth.access),
         select: {
           id: true,
           code: true,
@@ -32,6 +38,7 @@ export async function GET(req: Request) {
         },
       }),
       db.fuelTank.findMany({
+        where: recordScope("fuelTank", auth.access),
         select: {
           id: true,
           code: true,
@@ -62,7 +69,7 @@ export async function GET(req: Request) {
     });
   } catch (err) {
     console.error("[API] /api/fuel/anomalies GET error:", err);
-    return NextResponse.json({ error: "Failed to fetch anomalies" }, { status: 500 });
+    throw err;
   }
 }
 
@@ -71,7 +78,7 @@ export async function GET(req: Request) {
  *
  * Update anomaly status (INVESTIGATING, RESOLVED, DISMISSED) and resolution notes.
  */
-export async function PATCH(req: Request) {
+async function handlePATCH(req: Request) {
   const auth = await requireApi("fuel.approve");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
@@ -83,12 +90,18 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Anomaly id and status required" }, { status: 400 });
     }
 
+    const limit = await reserveRateLimit({ scope: "anomaly-update", subject: auth.access.session.id, limit: 60, windowMs: 60_000 });
+    if (!limit.ok) return rateLimitResponse(limit.retryInSeconds);
+    const existing = await db.fuelAnomaly.findFirst({ where: { id, ...await fuelAnomalyScope(auth.access) } });
+    if (!existing) return NextResponse.json({ error: "Anomaly not found" }, { status: 404 });
+    oneOf(status, ["OPEN", "INVESTIGATING", "RECOVERED", "FALSE_POSITIVE", "CLOSED", "RESOLVED", "DISMISSED"], "anomaly status");
+    const recoveredAmount = finiteNumber(recovered, "Recovered amount", { min: 0, fallback: 0 });
     const updated = await db.fuelAnomaly.update({
       where: { id },
       data: {
         status,
         resolution: resolution || null,
-        recovered: recovered ? Number(recovered) : 0,
+        recovered: recoveredAmount,
         resolvedAt: status === "OPEN" || status === "INVESTIGATING" ? null : new Date(),
       },
     });
@@ -96,6 +109,9 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ ok: true, anomaly: updated });
   } catch (err) {
     console.error("[API] /api/fuel/anomalies PATCH error:", err);
-    return NextResponse.json({ error: "Failed to update anomaly" }, { status: 500 });
+    throw err;
   }
 }
+
+export const GET = withApiErrors(handleGET);
+export const PATCH = withApiErrors(handlePATCH);

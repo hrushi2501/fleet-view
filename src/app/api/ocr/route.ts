@@ -1,3 +1,4 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { generateObject } from "ai";
@@ -67,7 +68,7 @@ function reconcile(o: { amount: number | null; volume: number | null; rate: numb
 const consistent = (o: { amount: number | null; volume: number | null; rate: number | null }) =>
   o.amount != null && o.volume != null && o.rate != null && Math.abs(o.amount - o.volume * o.rate) / o.amount <= 0.08;
 
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -251,3 +252,5 @@ export async function POST(req: Request) {
     });
   }
 }
+
+export const POST = withApiErrors(handlePOST);

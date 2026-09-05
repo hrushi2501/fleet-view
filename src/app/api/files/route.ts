@@ -1,3 +1,4 @@
+import { withApiErrors } from "@/lib/api-error";
 import { get } from "@vercel/blob";
 import { NextResponse } from "next/server";
 
@@ -34,7 +35,7 @@ async function canReadAssetFile(access: Access, assetId: string | null) {
  * token, or arbitrary fetch target; an unknown or unauthorized reference is a
  * uniform 404 to avoid record enumeration.
  */
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const blobUrl = new URL(req.url).searchParams.get("blob");
   if (!blobUrl || !isPrivateBlobUrl(blobUrl)) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const storedUrl = privateFileUrl(blobUrl);
@@ -113,3 +114,5 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "File unavailable" }, { status: 404 });
   }
 }
+
+export const GET = withApiErrors(handleGET);

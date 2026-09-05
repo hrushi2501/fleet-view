@@ -7,6 +7,7 @@ import { checkLock, recordFailure, clearFailures, MAX_ATTEMPTS } from "@/lib/log
 import { reserveRateLimit, clientIp } from "@/lib/request-rate-limit";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { safe } from "@/lib/guard";
 
 /**
  * Sign-in.
@@ -20,11 +21,12 @@ import { redirect } from "next/navigation";
  *  - The failure message never distinguishes an unknown address from a wrong
  *    password, so the form cannot be used to enumerate who holds an account.
  */
-export async function login(_prev: unknown, formData: FormData) {
+async function loginImpl(_prev: unknown, formData: FormData) {
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const password = String(formData.get("password") || "");
 
   if (!email || !password) return { error: "Enter your email and password." };
+  if (email.length > 254 || password.length > 1024) return { error: "Invalid email or password." };
 
   const headerStore = await headers();
   const ip = clientIp(headerStore);
@@ -40,6 +42,8 @@ export async function login(_prev: unknown, formData: FormData) {
   }
 
   const lock = await checkLock(email);
+  const accountLimit = await reserveRateLimit({ scope: "login-account", subject: email, limit: 10, windowMs: 15 * 60_000 });
+  if (!accountLimit.ok) return { error: "Too many sign-in attempts. Please try again in 15 minutes." };
   if (lock.locked) {
     const mins = Math.ceil(lock.retryInSeconds / 60);
     return { error: `Too many failed attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.` };
@@ -88,3 +92,5 @@ export async function login(_prev: unknown, formData: FormData) {
 
   redirect(user.role === "Driver" ? "/my" : "/");
 }
+
+export const login = safe(loginImpl);

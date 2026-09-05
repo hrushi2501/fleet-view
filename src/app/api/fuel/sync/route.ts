@@ -1,3 +1,4 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { checkSharedSecret } from "@/lib/auth";
 import { requireApi } from "@/lib/access";
@@ -53,10 +54,13 @@ async function handleSync(req: Request) {
   return NextResponse.json(result, { status: result.ok ? 200 : 502 });
 }
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   return handleSync(req);
 }
 
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   return handleSync(req);
 }
+
+export const GET = withApiErrors(handleGET);
+export const POST = withApiErrors(handlePOST);
