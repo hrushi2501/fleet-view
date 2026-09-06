@@ -10,6 +10,7 @@ import { Radio, QrCode, Satellite, Smartphone, TriangleAlert, ArrowLeft } from "
 import Link from "next/link";
 import { assetScope, requirePage } from "@/lib/access";
 import { CONFIDENCE_LABEL } from "@/lib/navigation";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +50,7 @@ export default async function TripsPage() {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Trips</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Trips" /></h1>
           <p className="text-sm text-slate-500">
             Who is on which machine right now, and where each vehicle&apos;s data comes from
           </p>

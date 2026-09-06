@@ -10,6 +10,7 @@ import { inr, num } from "@/lib/utils";
 import { ArrowLeft, Download, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import Link from "next/link";
 import { requirePage, assetScope } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -154,7 +155,7 @@ export default async function ManagementSummaryPage() {
       </Link>
 
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink-900">Management Summary</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Management Summary" /></h1>
         <p className="text-sm text-slate-500">
           Every module on one page, last 12 months. A dash means the figure cannot be computed yet — not that it is zero.
         </p>

@@ -6,6 +6,7 @@ import { inr, num } from "@/lib/utils";
 import { ShieldCheck, TriangleAlert, Users, KeyRound } from "lucide-react";
 import Link from "next/link";
 import { requireAdminPage } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export default async function RolesPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Roles &amp; Permissions</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Roles &amp; Permissions" /></h1>
           <p className="text-sm text-slate-500">
             Who may do what, and what they may approve — stored as data, so no redeploy to re-cut
           </p>

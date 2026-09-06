@@ -20,6 +20,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { AlertTriangle, RotateCw, ArrowLeft } from "lucide-react";
+import { Txt } from "@/components/Txt";
 
 export default function ErrorPage({
   error,
@@ -41,7 +42,7 @@ export default function ErrorPage({
           <AlertTriangle className="h-6 w-6 text-amber-600" />
         </div>
 
-        <h1 className="mt-5 text-lg font-bold text-ink-900">This screen could not load</h1>
+        <h1 className="mt-5 text-lg font-bold text-ink-900"><Txt text="This screen could not load" /></h1>
         <p className="mt-2 text-sm text-slate-500">
           Nothing you entered has been lost, and you are still signed in. Try loading it again — if
           it keeps happening, send the reference below to your administrator.

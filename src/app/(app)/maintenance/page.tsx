@@ -10,6 +10,7 @@ import { inr, num, fmtDate, timeAgo, STATUS_COLOR, ASSET_CLASS_LABEL } from "@/l
 import { Wrench, TriangleAlert, Clock, BadgeCheck, Brain, CalendarClock, Activity, IndianRupee, Users, LayoutGrid, ListFilter, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { requirePage, assetScope } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -152,8 +153,8 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Maintenance Management</h1>
-          <p className="text-sm text-slate-500">Preventive &amp; breakdown maintenance, work orders, downtime &amp; warranty</p>
+          <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Maintenance Management" /></h1>
+          <p className="text-sm text-slate-500"><Txt text="Preventive &amp; breakdown maintenance, work orders, downtime &amp; warranty" /></p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <PreOpChecklistForm assets={assetOpts} />

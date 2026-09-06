@@ -8,6 +8,7 @@ import Link from "next/link";
 
 import { supportedQty, type ContractLite, type LogLite } from "@/lib/hire";
 import { requirePage, assetScope } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -215,7 +216,7 @@ export default async function CostsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Total Cost &amp; Profit</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Total Cost &amp; Profit" /></h1>
           <p className="text-sm text-slate-500">
             True cost per km, per engine-hour and per m³ — assembled from fuel, workshop and hire, not hand-keyed
           </p>

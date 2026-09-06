@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { requirePage, assetScope, projectScope } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -105,7 +106,7 @@ export default async function SitesPage() {
       {/* ──────────── HEADER ──────────── */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Sites &amp; Projects</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Sites &amp; Projects" /></h1>
           <p className="text-sm text-slate-500">
             Manage your construction sites — allocate machines, track geofences, and control costs
           </p>

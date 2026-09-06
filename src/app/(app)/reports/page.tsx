@@ -5,6 +5,7 @@ import { BellRing, FileDown, FileText } from "lucide-react";
 import Link from "next/link";
 import { REPORT_CATALOGUE } from "@/lib/reporting";
 import { requirePage, assetScope } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -51,8 +52,8 @@ export default async function ReportsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink-900">Reports</h1>
-        <p className="text-sm text-slate-500">Live performance measures with their targets, plus every report you can pull</p>
+        <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Reports" /></h1>
+        <p className="text-sm text-slate-500"><Txt text="Live performance measures with their targets, plus every report you can pull" /></p>
       </div>
 
       <Card>

@@ -3,6 +3,7 @@ import { PageTabs, resolveTab, type Tab } from "@/components/PageTabs";
 import { ProblemQueue } from "./_sections/ProblemQueue";
 import { LossCases } from "./_sections/LossCases";
 import { FuelInsights } from "./_sections/FuelInsights";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,7 @@ export default async function FuelProblemsPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink-900">Fuel Problems</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Fuel Problems" /></h1>
         <p className="text-sm text-slate-500">
           Diesel jo hisaab mein nahi aaya — kahan gaya, kisne dekha, kitna wapas mila
         </p>

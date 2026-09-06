@@ -2,6 +2,7 @@ import { requirePage } from "@/lib/access";
 import { PageTabs, resolveTab, type Tab } from "@/components/PageTabs";
 import { Overview } from "./_sections/Overview";
 import { FuelRecords } from "./_sections/FuelRecords";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -30,8 +31,8 @@ export default async function FuelPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink-900">Fuel</h1>
-        <p className="text-sm text-slate-500">Kitna diesel gaya, kis gaadi mein, aur kya mila uske badle</p>
+        <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Fuel" /></h1>
+        <p className="text-sm text-slate-500"><Txt text="Kitna diesel gaya, kis gaadi mein, aur kya mila uske badle" /></p>
       </div>
 
       <PageTabs tabs={TABS} active={tab} basePath="/fuel" />

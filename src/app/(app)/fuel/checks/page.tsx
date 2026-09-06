@@ -7,6 +7,7 @@ import { Camera, CheckCircle2, TriangleAlert, Gauge, ArrowLeft } from "lucide-re
 import Link from "next/link";
 import { requirePage } from "@/lib/access";
 import { assetsWithFuelSensor } from "@/lib/fuel-sensor";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +59,7 @@ export default async function FuelChecksPage() {
       </Link>
 
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink-900">Fuel Checks</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Fuel Checks" /></h1>
         <p className="text-sm text-slate-500">
           Fuel levels read from a photo of the gauge, for vehicles with no fuel sensor. Anything unclear waits here for a person.
         </p>

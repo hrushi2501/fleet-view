@@ -4,6 +4,7 @@ import { num, fmtDate, timeAgo } from "@/lib/utils";
 import { KeyRound, Activity, Users, ArrowLeft, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { requireAdminPage } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,7 @@ export default async function AuditPage() {
       </Link>
 
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink-900">Audit Log</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Audit Log" /></h1>
         <p className="text-sm text-slate-500">
           Append-only record of who did what. Nothing in the app edits or deletes these rows.
         </p>

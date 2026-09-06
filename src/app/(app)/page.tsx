@@ -8,6 +8,7 @@ import Link from "next/link";
 import { businessDayShort } from "@/lib/business-time";
 import { requirePage, assetScope } from "@/lib/access";
 import { MorningActionCenter } from "@/components/MorningActionCenter";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -166,7 +167,7 @@ export default async function Dashboard() {
     <div className="space-y-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Dashboard</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Dashboard" /></h1>
           <p className="text-sm text-slate-500">Aaj kya chal raha hai · {num(totalAssets)} vehicles and machines</p>
         </div>
         <Badge color="bg-emerald-100 text-emerald-700 ring-emerald-600/20">

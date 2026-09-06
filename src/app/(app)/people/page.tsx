@@ -3,6 +3,7 @@ import { PageTabs, resolveTab, type Tab } from "@/components/PageTabs";
 import { Workforce } from "./_sections/Workforce";
 import { PeopleRecords } from "./_sections/PeopleRecords";
 import { DriverVehicleHistory } from "./_sections/DriverVehicleHistory";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -35,8 +36,8 @@ export default async function PeoplePage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink-900">People</h1>
-        <p className="text-sm text-slate-500">Kaun kaam par hai, kiske paas kaunsa licence hai</p>
+        <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="People" /></h1>
+        <p className="text-sm text-slate-500"><Txt text="Kaun kaam par hai, kiske paas kaunsa licence hai" /></p>
       </div>
 
       <PageTabs tabs={TABS} active={tab} basePath="/people" />

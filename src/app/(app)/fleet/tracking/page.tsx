@@ -5,6 +5,7 @@ import { TelematicsSyncBanner } from "@/components/TelematicsSyncBanner";
 import { getTataSyncStatus } from "@/lib/tata-fleet-edge";
 import { FleetEdgeConsole } from "@/components/FleetEdgeConsole";
 import { getLiveFleet } from "@/lib/fleet-edge-live";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +39,7 @@ export default async function VehicleTrackingPage({
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink-900">Vehicle Tracking</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Vehicle Tracking" /></h1>
         <p className="text-sm text-slate-500">
           Live position and status of every vehicle and machine across all sites
         </p>

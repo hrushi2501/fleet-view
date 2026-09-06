@@ -14,6 +14,7 @@ import { requirePage, assetScope } from "@/lib/access";
 import { detectFills } from "@/lib/fuel-fill-reconcile";
 import { dailyFillsByVehicle } from "@/lib/fuel-daily-fills";
 import { lastTheftScan } from "@/lib/theft-scan-status";
+import { Txt } from "@/components/Txt";
 
 /**
  * Diesel in, diesel out, and what it bought — the module's front page.
@@ -112,7 +113,7 @@ export async function Overview() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-ink-900">Fuel Use &amp; Mileage</h2>
-          <p className="text-sm text-slate-500">Mileage and cost per km for each vehicle, and fills that look wrong</p>
+          <p className="text-sm text-slate-500"><Txt text="Mileage and cost per km for each vehicle, and fills that look wrong" /></p>
         </div>
         <FuelEntry assets={assetOpts} projects={projOpts} defaultRate={dieselRate} />
       </div>

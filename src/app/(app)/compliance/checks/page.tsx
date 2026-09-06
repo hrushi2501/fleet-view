@@ -6,6 +6,7 @@ import { inr, num, ASSET_CLASS_LABEL } from "@/lib/utils";
 import { ShieldCheck, Ban, FileWarning, IndianRupee, ArrowLeft, FileX2 } from "lucide-react";
 import Link from "next/link";
 import { requirePage, assetScope } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +63,7 @@ export default async function ComplianceChecksPage() {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Documents &amp; Checks</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Documents &amp; Checks" /></h1>
           <p className="text-sm text-slate-500">
             Is each machine legal to send out today — including the documents that were never recorded at all
           </p>

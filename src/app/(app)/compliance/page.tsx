@@ -6,6 +6,7 @@ import { num, fmtDate, STATUS_COLOR } from "@/lib/utils";
 import { ShieldCheck, ShieldAlert, ShieldX, FileText } from "lucide-react";
 import Link from "next/link";
 import { requirePage, assetScope } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -27,8 +28,8 @@ export default async function CompliancePage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-ink-900">Compliance &amp; Documents</h1>
-          <p className="text-sm text-slate-500">RC, Insurance, Fitness, Permits, PUC, Road Tax</p>
+          <h1 className="text-2xl font-bold text-ink-900"><Txt text="Compliance &amp; Documents" /></h1>
+          <p className="text-sm text-slate-500"><Txt text="RC, Insurance, Fitness, Permits, PUC, Road Tax" /></p>
         </div>
         <ComplianceEntry assets={assetOpts} />
       </div>

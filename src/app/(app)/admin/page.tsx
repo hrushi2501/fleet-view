@@ -6,6 +6,7 @@ import { ROLE_LABEL } from "@/lib/auth";
 import { num, fmtDate } from "@/lib/utils";
 import { Users, Shield, Truck } from "lucide-react";
 import { requireAdminPage } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -27,8 +28,8 @@ export default async function AdminUsersPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Users &amp; Access</h1>
-          <p className="text-sm text-slate-500">Create login accounts — admins get full access, drivers get the fuel-entry portal only</p>
+          <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Users &amp; Access" /></h1>
+          <p className="text-sm text-slate-500"><Txt text="Create login accounts — admins get full access, drivers get the fuel-entry portal only" /></p>
         </div>
         <UserEntry />
       </div>

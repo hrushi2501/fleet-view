@@ -12,6 +12,7 @@ import { inr, num, fmtDate } from "@/lib/utils";
 import { Scale, TriangleAlert, FileQuestion, IndianRupee } from "lucide-react";
 import Link from "next/link";
 import { projectIdScope, requirePage } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -88,7 +89,7 @@ export default async function MaterialsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Material Weighing</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Material Weighing" /></h1>
           <p className="text-sm text-slate-500">
             Kitna maal nikla aur kitna pahuncha — every load weighed out, weighed in, and the gap between the two
           </p>

@@ -7,6 +7,7 @@ import { SnoozeModal, AlertActionButtons, RaiseWoFromReminderButton } from "@/co
 import { pmDue, type ScheduleLite } from "@/lib/maintenance";
 import Link from "next/link";
 import { requirePage, assetScope } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -77,8 +78,8 @@ export default async function RemindersPage({ searchParams }: { searchParams: Pr
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Service Due &amp; Reminders</h1>
-          <p className="text-sm text-slate-500">Multi-meter preventive service alerts, compliance expiries, and active breakdowns</p>
+          <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Service Due &amp; Reminders" /></h1>
+          <p className="text-sm text-slate-500"><Txt text="Multi-meter preventive service alerts, compliance expiries, and active breakdowns" /></p>
         </div>
         <div className="flex items-center gap-2">
           <PushButton />

@@ -9,6 +9,7 @@ import { isTataEnabled, missingConfigKeys, TATA_PROVIDER_CODE } from "@/lib/tata
 import { num, fmtDate, timeAgo } from "@/lib/utils";
 import { Activity, Database, PlugZap, TriangleAlert } from "lucide-react";
 import { requireAdminPage } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -80,7 +81,7 @@ export default async function DiagnosticsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink-900">Advanced Diagnostics</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Advanced Diagnostics" /></h1>
         <p className="text-sm text-slate-500">
           Provider sync state, raw telemetry payloads and data-quality checks. Technical detail lives here so the
           operational screens do not have to carry it.

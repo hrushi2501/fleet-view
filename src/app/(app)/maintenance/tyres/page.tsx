@@ -6,6 +6,7 @@ import { inr, num, fmtDate } from "@/lib/utils";
 import { CircleDot, TriangleAlert, IndianRupee, ShieldAlert, Recycle, Warehouse } from "lucide-react";
 import Link from "next/link";
 import { requirePage, assetScope } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -84,7 +85,7 @@ export default async function TyresPage({ searchParams }: { searchParams: Promis
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Tyres &amp; Parts</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Tyres &amp; Parts" /></h1>
           <p className="text-sm text-slate-500">
             Every casing tracked by serial — cost per kilometre, life remaining, and swaps that don&apos;t add up
           </p>

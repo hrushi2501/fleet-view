@@ -8,6 +8,7 @@ import { PayrollBoard } from "./_sections/PayrollBoard";
 import { WageBook } from "./_sections/WageBook";
 import { PageTabs, resolveTab, type Tab } from "@/components/PageTabs";
 import { IndianRupee, Users, CalendarCheck, Wallet } from "lucide-react";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -68,7 +69,7 @@ export default async function PayrollPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink-900">Payroll</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Payroll" /></h1>
         <p className="text-sm text-slate-500">
           Wages worked out from the attendance register — kitna paisa banta hai
         </p>

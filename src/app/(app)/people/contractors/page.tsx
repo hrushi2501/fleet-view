@@ -7,6 +7,7 @@ import { inr, num, fmtDate, ASSET_CLASS_LABEL } from "@/lib/utils";
 import { Handshake, TriangleAlert, Gauge, CalendarClock } from "lucide-react";
 import Link from "next/link";
 import { requirePage, assetScope } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -77,7 +78,7 @@ export default async function ContractorsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Contractors &amp; Hired Machines</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Contractors &amp; Hired Machines" /></h1>
           <p className="text-sm text-slate-500">
             Track hired assets, contractor rates, working logs, and equipment utilization
           </p>
