@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { auditExtension } from "./audit-extension";
+import { fuelEvidenceSchemaCompatExtension } from "./fuel-evidence-schema-compat";
 
 /**
  * Build a runtime-safe connection URL.
@@ -75,4 +76,9 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = rawDb;
  * caller having to remember. See `audit-extension.ts` for what that covers and,
  * more importantly, what it deliberately does not.
  */
-export const db = rawDb.$extends(auditExtension) as unknown as PrismaClient;
+// Keep the compatibility retry outside the audit extension. A fuel write is
+// audited only after its retried database operation succeeds, never after the
+// initial rejected attempt against an older schema.
+export const db = rawDb
+  .$extends(auditExtension)
+  .$extends(fuelEvidenceSchemaCompatExtension) as unknown as PrismaClient;

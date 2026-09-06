@@ -27,6 +27,12 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   transpilePackages: ["lucide-react"],
+  // A driver may attach up to three optional refuelling verification images. The
+  // wizard compresses each to at most 2 MB (6 MB total); leave room for multipart
+  // boundaries while retaining a firm limit against oversized action bodies.
+  experimental: {
+    serverActions: { bodySizeLimit: "8mb" },
+  },
   turbopack: {
     root: path.join(__dirname),
   },

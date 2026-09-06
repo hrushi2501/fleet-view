@@ -26,7 +26,11 @@ export async function Overview() {
   // Rows, not just the page: a scoped supervisor sees their own sites.
   const visible = assetScope(access);
   const [issues, _receipts, tanks, assets, projects] = await Promise.all([
-    db.fuelTransaction.findMany({ where: { type: "ISSUE", asset: visible }, include: { asset: true }, orderBy: { date: "asc" } }),
+    db.fuelTransaction.findMany({
+      where: { type: "ISSUE", asset: visible },
+      include: { asset: true, session: { select: { driver: { select: { name: true, empCode: true } } } } },
+      orderBy: { date: "asc" },
+    }),
     db.fuelTransaction.findMany({ where: { type: "RECEIPT" } }),
     db.fuelTank.findMany(),
     db.asset.findMany({ orderBy: { code: "asc" } }),
@@ -245,7 +249,7 @@ export async function Overview() {
                 <th className="px-5 py-3 font-medium">Date</th>
                 <th className="px-5 py-3 font-medium">Vehicle</th>
                 <th className="px-5 py-3 font-medium">Litres</th>
-                <th className="px-5 py-3 font-medium">Recorded by</th>
+                <th className="px-5 py-3 font-medium">Driver / source</th>
                 <th className="px-5 py-3 font-medium">Odometer</th>
                 <th className="px-5 py-3 font-medium">Rate ₹/L</th>
                 <th className="px-5 py-3 font-medium">Amount</th>
@@ -267,7 +271,14 @@ export async function Overview() {
                     <td className="px-5 py-3">{a ? <Link href={`/fleet/${a.id}`} className="font-semibold text-brand-700 hover:underline">{a.code}</Link> : "—"}</td>
                     <td className="px-5 py-3 font-medium text-ink-900">{num(f.quantity)} L</td>
                     <td className="px-5 py-3">
-                      {f.captureMethod === "SENSOR" ? (
+                      {f.session?.driver ? (
+                        <span className="inline-flex flex-col rounded-md bg-brand-50 px-2 py-1 text-[11px] font-medium text-brand-700 ring-1 ring-inset ring-brand-200">
+                          <span>{f.session.driver.name}</span>
+                          <span className="text-brand-500">{f.session.driver.empCode} · active claim</span>
+                        </span>
+                      ) : f.issuedBy ? (
+                        <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-inset ring-slate-200">{f.issuedBy}</span>
+                      ) : f.captureMethod === "SENSOR" ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200">
                           Tank sensor
                         </span>
@@ -289,7 +300,8 @@ export async function Overview() {
                       <div className="flex gap-1">
                         {f.odometerPhoto && <a href={f.odometerPhoto} target="_blank" rel="noreferrer"><img src={f.odometerPhoto} alt="odo" className="h-9 w-9 rounded object-cover ring-1 ring-slate-200" /></a>}
                         {f.pumpPhoto && <a href={f.pumpPhoto} target="_blank" rel="noreferrer"><img src={f.pumpPhoto} alt="pump" className="h-9 w-9 rounded object-cover ring-1 ring-slate-200" /></a>}
-                        {!f.odometerPhoto && !f.pumpPhoto && <span className="text-slate-300">—</span>}
+                        {f.afterOdometerPhoto && <a href={f.afterOdometerPhoto} target="_blank" rel="noreferrer"><img src={f.afterOdometerPhoto} alt="dashboard after fuelling" className="h-9 w-9 rounded object-cover ring-1 ring-slate-200" /></a>}
+                        {!f.odometerPhoto && !f.pumpPhoto && !f.afterOdometerPhoto && <span className="text-slate-300">—</span>}
                       </div>
                     </td>
                     <td className="px-5 py-3">{f.geofenceOk === false ? <Badge color="bg-rose-100 text-rose-700 ring-rose-600/20">Outside area</Badge> : <Badge color="bg-emerald-100 text-emerald-700 ring-emerald-600/20">OK</Badge>}</td>

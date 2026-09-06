@@ -7,6 +7,7 @@ import { getTelemetryAdapter } from "@/lib/telematics-adapters";
 import { normaliseReading, assetCacheUpdate, detectSchemaDrift, describeDrift, readTelemetryJson } from "@/lib/telemetry-normalization";
 import { db } from "@/lib/db";
 import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
+import { recordTelemetryFuelAnomaly, type FuelAnomalyAsset } from "@/lib/tata-fleet-edge";
 
 export const dynamic = "force-dynamic";
 
@@ -171,7 +172,7 @@ async function handlePOST(req: Request) {
         },
         select: {
           id: true, code: true, fuelCapacity: true, meterValue: true,
-          hourMeterValue: true, primaryMeter: true, telematicsProviderId: true,
+          hourMeterValue: true, primaryMeter: true, telematicsProviderId: true, assetClass: true,
         },
       });
 
@@ -187,7 +188,10 @@ async function handlePOST(req: Request) {
       const previous = await db.telemetryReading.findFirst({
         where: { assetId: asset.id, odometerKm: { not: null } },
         orderBy: { recordedAt: "desc" },
-        select: { odometerKm: true, engineHours: true },
+        select: {
+          recordedAt: true, lat: true, lng: true, speedKph: true, odometerKm: true,
+          fuelLevelL: true, fuelLevelPct: true, ignitionOn: true, engineHours: true,
+        },
       });
 
       const result = normaliseReading(p, {
@@ -223,7 +227,7 @@ async function handlePOST(req: Request) {
         select: { id: true },
       });
 
-      await db.telemetryReading.create({
+      const created = await db.telemetryReading.create({
         data: {
           assetId: asset.id,
           recordedAt: r.recordedAt,
@@ -241,6 +245,20 @@ async function handlePOST(req: Request) {
           raw: (p.rawPayload ?? {}) as Prisma.InputJsonValue,
         },
       });
+
+      if (previous) {
+        await recordTelemetryFuelAnomaly(
+          asset as FuelAnomalyAsset,
+          previous,
+          {
+            recordedAt: r.recordedAt, lat: r.lat, lng: r.lng, speedKph: r.speedKph,
+            odometerKm: r.odometerKm, fuelLevelL: r.fuelLevelL,
+            fuelLevelPct: r.fuelLevelPct, ignitionOn: r.ignitionOn,
+          },
+          created.id,
+          asset.fuelCapacity,
+        );
+      }
 
       await db.asset.update({
         where: { id: asset.id },

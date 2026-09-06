@@ -59,8 +59,28 @@ Privileged schema operations belong in a separate operator workflow.
 
 Before releasing changes that touch database access, run `npm run db:check` locally
 against the intended database. This is read-only and checks table/column parity;
-it does not prove indexes, RLS, or every workflow. RLS checks and privileged changes
-are covered in [Security operations](SECURITY-OPERATIONS.md).
+it does not prove indexes, RLS, or every workflow. The Vercel build runs the same
+read-only gate before compiling, so a missing database column blocks deployment
+instead of becoming a runtime page error. RLS checks and privileged changes are
+covered in [Security operations](SECURITY-OPERATIONS.md).
+
+### Additive fuel-evidence schema update
+
+This revision adds the optional post-fill dashboard evidence field. **Before** its
+first Vercel deployment, an operator with database-owner access must apply the
+reviewed, additive SQL once:
+
+```bash
+node --env-file=.env.local scripts/run-sql-file.mjs prisma/sql/add-fuel-refuelling-evidence.sql
+npm run db:check
+npm run db:rls:verify
+```
+
+Run that against the intended production database only after confirming the
+connection string. The deployment intentionally does not run migrations; applying
+the column first makes the code rollout safe and keeps Vercel runtime credentials
+unprivileged. The dashboard-before, pump, and dashboard-after photos remain
+optional verification evidence, so fuel logging itself never depends on a camera.
 
 An empty Supabase database is **not** initialized by deployment. Provision its schema,
 access controls, and first administrator through a reviewed one-time setup. Never run

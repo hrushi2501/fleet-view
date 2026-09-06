@@ -168,7 +168,7 @@ export function PlaybackBar({
   }, [meta]);
 
   return (
-    <div className="absolute bottom-3 left-1/2 z-[1001] w-[min(46rem,calc(100%-1.5rem))] -translate-x-1/2 rounded-xl bg-white/97 p-3 shadow-2xl ring-1 ring-black/10 backdrop-blur">
+    <div className="absolute bottom-3 left-1/2 z-1001 w-[min(46rem,calc(100%-1.5rem))] -translate-x-1/2 rounded-xl bg-white/97 p-3 shadow-2xl ring-1 ring-black/10 backdrop-blur">
       <div className="flex items-center gap-2.5">
         <button
           onClick={() => {

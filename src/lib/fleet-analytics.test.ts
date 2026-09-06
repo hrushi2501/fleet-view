@@ -239,6 +239,16 @@ describe("TEST 6 — impossible fuel drop", () => {
     assert.equal(seg.excessLitres, 0, "no litres at risk should be claimed from a sensor fault");
     assert.equal(seg.litresConsumed, null);
   });
+
+  test("a 30 L fall in ten minutes is a rapid-change investigation signal", () => {
+    const a = reading({ recordedAt: at(0), odometerKm: 5_000, fuelLevelL: 200, ignitionOn: true });
+    const b = reading({ recordedAt: at(10), odometerKm: 5_001, fuelLevelL: 170, ignitionOn: true });
+    const seg = analyseSegment(a, b, TRUCK_NORM, TANK);
+
+    assert.equal(seg.event, "IMPLAUSIBLE_DROP");
+    assert.equal(seg.excessLitres, 0, "the detector must not label an unverified change as a loss");
+    assert.ok(seg.reasons.some((reason) => /30\.0 L in 10 min/i.test(reason)));
+  });
 });
 
 describe("TEST 7 — multiple tanks", () => {

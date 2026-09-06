@@ -125,14 +125,17 @@ function ViewController({
   markers,
   selectedId,
   focusRequest,
+  focusRightInsetPx,
 }: {
   markers: FleetEdgeMapMarker[];
   selectedId: string | null;
   focusRequest: number;
+  /** Pixels covered by the desktop list/detail drawers on the right. */
+  focusRightInsetPx: number;
 }) {
   const map = useMap();
   const fitted = useRef(false);
-  const lastFocusRequest = useRef<number | null>(null);
+  const lastFocusKey = useRef<string | null>(null);
 
   useEffect(() => {
     if (fitted.current) return;
@@ -146,11 +149,26 @@ function ViewController({
   }, [markers, map]);
 
   useEffect(() => {
-    if (!selectedId || focusRequest === lastFocusRequest.current) return;
-    lastFocusRequest.current = focusRequest;
+    // Leaflet centres against the whole container, but the vehicle list and
+    // inspector deliberately cover its right side. Centre against the exposed
+    // part instead, so the selected truck is not hidden beneath those drawers.
+    // Re-run if the drawers finish opening after the original click.
+    const focusKey = `${focusRequest}:${focusRightInsetPx}`;
+    if (!selectedId || focusKey === lastFocusKey.current) return;
+    lastFocusKey.current = focusKey;
     const hit = markers.find((m) => m.id === selectedId);
-    if (hit) map.flyTo([hit.lat, hit.lng], VEHICLE_FOCUS_ZOOM, { duration: 0.8 });
-  }, [selectedId, focusRequest, markers, map]);
+    if (!hit) return;
+
+    const width = map.getSize().x;
+    // Keep at least 160 px of visible map on narrow screens. The resulting
+    // target can never be pushed outside Leaflet's usable viewport.
+    const inset = Math.max(0, Math.min(focusRightInsetPx, Math.max(0, width - 160)));
+    const desiredCenter = map.unproject(
+      map.project([hit.lat, hit.lng], VEHICLE_FOCUS_ZOOM).add([inset / 2, 0]),
+      VEHICLE_FOCUS_ZOOM,
+    );
+    map.flyTo(desiredCenter, VEHICLE_FOCUS_ZOOM, { duration: 0.8 });
+  }, [selectedId, focusRequest, focusRightInsetPx, markers, map]);
 
   return null;
 }
@@ -244,6 +262,7 @@ export default function FleetEdgeMap({
   markers,
   selectedId,
   focusRequest,
+  focusRightInsetPx,
   onSelect,
   view,
   track,
@@ -252,6 +271,7 @@ export default function FleetEdgeMap({
   markers: FleetEdgeMapMarker[];
   selectedId: string | null;
   focusRequest: number;
+  focusRightInsetPx: number;
   onSelect: (id: string) => void;
   view: MapView;
   track?: TrackPoint[] | null;
@@ -286,7 +306,12 @@ export default function FleetEdgeMap({
         </>
       )}
 
-      <ViewController markers={markers} selectedId={selectedId} focusRequest={focusRequest} />
+      <ViewController
+        markers={markers}
+        selectedId={selectedId}
+        focusRequest={focusRequest}
+        focusRightInsetPx={focusRightInsetPx}
+      />
 
       {track && track.length > 0 && (
         <>

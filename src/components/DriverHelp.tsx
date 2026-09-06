@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronRight, CircleHelp, Fuel, QrCode, Wrench, type LucideIcon } from "lucide-react";
+import { ChevronRight, CircleHelp, FileText, Fuel, QrCode, Wrench, type LucideIcon } from "lucide-react";
 
 type Language = "hi" | "en";
 
@@ -20,7 +20,8 @@ const HELP: Record<Language, { title: string; intro: string; support: string; ta
       { icon: QrCode, href: "/my", title: "ड्यूटी शुरू करें", steps: ["My Work खोलें", "कैबिन का QR स्कैन करें", "संदेश देखकर शुरू करें"] },
       { icon: Fuel, href: "/my/fuel?action=fuel", title: "डीज़ल भरें", steps: ["Fuel खोलें", "लीटर और मीटर भरें", "मांगी गई फोटो जोड़ें"] },
       { icon: QrCode, href: "/my", title: "ड्यूटी खत्म करें", steps: ["My Work खोलें", "End duty दबाएँ", "कैबिन का QR स्कैन करें"] },
-      { icon: Wrench, href: "/my/service", title: "समस्या बताएं", steps: ["Service खोलें", "समस्या चुनें या लिखें", "सुपरवाइज़र के निर्देश देखें"] },
+      { icon: Wrench, href: "/my/report", title: "समस्या या दुर्घटना बताएं", steps: ["Report खोलें", "समस्या चुनें या आवाज़ में बताएं", "दुर्घटना में पहले 112 कॉल करें"] },
+      { icon: FileText, href: "/my/policies", title: "ऐप के नियम और प्राइवेसी", steps: ["Policies खोलें", "अपना डेटा कैसे इस्तेमाल होता है पढ़ें", "सवाल हो तो सुपरवाइज़र या HR से पूछें"] },
     ],
   },
   en: {
@@ -29,7 +30,8 @@ const HELP: Record<Language, { title: string; intro: string; support: string; ta
       { icon: QrCode, href: "/my", title: "Start duty", steps: ["Open My Work", "Scan the cabin QR", "Read the confirmation"] },
       { icon: Fuel, href: "/my/fuel?action=fuel", title: "Add diesel", steps: ["Open Fuel", "Enter litres and meter", "Add requested photos"] },
       { icon: QrCode, href: "/my", title: "End duty", steps: ["Open My Work", "Tap End duty", "Scan the cabin QR"] },
-      { icon: Wrench, href: "/my/service", title: "Report a problem", steps: ["Open Service", "Choose or describe the problem", "Check supervisor instructions"] },
+      { icon: Wrench, href: "/my/report", title: "Report a problem or accident", steps: ["Open Report", "Choose it or record a voice note", "For an accident, call 112 first"] },
+      { icon: FileText, href: "/my/policies", title: "App rules and privacy", steps: ["Open Policies", "Read how work data is used", "Ask your supervisor or HR if unsure"] },
     ],
   },
 };

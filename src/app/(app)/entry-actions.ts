@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { businessTransaction } from "@/lib/business-transaction";
-import { formNumber } from "@/lib/input-validation";
+import { finiteNumber, formNumber } from "@/lib/input-validation";
 import { assertRecordAccess, assertFormAccess, assertGlobalAccess } from "@/lib/record-access";
 import { changeWorkOrderStatus } from "@/lib/work-order-service";
 import { revalidatePath } from "next/cache";
@@ -13,6 +13,7 @@ import { audit } from "@/lib/audit";
 import { uploadPrivateFile } from "@/lib/private-upload";
 import { canSeeAsset } from "@/lib/access";
 import { driverFuelFillNotification } from "@/lib/notification-events";
+import { driverFuelDetails } from "@/lib/driver-refuelling";
 
 async function uploadPhoto(file: FormDataEntryValue | null, prefix: string): Promise<string | null> {
   if (!file || typeof file === "string") return null;
@@ -281,20 +282,25 @@ async function saveFuel__impl(fd: FormData) {
   const access = await requireAction("fuel.issue");
   await assertFormAccess(access, fd);
   const type = s(fd, "type") || "ISSUE";
+  if (access.group === "DRIVER" && type !== "ISSUE") {
+    throw new ActionError("Drivers can record fuel issued to their checked-in vehicle only.");
+  }
   const quantity = n(fd, "quantity");
-  const rate = n(fd, "rate") || (await getDieselRate());
+  const postedAmount = String(fd.get("amount") ?? "").trim();
+  const amountFromDriver = postedAmount
+    ? finiteNumber(postedAmount, "Fuel amount", { min: 0.01, max: 500_000 })
+    : null;
+  const financials = access.group === "DRIVER"
+    ? driverFuelDetails(quantity, amountFromDriver ?? 0)
+    : { rate: n(fd, "rate") || (await getDieselRate()), amount: 0 };
+  const rate = financials.rate;
   const hasSensor = type === "ISSUE" && String(fd.get("sensorRise") ?? "").trim() !== "";
   const sensorRise = hasSensor ? n(fd, "sensorRise") : 0;
   const variancePct = hasSensor && quantity ? Math.round(((quantity - sensorRise) / quantity) * 1000) / 10 : 0;
   const anomaly = hasSensor && variancePct > 10;
-  const [odometerPhoto, pumpPhoto] = await Promise.all([
-    uploadPhoto(fd.get("odometerPhoto"), "odo"),
-    uploadPhoto(fd.get("pumpPhoto"), "pump"),
-  ]);
-
   // fill location captured from the driver's phone
-  const lat = s(fd, "lat") ? Number(fd.get("lat")) : null;
-  const lng = s(fd, "lng") ? Number(fd.get("lng")) : null;
+  const lat = s(fd, "lat") ? finiteNumber(fd.get("lat"), "Latitude", { min: -90, max: 90 }) : null;
+  const lng = s(fd, "lng") ? finiteNumber(fd.get("lng"), "Longitude", { min: -180, max: 180 }) : null;
   const assetId = s(fd, "assetId") || null;
 
   if (quantity <= 0) throw new ActionError("Fuel quantity must be greater than 0 litres.");
@@ -310,12 +316,24 @@ async function saveFuel__impl(fd: FormData) {
   // asset is their assigned vehicle before it can create either a fuel row or
   // the notification that follows it.
   let driverEvent: ReturnType<typeof driverFuelFillNotification> | null = null;
+  let driverName: string | null = null;
+  let claimedSessionId: string | null = null;
   if (access.group === "DRIVER") {
     if (!assetId || !access.driverId || !(await canSeeAsset(access, assetId))) {
       throw new ActionError("You may record fuel only for your assigned vehicle.");
     }
-    const driver = await db.driver.findUnique({ where: { id: access.driverId }, select: { id: true, name: true } });
+    const [driver, claimedSession] = await Promise.all([
+      db.driver.findUnique({ where: { id: access.driverId }, select: { id: true, name: true } }),
+      db.tripSession.findFirst({
+        where: { assetId, driverId: access.driverId, userId: access.session.id, status: "ACTIVE" },
+        orderBy: { startedAt: "desc" },
+        select: { id: true },
+      }),
+    ]);
     if (!driver || !asset) throw new ActionError("Your assigned vehicle could not be found.");
+    if (!claimedSession) throw new ActionError("Check in to this vehicle before recording fuel.");
+    driverName = driver.name;
+    claimedSessionId = claimedSession.id;
     driverEvent = driverFuelFillNotification({
       assetId: asset.id,
       assetCode: asset.code,
@@ -325,6 +343,15 @@ async function saveFuel__impl(fd: FormData) {
       rate,
     });
   }
+
+  // Camera captures are optional verification evidence. The fuel entry itself
+  // must remain usable when a low-end phone has no camera, storage, or signal.
+  // `uploadPhoto` returns null for an omitted capture, preserving that fact.
+  const [odometerPhoto, pumpPhoto, afterOdometerPhoto] = await Promise.all([
+    uploadPhoto(fd.get("odometerPhoto"), "odo-before"),
+    uploadPhoto(fd.get("pumpPhoto"), "pump"),
+    uploadPhoto(fd.get("afterOdometerPhoto"), "odo-after"),
+  ]);
 
   // geofence check: how far is the fill from the vehicle's known GPS position?
   let geofenceOk = fd.get("geofenceOk") !== "false";
@@ -343,18 +370,29 @@ async function saveFuel__impl(fd: FormData) {
       })
     : null;
 
+  const fuelledAt = new Date();
   await businessTransaction(access.session, async (tx) => {
+    // Re-read inside the serializable transaction. A checkout that won the
+    // race after the camera capture must not leave a fill linked to a closed
+    // or different driver's claim.
+    const session = access.group === "DRIVER"
+      ? await tx.tripSession.findFirst({
+          where: { id: claimedSessionId ?? "__none__", assetId: assetId!, driverId: access.driverId!, userId: access.session.id, status: "ACTIVE" },
+          select: { id: true, projectId: true },
+        })
+      : activeSession;
+    if (access.group === "DRIVER" && !session) throw new ActionError("Your vehicle check-in ended before this fuel record was saved. Check in again and retry.");
     await tx.fuelTransaction.create({
       data: {
         type,
         assetId,
         tankId,
-        sessionId: activeSession?.id ?? null,
+        sessionId: session?.id ?? null,
         source: tankId ? "SITE_TANK" : s(fd, "source") || "RETAIL",
-        projectId: s(fd, "projectId") || asset?.projectId || null,
+        projectId: access.group === "DRIVER" ? session?.projectId ?? asset?.projectId ?? null : s(fd, "projectId") || asset?.projectId || null,
         quantity,
         rate,
-        amount: quantity * rate,
+        amount: access.group === "DRIVER" ? financials.amount : quantity * rate,
         meterValue,
         sensorRise,
         variancePct,
@@ -362,9 +400,11 @@ async function saveFuel__impl(fd: FormData) {
         geofenceOk,
         odometerPhoto,
         pumpPhoto,
+        afterOdometerPhoto,
+        issuedBy: driverName ?? (s(fd, "issuedBy") || null),
         lat,
         lng,
-        date: new Date(),
+        date: fuelledAt,
       },
     });
 

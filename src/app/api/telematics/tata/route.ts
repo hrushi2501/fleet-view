@@ -7,6 +7,7 @@ import { normaliseReading, assetCacheUpdate, readTelemetryJson } from "@/lib/tel
 import { TataFleetEdgeAdapter } from "@/lib/telematics-adapters";
 import { cachedFuelFor } from "@/lib/fuel-cache";
 import type { TelemetryPing } from "@/lib/telematics-adapters";
+import { recordTelemetryFuelAnomaly, type FuelAnomalyAsset } from "@/lib/tata-fleet-edge";
 
 export const dynamic = "force-dynamic";
 // A push may carry the whole fleet in one body; allow room for a slow write.
@@ -111,7 +112,7 @@ async function resolveAsset(ping: TelemetryPing) {
       id: true, code: true, fuelCapacity: true, registrationNo: true,
       chassisNo: true, deviceId: true, telematicsProviderId: true,
       // Required by `assetCacheUpdate` to decide which meter a reading advances.
-      meterValue: true, hourMeterValue: true, primaryMeter: true,
+      meterValue: true, hourMeterValue: true, primaryMeter: true, assetClass: true,
     },
   });
 
@@ -364,7 +365,10 @@ async function handlePOST(req: Request) {
     const previous = await db.telemetryReading.findFirst({
       where: { assetId: asset.id, recordedAt: { lt: ping.timestamp } },
       orderBy: { recordedAt: "desc" },
-      select: { odometerKm: true, engineHours: true },
+      select: {
+        recordedAt: true, lat: true, lng: true, speedKph: true, odometerKm: true,
+        fuelLevelL: true, fuelLevelPct: true, ignitionOn: true, engineHours: true,
+      },
     });
 
     // The same validator the pull and the device route use, so a number
@@ -386,8 +390,9 @@ async function handlePOST(req: Request) {
       select: { id: true },
     });
 
+    let created: { id: string };
     try {
-      await db.telemetryReading.create({
+      created = await db.telemetryReading.create({
         data: {
           assetId: asset.id,
           recordedAt: r.recordedAt,
@@ -405,12 +410,26 @@ async function handlePOST(req: Request) {
           raw: ping.rawPayload as never,
         },
       });
-      accepted++;
     } catch {
       // The unique index is the real guard against a concurrent pull writing
       // the same instant between the check above and this insert.
       duplicates++;
       continue;
+    }
+    accepted++;
+
+    if (previous) {
+      await recordTelemetryFuelAnomaly(
+        asset as FuelAnomalyAsset,
+        previous,
+        {
+          recordedAt: r.recordedAt, lat: r.lat, lng: r.lng, speedKph: r.speedKph,
+          odometerKm: r.odometerKm, fuelLevelL: r.fuelLevelL,
+          fuelLevelPct: r.fuelLevelPct, ignitionOn: r.ignitionOn,
+        },
+        created.id,
+        asset.fuelCapacity,
+      );
     }
 
     // The level a person reads off the screen comes from the median of the

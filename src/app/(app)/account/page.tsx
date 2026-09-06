@@ -1,7 +1,8 @@
 import { getSession, ROLE_LABEL } from "@/lib/auth";
 import { Card, SectionTitle } from "@/components/ui";
 import { ChangePasswordForm } from "@/components/AccountForms";
-import { UserCircle } from "lucide-react";
+import { FileText, UserCircle } from "lucide-react";
+import Link from "next/link";
 import { requirePage } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +30,13 @@ export default async function AccountPage() {
       <Card>
         <SectionTitle title="Change Password" subtitle="Use a strong password you don't use elsewhere" />
         <ChangePasswordForm />
+      </Card>
+
+      <Card>
+        <Link href="/policies" className="flex min-h-12 items-center gap-3 rounded-xl -m-2 p-2 hover:bg-slate-50">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-700"><FileText className="h-5 w-5" aria-hidden /></span>
+          <span className="min-w-0 flex-1"><span className="block font-semibold text-ink-900">Policies &amp; privacy</span><span className="block text-sm text-slate-500">Mahadev FleetView rules and workforce data notice</span></span>
+        </Link>
       </Card>
     </div>
   );

@@ -24,8 +24,8 @@ import { getDieselRate } from "@/lib/settings";
 import { TERMS } from "@/lib/navigation";
 import { businessMonth } from "@/lib/business-time";
 import { fmtDate, inr, num } from "@/lib/utils";
-import { myBasics, myFuelFills } from "../_data";
-import { MyHeader, NotLinked, NoVehicle, Screen, Fact, Group, Row, Nothing } from "../_ui";
+import { myBasics, myFuelFills, myShift } from "../_data";
+import { MyHeader, NotLinked, NoVehicle, Notice, Screen, Fact, Group, Row, Nothing } from "../_ui";
 
 export const dynamic = "force-dynamic";
 
@@ -46,11 +46,14 @@ export default async function MyFuelPage({
     );
   }
 
-  const fills = await myFuelFills(driver.id, vehicle?.id ?? null, 20);
+  const [fills, shift] = await Promise.all([
+    myFuelFills(driver.id, vehicle?.id ?? null, 20),
+    myShift(driver.id, access.session.id),
+  ]);
 
   // The wizard picks a vehicle from the list it is handed, so handing it only
   // this driver's machine is both the scoping and the whole vehicle step.
-  if (action === "fuel" && vehicle) {
+  if (action === "fuel" && vehicle && shift.hasActiveTrip) {
     const dieselRate = await getDieselRate();
     return (
       <div className="-mx-4 -my-6 lg:-mx-8">
@@ -84,13 +87,23 @@ export default async function MyFuelPage({
 
       {!vehicle && <NoVehicle />}
 
-      {vehicle && (
+      {vehicle && shift.hasActiveTrip && (
         <Link
           href="/my/fuel?action=fuel"
           className="flex min-h-[72px] w-full items-center justify-center rounded-2xl bg-brand-600 text-xl font-bold text-white shadow-sm active:scale-[0.99] active:bg-brand-700"
         >
           + Diesel bharein
         </Link>
+      )}
+
+      {vehicle && !shift.hasActiveTrip && (
+        <Notice
+          tone="warn"
+          title="Check in before recording fuel"
+          lines={["पहले अपनी गाड़ी का QR scan करके duty शुरू करें।", "Fuel is linked to the driver claim, so it cannot be logged before check-in."]}
+          href="/my"
+          cta="Go to check-in"
+        />
       )}
 
       <div className="grid grid-cols-2 gap-3">

@@ -18,8 +18,8 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
     // Android home-screen long-press quick actions
     shortcuts: [
-      { name: "Add Diesel · डीज़ल भरें", short_name: "Diesel", url: "/driver?action=fuel", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
-      { name: "Repair Photos · मरम्मत फोटो", short_name: "Repair", url: "/driver?action=repair", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
+      { name: "Add Diesel · डीज़ल भरें", short_name: "Diesel", url: "/my/fuel?action=fuel", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
+      { name: "Report Issue · रिपोर्ट करें", short_name: "Report", url: "/my/report", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
     ],
   };
 }

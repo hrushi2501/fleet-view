@@ -32,6 +32,9 @@ async function handlePost(req: Request) {
   const access = await getAccess();
   if (!access) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   if (access.group !== "DRIVER") return NextResponse.json({ error: "Only a driver account can check in to a vehicle." }, { status: 403 });
+  if (!access.driverId) {
+    return NextResponse.json({ error: "An administrator must link this login to a driver before check-in." }, { status: 409 });
+  }
   requireSameOrigin(req);
 
   const limit = await reserveRateLimit({
@@ -92,7 +95,16 @@ async function handlePost(req: Request) {
       const meterCheck = validateOdometerAtScan(manualOdo, freshAsset.meterValue);
       if (!meterCheck.valid) throw new ActionError(meterCheck.error!);
       const now = new Date();
-      const allOpen = await tx.tripSession.findMany({ where: { status: "ACTIVE" } });
+      // A check-in decision can only be affected by a session on this vehicle
+      // or by another vehicle held by this driver. Reading every active session
+      // in the fleet made a single QR scan slower as the fleet grew, despite
+      // those unrelated rows having no bearing on this decision.
+      const allOpen = await tx.tripSession.findMany({
+        where: {
+          status: "ACTIVE",
+          OR: [{ assetId: asset.id }, { driverId: person.id }],
+        },
+      });
       const rows = allOpen.map((s): SessionLite => ({ id: s.id, assetId: s.assetId, driverId: s.driverId, startedAt: s.startedAt, endedAt: s.endedAt, status: s.status }));
       const stale = staleSessions(rows, now);
       if (stale.length) {
@@ -103,10 +115,27 @@ async function handlePost(req: Request) {
       const decision = evaluateScan(asset.id, person.id, current, now);
       if (!decision.ok) return { outcome: decision, session: null };
       if (decision.action === "START" && decision.releaseSessionId) {
+        const previous = allOpen.find((s) => s.id === decision.releaseSessionId);
+        // A driver record is linked to one User, but do not silently close a
+        // duty started by a different account if historical data was relinked.
+        if (previous?.userId && previous.userId !== access.session.id) {
+          throw new ActionError("Your previous duty belongs to another login. Ask a supervisor to close it safely.");
+        }
         await completeDuty(tx, decision.releaseSessionId, access.session, { endedBy: "AUTO" });
       }
       if (decision.action === "RESUME") {
-        return { outcome: decision, session: current.find((s) => s.assetId === asset.id && s.driverId === person.id)! };
+        const resumed = allOpen.find((s) => s.assetId === asset.id && s.driverId === person.id && s.status === "ACTIVE");
+        if (!resumed) throw new ActionError("The active duty changed. Please scan again.");
+        if (resumed.userId && resumed.userId !== access.session.id) {
+          throw new ActionError("This duty was started by another login. Ask a supervisor to close it safely.");
+        }
+        // Sessions made before account binding existed have no userId. The
+        // matching active driver has just physically re-scanned the cabin QR,
+        // so attach the account now and let checkout/mobile tracking work.
+        if (!resumed.userId) {
+          await tx.tripSession.update({ where: { id: resumed.id }, data: { userId: access.session.id } });
+        }
+        return { outcome: decision, session: resumed };
       }
       const session = await tx.tripSession.create({ data: {
         assetId: asset.id, driverId: person.id, userId: access.session.id, projectId: freshAsset.projectId,

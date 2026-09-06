@@ -9,80 +9,23 @@ import {
   Scale,
   CalendarCheck2,
   Truck,
+  Users,
+  Droplets,
+  Boxes,
+  IndianRupee,
+  FileDown,
   Sparkles,
   X,
   ChevronRight,
-  QrCode,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { QuickAction, QuickActionIcon } from "@/lib/quick-actions";
 
-interface QuickActionItem {
-  id: string;
-  title: string;
-  subtitle: string;
-  icon: React.ComponentType<{ className?: string }>;
-  href: string;
-  color: string;
-  badge?: string;
-}
+export const QUICK_ACTION_ICONS: Record<QuickActionIcon, React.ComponentType<{ className?: string }>> = {
+  Users, Truck, Fuel, Droplets, Wrench, Boxes, Scale, CalendarCheck2, IndianRupee, FileDown,
+};
 
-const QUICK_ACTIONS: QuickActionItem[] = [
-  {
-    id: "qr_scan",
-    title: "Scan Vehicle QR",
-    subtitle: "Open driver cabin camera scanner",
-    icon: QrCode,
-    href: "/my",
-    color: "bg-brand-500 text-white shadow-brand-500/25",
-    badge: "Scanner",
-  },
-  {
-    id: "fuel",
-    title: "Issue Diesel",
-    subtitle: "Dispense fuel to vehicle / tank",
-    icon: Fuel,
-    href: "/fuel",
-    color: "bg-amber-500 text-white shadow-amber-500/25",
-    badge: "Daily",
-  },
-  {
-    id: "breakdown",
-    title: "Report Breakdown",
-    subtitle: "Create urgent repair work order",
-    icon: Wrench,
-    href: "/maintenance",
-    color: "bg-rose-500 text-white shadow-rose-500/25",
-    badge: "Urgent",
-  },
-  {
-    id: "weighbridge",
-    title: "Weighbridge Ticket",
-    subtitle: "Log gross / tare material entry",
-    icon: Scale,
-    href: "/sites/materials",
-    color: "bg-brand-600 text-white shadow-brand-600/25",
-    badge: "Active",
-  },
-  {
-    id: "attendance",
-    title: "Mark Attendance",
-    subtitle: "Sign off shift & driver register",
-    icon: CalendarCheck2,
-    href: "/people/attendance",
-    color: "bg-emerald-600 text-white shadow-emerald-600/25",
-    badge: "1-Tap",
-  },
-  {
-    id: "asset",
-    title: "Add Vehicle / Machine",
-    subtitle: "Register truck, tipper or plant",
-    icon: Truck,
-    href: "/fleet",
-    color: "bg-indigo-600 text-white shadow-indigo-600/25",
-  },
-];
-
-export function QuickActionMenu({ isDriver = false }: { isDriver?: boolean }) {
+export function QuickActionMenu({ actions }: { actions: QuickAction[] }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -106,14 +49,15 @@ export function QuickActionMenu({ isDriver = false }: { isDriver?: boolean }) {
     };
   }, [open]);
 
-  if (isDriver) return null;
+  // A read-only role should not be offered an empty or misleading mutation menu.
+  if (actions.length === 0) return null;
 
   return (
     <div className="relative" ref={menuRef}>
       {/* Desktop Header Trigger */}
       <button
         onClick={() => setOpen((prev) => !prev)}
-        className="group hidden items-center gap-1.5 rounded-xl bg-gradient-to-r from-brand-600 to-brand-500 px-3.5 py-2 text-xs font-semibold text-white shadow-md shadow-brand-500/25 transition-all hover:from-brand-700 hover:to-brand-600 hover:shadow-lg sm:flex active:scale-95"
+        className="group hidden items-center gap-1.5 rounded-xl bg-linear-to-r from-brand-600 to-brand-500 px-3.5 py-2 text-xs font-semibold text-white shadow-md shadow-brand-500/25 transition-all hover:from-brand-700 hover:to-brand-600 hover:shadow-lg sm:flex active:scale-95"
         aria-label="Quick Actions"
         aria-expanded={open}
       >
@@ -148,7 +92,7 @@ export function QuickActionMenu({ isDriver = false }: { isDriver?: boolean }) {
             <div className="mb-2.5 flex items-center justify-between border-b border-slate-100 px-2 pb-2">
               <div className="flex items-center gap-1.5">
                 <Sparkles className="h-4 w-4 text-brand-600" />
-                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Quick Daily Actions</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Your Quick Actions</p>
               </div>
               <button
                 onClick={() => setOpen(false)}
@@ -159,8 +103,8 @@ export function QuickActionMenu({ isDriver = false }: { isDriver?: boolean }) {
             </div>
 
             <div className="grid gap-1.5">
-              {QUICK_ACTIONS.map((action) => {
-                const Icon = action.icon;
+              {actions.map((action) => {
+                const Icon = QUICK_ACTION_ICONS[action.icon];
                 return (
                   <Link
                     key={action.id}

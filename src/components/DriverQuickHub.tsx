@@ -33,6 +33,17 @@ interface DriverQuickHubProps {
   overdueServiceCount?: number;
 }
 
+/**
+ * Submission IDs are idempotency keys, not credentials. Older Android WebViews
+ * can lack `crypto.randomUUID`, so retain the standard UUID shape with a local
+ * fallback instead of crashing the driver's home screen.
+ */
+function newSubmissionId(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
+  const hex = (length: number) => Array.from({ length }, () => Math.floor(Math.random() * 16).toString(16)).join("");
+  return `${hex(8)}-${hex(4)}-4${hex(3)}-${["8", "9", "a", "b"][Math.floor(Math.random() * 4)]}${hex(3)}-${hex(12)}`;
+}
+
 export function DriverQuickHub({
   driverName: _driverName,
   vehicle,
@@ -40,12 +51,9 @@ export function DriverQuickHub({
   expiredDocsCount: _expiredDocsCount,
   overdueServiceCount: _overdueServiceCount,
 }: DriverQuickHubProps) {
-  const [submissionId, setSubmissionId] = useState(() => crypto.randomUUID());
+  const [submissionId, setSubmissionId] = useState(newSubmissionId);
   const [tripModalOpen, setTripModalOpen] = useState(false);
   const [tripForm, setTripForm] = useState({
-    origin: "",
-    destination: "",
-    material: "",
     tonnage: "",
     distanceKm: "",
     endMeter: "",
@@ -105,9 +113,6 @@ export function DriverQuickHub({
     const fd = new FormData();
     fd.set("assetId", vehicle.id);
     fd.set("submissionId", submissionId);
-    fd.set("origin", tripForm.origin);
-    fd.set("destination", tripForm.destination);
-    fd.set("material", tripForm.material);
     fd.set("tonnage", tripForm.tonnage);
     fd.set("distanceKm", tripForm.distanceKm);
     fd.set("endMeter", tripForm.endMeter);
@@ -116,7 +121,7 @@ export function DriverQuickHub({
       try {
         const result = await logDriverTrip(fd);
         if (isActionError(result)) { toast.error(result.error); return; }
-        setSubmissionId(crypto.randomUUID());
+        setSubmissionId(newSubmissionId());
         toast.success(`Trip recorded: ${tripForm.tonnage} tonnes, ${tripForm.distanceKm} km.`);
         setTripModalOpen(false);
         router.refresh();
@@ -198,7 +203,7 @@ export function DriverQuickHub({
 
         {/* ACTION 3: Report Breakdown / Emergency Help */}
         <Link
-          href="/my/service"
+          href="/my/report"
           className="col-span-2 flex min-h-24 flex-row items-center justify-center gap-3 rounded-3xl border border-rose-200 bg-rose-50/80 p-4 text-center active:bg-rose-100/70 shadow-xs"
         >
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-500 text-white shadow-md shadow-rose-500/30">
@@ -230,65 +235,30 @@ export function DriverQuickHub({
               </button>
             </div>
 
-            <form onSubmit={handleTripSubmit} className="space-y-3.5 p-6">
+            <form onSubmit={handleTripSubmit} className="space-y-4 p-5 sm:p-6">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-600">Origin / Loading</label>
-                  <input
-                    value={tripForm.origin}
-                    onChange={(e) => setTripForm({ ...tripForm, origin: e.target.value })}
-                    required
-                    placeholder="Quarry Pit #2"
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-brand-500"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-600">Destination / Dump</label>
-                  <input
-                    value={tripForm.destination}
-                    onChange={(e) => setTripForm({ ...tripForm, destination: e.target.value })}
-                    required
-                    placeholder="Crusher Plant A"
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-brand-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-600">Material Type</label>
-                  <select
-                    value={tripForm.material}
-                    onChange={(e) => setTripForm({ ...tripForm, material: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-brand-500"
-                  >
-                    <option value="Aggregate 20mm">Aggregate 20mm (Grit)</option>
-                    <option value="Aggregate 10mm">Aggregate 10mm</option>
-                    <option value="WMM / Base">WMM / Base Material</option>
-                    <option value="Earth / Soil Excavation">Earth / Soil Excavation</option>
-                    <option value="Sand (M-Sand)">Sand (M-Sand)</option>
-                    <option value="Bitumen Mix">Bitumen Mix (Asphalt)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-600">Net Weight (MT)</label>
+                  <label className="mb-1 block text-xs font-bold text-slate-600">Load (MT)</label>
                   <input
                     type="number"
                     step="0.1"
+                    min="0.1"
+                    max="1000"
+                    inputMode="decimal"
                     value={tripForm.tonnage}
                     onChange={(e) => setTripForm({ ...tripForm, tonnage: e.target.value })}
                     required
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold outline-none focus:border-brand-500"
+                    className="min-h-12 w-full rounded-xl border border-slate-200 px-3 text-base font-bold outline-none focus:border-brand-500"
                   />
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-600">Lead Distance (KM)</label>
+                  <label className="mb-1 block text-xs font-bold text-slate-600">Distance (km)</label>
                   <input
                     type="number"
                     step="0.5"
+                    min="0"
+                    max="1000"
+                    inputMode="decimal"
                     value={tripForm.distanceKm}
                     onChange={(e) => {
                       const km = parseFloat(e.target.value) || 0;
@@ -299,16 +269,21 @@ export function DriverQuickHub({
                       });
                     }}
                     required
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-brand-500"
+                    className="min-h-12 w-full rounded-xl border border-slate-200 px-3 text-base outline-none focus:border-brand-500"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-600">Closing meter (optional)</label>
                 <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-600">Ending Odometer</label>
                   <input
                     type="number"
+                    min="0"
+                    max="10000000"
+                    inputMode="decimal"
                     value={tripForm.endMeter}
                     onChange={(e) => setTripForm({ ...tripForm, endMeter: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold outline-none focus:border-brand-500"
+                    className="min-h-12 w-full rounded-xl border border-slate-200 px-3 text-base font-bold outline-none focus:border-brand-500"
                   />
                 </div>
               </div>
@@ -324,7 +299,7 @@ export function DriverQuickHub({
                 <button
                   type="submit"
                   disabled={pending}
-                  className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-brand-700 disabled:opacity-60"
+                  className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-brand-600 px-5 text-sm font-bold text-white shadow-md hover:bg-brand-700 disabled:opacity-60"
                 >
                   {pending && <Loader2 className="h-4 w-4 animate-spin" />}
                   {pending ? "Saving Trip…" : "Save Trip"}

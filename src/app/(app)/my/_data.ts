@@ -63,6 +63,63 @@ export type MyVehicle = {
 
 export type MyBasics = { driver: MyDriver | null; vehicle: MyVehicle | null };
 
+export type DriverEmergencyContact = {
+  label: string;
+  hint: string;
+  phone: string;
+  tone: "critical" | "normal";
+};
+
+type ConfiguredEmergencyContact = { name?: unknown; phone?: unknown };
+
+function configuredEmergencyContact(value: string | undefined, fallbackLabel: string): DriverEmergencyContact | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as ConfiguredEmergencyContact;
+    const name = typeof parsed.name === "string" ? parsed.name.trim().slice(0, 80) : fallbackLabel;
+    const phone = typeof parsed.phone === "string" ? parsed.phone.trim().replace(/[\s()-]/g, "") : "";
+    if (!name || !/^\+?[1-9]\d{6,14}$/.test(phone)) return null;
+    return { label: name, hint: "Company emergency contact", phone, tone: "normal" };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The two public emergency services are always available. Company contacts are
+ * data, never guessed: administrators may set JSON `{ "name", "phone" }` at
+ * `emergency:roadside`, `emergency:incharge`, or the project-specific
+ * `emergency:project:<projectId>:incharge` setting.
+ */
+export async function myEmergencyContacts(projectId: string | null): Promise<{
+  contacts: DriverEmergencyContact[];
+  missingCompanyContacts: string[];
+}> {
+  const contacts: DriverEmergencyContact[] = [
+    { label: "Emergency response", hint: "Police, fire or medical · 112", phone: "112", tone: "critical" },
+    { label: "Ambulance", hint: "Accident / medical emergency · 108", phone: "108", tone: "critical" },
+  ];
+  const keys = ["emergency:roadside", "emergency:incharge", ...(projectId ? [`emergency:project:${projectId}:incharge`] : [])];
+  try {
+    const settings = await db.setting.findMany({ where: { key: { in: keys } }, select: { key: true, value: true } });
+    const byKey = new Map(settings.map((row) => [row.key, row.value]));
+    const roadside = configuredEmergencyContact(byKey.get("emergency:roadside"), "Roadside assistance");
+    const siteIncharge = configuredEmergencyContact(
+      projectId ? byKey.get(`emergency:project:${projectId}:incharge`) ?? byKey.get("emergency:incharge") : byKey.get("emergency:incharge"),
+      "Site in-charge",
+    );
+    if (roadside) contacts.push({ ...roadside, hint: "Roadside assistance" });
+    if (siteIncharge) contacts.push({ ...siteIncharge, hint: "Site in-charge / manager" });
+    return {
+      contacts,
+      missingCompanyContacts: [!roadside ? "Roadside assistance" : null, !siteIncharge ? "Site in-charge / manager" : null].filter((v): v is string => v !== null),
+    };
+  } catch {
+    // Emergency calling must still work if the optional settings read fails.
+    return { contacts, missingCompanyContacts: ["Roadside assistance", "Site in-charge / manager"] };
+  }
+}
+
 /**
  * The driver behind this login and the vehicle assigned to them.
  *
@@ -295,11 +352,15 @@ export type ShiftState = {
  * fallback, and "nothing recorded" is reported as exactly that rather than as
  * absence, because an unmarked register is a clerical gap, not a day off.
  */
-export async function myShift(driverId: string, now: Date = new Date()): Promise<ShiftState> {
+export async function myShift(driverId: string, userId: string, now: Date = new Date()): Promise<ShiftState> {
   const dayStart = startOfBusinessDay(now);
   const [session, attendance] = await Promise.all([
     db.tripSession.findFirst({
-      where: { driverId, status: "ACTIVE" },
+      // A Driver record has one login today, but the live session is still
+      // tied to the account that scanned it. Keep the read equally strict so a
+      // future relink or an old shared credential cannot show another login's
+      // active duty controls.
+      where: { driverId, userId, status: "ACTIVE" },
       orderBy: { startedAt: "desc" },
       select: { id: true, startedAt: true },
     }),
@@ -387,6 +448,7 @@ function rank(s: ServiceItem["status"]): number {
  */
 export const PROBLEM_KINDS: { value: string; label: string; blocking: boolean }[] = [
   { value: "ACCIDENT", label: "Accident / collision", blocking: true },
+  { value: "HINDRANCE", label: "Road blocked / other hindrance", blocking: false },
   { value: "ENGINE", label: "Engine problem", blocking: true },
   { value: "BRAKE", label: "Brake / steering problem", blocking: true },
   { value: "TYRE", label: "Tyre problem", blocking: false },
@@ -470,6 +532,8 @@ export type DocRow = {
   label: string;
   number: string | null;
   expiry: Date | null;
+  /** Private proxy URL. It is only present when someone uploaded a scan. */
+  documentUrl: string | null;
   state: DocState;
   days: number | null;
 };
@@ -496,7 +560,7 @@ export async function myPersonDocs(driver: MyDriver, now: Date = new Date()): Pr
   const docs = await db.personDocument.findMany({
     where: { driverId: driver.id },
     orderBy: { expiryDate: "asc" },
-    select: { id: true, docType: true, number: true, expiryDate: true },
+    select: { id: true, docType: true, number: true, expiryDate: true, documentUrl: true },
   });
 
   const rows: DocRow[] = docs.map((d) => {
@@ -506,6 +570,7 @@ export async function myPersonDocs(driver: MyDriver, now: Date = new Date()): Pr
       label: PERSON_DOC_LABEL[d.docType] ?? d.docType,
       number: d.number,
       expiry: d.expiryDate,
+      documentUrl: d.documentUrl,
       // No expiry on record is not "valid for ever" — it is a gap in the file.
       state: st ? st.state : "missing",
       days: st ? st.days : null,
@@ -519,6 +584,7 @@ export async function myPersonDocs(driver: MyDriver, now: Date = new Date()): Pr
       label: PERSON_DOC_LABEL.LICENSE,
       number: driver.licenseNo,
       expiry: driver.licenseExpiry,
+      documentUrl: null,
       state: st.state,
       days: st.days,
     });
@@ -532,7 +598,7 @@ export async function myVehicleDocs(vehicleId: string, now: Date = new Date()): 
   const docs = await db.complianceDoc.findMany({
     where: { assetId: vehicleId },
     orderBy: { expiryDate: "asc" },
-    select: { id: true, docType: true, number: true, expiryDate: true, reminderDays: true },
+    select: { id: true, docType: true, number: true, expiryDate: true, reminderDays: true, documentUrl: true },
   });
 
   // Only the newest of each type counts; a renewal supersedes the copy it replaced.
@@ -550,6 +616,7 @@ export async function myVehicleDocs(vehicleId: string, now: Date = new Date()): 
         label: VEHICLE_DOC_LABEL[d.docType] ?? d.docType,
         number: d.number,
         expiry: d.expiryDate,
+        documentUrl: d.documentUrl,
         state: st.state,
         days: st.days,
       };

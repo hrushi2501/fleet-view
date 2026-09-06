@@ -8,7 +8,7 @@ import { MaintenanceKanban } from "@/components/MaintenanceKanban";
 import { pmDue, reliability, SERVICE_TIERS, FAILURE_CODES, type ScheduleLite, type WoLite } from "@/lib/maintenance";
 import { scoreBreakdownRisk } from "@/lib/analytics";
 import { inr, num, fmtDate, timeAgo, STATUS_COLOR, ASSET_CLASS_LABEL } from "@/lib/utils";
-import { Wrench, TriangleAlert, Clock, BadgeCheck, Brain, CalendarClock, Activity, IndianRupee, Users, LayoutGrid, ListFilter, AlertCircle } from "lucide-react";
+import { Wrench, TriangleAlert, Clock, BadgeCheck, Brain, CalendarClock, Activity, IndianRupee, Users, LayoutGrid, ListFilter, AlertCircle, Volume2 } from "lucide-react";
 import Link from "next/link";
 import { requirePage, assetScope } from "@/lib/access";
 
@@ -386,7 +386,7 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
                     <th className="px-5 py-3 font-medium">Downtime</th>
                     <th className="px-5 py-3 font-medium">Cost</th>
                     <th className="px-5 py-3 font-medium">Status</th>
-                    <th className="px-5 py-3 font-medium">Repair Photos</th>
+                    <th className="px-5 py-3 font-medium">Evidence</th>
                     <th className="px-5 py-3 font-medium">Reported</th>
                   </tr>
                 </thead>
@@ -403,13 +403,17 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
                       <td className="px-5 py-3"><WorkOrderStatus id={w.id} status={w.status} /></td>
                       <td className="px-5 py-3">
                         {(() => {
-                          let oldU: string[] = [], newU: string[] = [];
+                          let oldU: string[] = [], newU: string[] = [], reportAudio: string | null = null;
                           try {
                             const p = w.partPhotos ? JSON.parse(w.partPhotos) : null;
                             if (Array.isArray(p)) newU = p;
-                            else if (p) { oldU = p.old || []; newU = p.new || []; }
+                            else if (p) {
+                              oldU = Array.isArray(p.old) ? p.old : [];
+                              newU = Array.isArray(p.new) ? p.new : [];
+                              reportAudio = typeof p.driverReportAudio === "string" ? p.driverReportAudio : null;
+                            }
                           } catch { /* ignore */ }
-                          if (!oldU.length && !newU.length) return <span className="text-slate-300">—</span>;
+                          if (!oldU.length && !newU.length && !reportAudio) return <span className="text-slate-300">—</span>;
                           const grp = (label: string, urls: string[], ring: string) => urls.length ? (
                             <div className="flex items-center gap-1">
                               <span className={`text-[9px] font-bold uppercase ${label === "Old" ? "text-rose-500" : "text-emerald-600"}`}>{label}</span>
@@ -417,7 +421,7 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
                               {urls.length > 2 && <span className="text-[10px] text-slate-400">+{urls.length - 2}</span>}
                             </div>
                           ) : null;
-                          return <div className="flex flex-col gap-1">{grp("Old", oldU, "ring-rose-300")}{grp("New", newU, "ring-emerald-300")}</div>;
+                          return <div className="flex flex-col gap-2">{grp("Old", oldU, "ring-rose-300")}{grp("New", newU, "ring-emerald-300")}{reportAudio && <div className="flex items-center gap-1.5 text-xs font-semibold text-brand-700"><Volume2 className="h-4 w-4 shrink-0" /><audio controls preload="metadata" className="h-8 max-w-48" src={reportAudio}>Driver voice report</audio></div>}</div>;
                         })()}
                       </td>
                       <td className="px-5 py-3 text-xs text-slate-400">{timeAgo(w.reportedAt)}</td>

@@ -151,6 +151,7 @@ async function handlePOST(req: Request) {
       meterValue,
       odometerPhoto,
       pumpPhoto,
+      afterOdometerPhoto,
       date = new Date(),
     } = body;
 
@@ -182,7 +183,7 @@ async function handlePOST(req: Request) {
     if (asset && parsedMeter != null && parsedMeter < asset.meterValue) {
       return NextResponse.json({ error: "Meter value cannot be lower than the vehicle's current reading." }, { status: 400 });
     }
-    for (const photo of [odometerPhoto, pumpPhoto]) {
+    for (const photo of [odometerPhoto, pumpPhoto, afterOdometerPhoto]) {
       if (photo != null && photo !== "" && !isPrivateFileReference(photo)) {
         return NextResponse.json({ error: "Evidence photos must be uploaded through FleetView." }, { status: 400 });
       }
@@ -211,6 +212,7 @@ async function handlePOST(req: Request) {
           meterValue: parsedMeter ?? undefined,
           odometerPhoto: isPrivateFileReference(odometerPhoto) ? odometerPhoto : null,
           pumpPhoto: isPrivateFileReference(pumpPhoto) ? pumpPhoto : null,
+          afterOdometerPhoto: isPrivateFileReference(afterOdometerPhoto) ? afterOdometerPhoto : null,
           date: parsedDate,
         },
       });

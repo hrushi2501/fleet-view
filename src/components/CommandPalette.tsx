@@ -17,6 +17,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { QUICK_ACTION_ICONS } from "@/components/QuickActionMenu";
+import type { QuickAction } from "@/lib/quick-actions";
 import type { SearchResultItem } from "@/app/api/search/route";
 import { useFleetSearch } from "@/lib/query-hooks";
 
@@ -43,9 +45,11 @@ const CATEGORY_LABELS: Record<SearchResultItem["category"], string> = {
 export function CommandPalette({
   isOpen,
   onClose,
+  quickActions,
 }: {
   isOpen: boolean;
   onClose: () => void;
+  quickActions: QuickAction[];
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -130,20 +134,11 @@ export function CommandPalette({
     return acc;
   }, {});
 
-  const quickNav = [
-    { label: "Vehicles & Equipment", hint: "Fleet register", href: "/fleet", icon: Truck },
-    { label: "Live Vehicle Tracking", hint: "GPS live map", href: "/fleet/tracking", icon: MapPin },
-    { label: "Fuel Management", hint: "Diesel issues & tanks", href: "/fuel", icon: Fuel },
-    { label: "Preventive Service Due", hint: "Maintenance reminders", href: "/maintenance/reminders", icon: Wrench },
-    { label: "Material Weighing", hint: "Weighbridge slips", href: "/sites/materials", icon: Scale },
-    { label: "People & Attendance", hint: "Staff & daily sign-off", href: "/people", icon: Users },
-  ];
-
   let flatIndex = 0;
 
   return (
     <div
-      className="fixed inset-0 z-[9990] flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 backdrop-blur-sm animate-fade-up sm:p-6 md:p-20"
+      className="fixed inset-0 z-9990 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 backdrop-blur-sm animate-fade-up sm:p-6 md:p-20"
       onClick={handleClose}
     >
       <div
@@ -252,18 +247,19 @@ export function CommandPalette({
             <div className="space-y-4 py-2">
               <div className="px-3">
                 <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
-                  <Sparkles className="h-3.5 w-3.5 text-brand-500" /> Quick Navigation
+                  <Sparkles className="h-3.5 w-3.5 text-brand-500" /> Your Quick Actions
                 </p>
               </div>
-              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                {quickNav.map((qn) => {
-                  const Icon = qn.icon;
+              {quickActions.length > 0 ? (
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                  {quickActions.map((action) => {
+                  const Icon = QUICK_ACTION_ICONS[action.icon];
                   return (
                     <button
-                      key={qn.href}
+                      key={action.id}
                       onClick={() => {
                         onClose();
-                        router.push(qn.href);
+                        router.push(action.href);
                       }}
                       className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/50 p-3 text-left transition-colors hover:border-brand-200 hover:bg-brand-50/40"
                     >
@@ -271,13 +267,16 @@ export function CommandPalette({
                         <Icon className="h-4 w-4 text-brand-600" />
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-ink-900">{qn.label}</p>
-                        <p className="text-xs text-slate-400">{qn.hint}</p>
+                        <p className="text-sm font-semibold text-ink-900">{action.title}</p>
+                        <p className="text-xs text-slate-400">{action.subtitle}</p>
                       </div>
                     </button>
                   );
-                })}
-              </div>
+                  })}
+                </div>
+              ) : (
+                <p className="px-3 py-6 text-center text-sm text-slate-500">Your role has no direct quick actions. Search for a record or use the navigation.</p>
+              )}
             </div>
           )}
         </div>

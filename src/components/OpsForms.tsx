@@ -43,7 +43,7 @@ function Sel({ label, name, options, defaultValue, required, hint }: { label: st
 function Modal({ open, onClose, title, subtitle, children }: { open: boolean; onClose: () => void; title: string; subtitle?: string; children: ReactNode }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-60 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 backdrop-blur-sm">
       <div className="my-8 w-full max-w-2xl rounded-3xl bg-white shadow-2xl ring-1 ring-black/5 animate-fade-up">
         <div className="flex items-start justify-between border-b border-slate-100 p-5">
           <div>

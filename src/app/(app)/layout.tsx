@@ -6,6 +6,7 @@ import { navFor } from "@/lib/navigation";
 import { getNotificationFeed } from "@/lib/notification-feed";
 import { redirect } from "next/navigation";
 import { QueryProvider } from "@/components/QueryProvider";
+import { quickActionsFor } from "@/lib/quick-actions";
 
 /**
  * Resolves who the caller is once, and hands the navigation their own menu.
@@ -36,6 +37,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             notifCount={notificationFeed.attentionCount}
             initialNotifications={notificationFeed.items}
             notificationLogHref={access.can("reports.view") ? "/reports/notifications" : null}
+            quickActions={quickActionsFor(access)}
             isDriver={isDriver}
           />
           <main className={isDriver ? "mx-auto max-w-xl px-4 py-4 pb-24" : "mx-auto max-w-[1500px] px-4 py-6 lg:px-8"}>{children}</main>

@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Truck, MapPin, Fuel, Wrench, Users, ShieldCheck,
-  BarChart3, Settings, Route, Menu, X, CircleHelp,
+  BarChart3, Settings, Route, Menu, X, CircleHelp, FileText,
 } from "lucide-react";
 import { useState } from "react";
 import type { NavItem } from "@/lib/navigation";
@@ -24,7 +24,7 @@ import type { NavItem } from "@/lib/navigation";
  */
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  LayoutDashboard, Truck, MapPin, Fuel, Wrench, Users, ShieldCheck, BarChart3, Settings, Route, CircleHelp,
+  LayoutDashboard, Truck, MapPin, Fuel, Wrench, Users, ShieldCheck, BarChart3, Settings, Route, CircleHelp, FileText,
 };
 
 export function Sidebar({
@@ -88,7 +88,7 @@ export function Sidebar({
               : "text-slate-400 hover:bg-white/5 hover:text-white"
           )}
         >
-          <Icon className="h-[18px] w-[18px] shrink-0" />
+          <Icon className="h-4.5 w-4.5 shrink-0" />
           <span className="flex-1 leading-tight">
             {item.label}
             {/* The hint is what the module answers, in the words a supervisor
@@ -171,7 +171,7 @@ export function Sidebar({
         </nav>
 
         <div className="border-t border-white/5 p-4">
-          <div className="rounded-xl bg-gradient-to-br from-brand-500/20 to-transparent p-3 ring-1 ring-white/5">
+          <div className="rounded-xl bg-linear-to-br from-brand-500/20 to-transparent p-3 ring-1 ring-white/5">
             <p className="text-xs font-semibold text-white">Mahadev Constructions</p>
             <p className="mt-0.5 text-[11px] text-slate-400">Live · {new Date().getFullYear()}</p>
           </div>

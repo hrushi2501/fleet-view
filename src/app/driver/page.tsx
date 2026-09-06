@@ -14,6 +14,15 @@ import { redirect } from "next/navigation";
  * record and shows an explicit empty state when that link is missing, rather
  * than falling back to the whole fleet.
  */
-export default function LegacyDriverPortal() {
+export default async function LegacyDriverPortal({
+  searchParams,
+}: {
+  searchParams: Promise<{ action?: string }>;
+}) {
+  const { action } = await searchParams;
+  // Preserve installed home-screen shortcuts from the retired portal. The
+  // destination is an existing, scoped driver workflow — never the old portal.
+  if (action === "fuel") redirect("/my/fuel?action=fuel");
+  if (action === "repair") redirect("/my/vehicle");
   redirect("/my");
 }

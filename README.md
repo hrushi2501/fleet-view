@@ -33,7 +33,7 @@ npm run dev            # http://localhost:3000
 You need a `.env.local`. It is gitignored and never committed — ask for the values.
 
 | Variable | Required | What breaks without it |
-|---|---|---|
+| --- | --- | --- |
 | `DATABASE_URL` | yes | Nothing runs. Pooled URL, keep `?pgbouncer=true&connection_limit=1` |
 | `DATABASE_URL_UNPOOLED` | operator only | Privileged schema operations; not required in Vercel runtime |
 | `AUTH_SECRET` | production | Browser sessions cannot be issued safely |
@@ -97,7 +97,7 @@ works in IST. Use `businessDay()` / `businessMonth()` from `business-time.ts` �
 
 ## Layout
 
-```
+```text
 src/app/(app)/       nine modules: dashboard, fleet, fuel, people, sites,
                      maintenance, compliance, reports, admin
 src/app/(app)/my/    the driver app — scoped to their own vehicle only

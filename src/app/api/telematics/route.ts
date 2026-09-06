@@ -5,6 +5,7 @@ import { checkSharedSecret } from "@/lib/auth";
 import { normaliseReading, assetCacheUpdate, readTelemetryJson } from "@/lib/telemetry-normalization";
 import type { TelemetryPing } from "@/lib/telematics-adapters";
 import { reserveRateLimit, rateLimitResponse, clientIp } from "@/lib/request-rate-limit";
+import { recordTelemetryFuelAnomaly, type FuelAnomalyAsset } from "@/lib/tata-fleet-edge";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +49,7 @@ async function ingestOne(body: Record<string, unknown>) {
     where: { ...where, decommissionedOn: null },
     select: {
       id: true, code: true, fuelCapacity: true, meterValue: true,
-      hourMeterValue: true, primaryMeter: true, telematicsProviderId: true,
+      hourMeterValue: true, primaryMeter: true, telematicsProviderId: true, assetClass: true,
     },
   });
   if (!asset) return { ok: false as const, error: "asset not found" };
@@ -72,7 +73,10 @@ async function ingestOne(body: Record<string, unknown>) {
   const previous = await db.telemetryReading.findFirst({
     where: { assetId: asset.id, odometerKm: { not: null } },
     orderBy: { recordedAt: "desc" },
-    select: { odometerKm: true, engineHours: true },
+    select: {
+      recordedAt: true, lat: true, lng: true, speedKph: true, odometerKm: true,
+      fuelLevelL: true, fuelLevelPct: true, ignitionOn: true, engineHours: true,
+    },
   });
 
   // Reuse the provider-agnostic validator by shaping the body as a ping.
@@ -120,7 +124,7 @@ async function ingestOne(body: Record<string, unknown>) {
     select: { id: true },
   });
 
-  await db.telemetryReading.create({
+  const created = await db.telemetryReading.create({
     data: {
       assetId: asset.id,
       recordedAt: r.recordedAt,
@@ -138,6 +142,20 @@ async function ingestOne(body: Record<string, unknown>) {
       raw: body as never,
     },
   });
+
+  if (previous) {
+    await recordTelemetryFuelAnomaly(
+      asset as FuelAnomalyAsset,
+      previous,
+      {
+        recordedAt: r.recordedAt, lat: r.lat, lng: r.lng, speedKph: r.speedKph,
+        odometerKm: r.odometerKm, fuelLevelL: r.fuelLevelL,
+        fuelLevelPct: r.fuelLevelPct, ignitionOn: r.ignitionOn,
+      },
+      created.id,
+      asset.fuelCapacity,
+    );
+  }
 
   // Status is operational state, not telemetry. Accept only the vocabulary the
   // ERP uses — an arbitrary string here propagates to every status filter,

@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CommandPalette } from "@/components/CommandPalette";
 import { QuickActionMenu } from "@/components/QuickActionMenu";
+import type { QuickAction } from "@/lib/quick-actions";
 import type { NotificationFeed, NotificationItem } from "@/lib/notification-types";
 
 /**
@@ -18,12 +19,14 @@ export function Topbar({
   isDriver = false,
   initialNotifications = [],
   notificationLogHref = null,
+  quickActions = [],
 }: {
   user: { name: string; role: string };
   notifCount?: number;
   isDriver?: boolean;
   initialNotifications?: NotificationItem[];
   notificationLogHref?: string | null;
+  quickActions?: QuickAction[];
 }) {
   const router = useRouter();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -106,7 +109,7 @@ export function Topbar({
                 <span className="text-xs">⌘</span>K
               </kbd>
             </button>
-            <QuickActionMenu isDriver={false} />
+            <QuickActionMenu actions={quickActions} />
             </>
           )}
         </div>
@@ -168,7 +171,7 @@ export function Topbar({
       </header>
 
       {/* Global Command Palette */}
-      {!isDriver && <CommandPalette isOpen={searchOpen} onClose={() => setSearchOpen(false)} />}
+      {!isDriver && <CommandPalette isOpen={searchOpen} onClose={() => setSearchOpen(false)} quickActions={quickActions} />}
     </>
   );
 }

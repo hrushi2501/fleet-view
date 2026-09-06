@@ -17,7 +17,8 @@
 import { requirePage } from "@/lib/access";
 import { fmtDate } from "@/lib/utils";
 import { myBasics, myPersonDocs, myVehicleDocs, type DocRow, type Tone } from "../_data";
-import { MyHeader, Screen, Hero, Group, Row, Nothing, NotLinked } from "../_ui";
+import { MyHeader, Screen, Hero, Group, Nothing, NotLinked } from "../_ui";
+import { DriverDocumentVault } from "@/components/DriverDocumentVault";
 
 export const dynamic = "force-dynamic";
 
@@ -65,13 +66,19 @@ export default async function MyDocumentsPage() {
 
       <Hero tone={hero.tone} label={hero.label} hint={hero.hint} />
 
-      {mine.length === 0 ? (
-        <Nothing>No documents on record for you yet.</Nothing>
-      ) : (
-        <Group title="My papers">
-          {mine.map((d) => <DocLine key={d.key} doc={d} />)}
-        </Group>
-      )}
+      <section>
+        <div className="mb-2 flex items-center justify-between gap-3 px-1">
+          <h2 className="text-base font-semibold text-slate-600">My papers</h2>
+          <DriverDocumentVault />
+        </div>
+        {mine.length === 0 ? (
+          <Nothing>No documents on record for you yet. Add your licence or Aadhaar scan.</Nothing>
+        ) : (
+          <div className="overflow-hidden rounded-2xl bg-white ring-1 ring-slate-200">
+            {mine.map((d) => <DocLine key={d.key} doc={d} />)}
+          </div>
+        )}
+      </section>
 
       {!vehicle ? (
         <Nothing>No vehicle assigned to you.</Nothing>
@@ -93,19 +100,29 @@ export default async function MyDocumentsPage() {
 
 function DocLine({ doc }: { doc: DocRow }) {
   return (
-    <Row
-      title={doc.label}
-      subtitle={
-        doc.expiry
-          ? `${doc.number ? `${doc.number} · ` : ""}${fmtDate(doc.expiry)}`
-          : doc.number
-            ? `${doc.number} · no expiry date recorded`
-            : "nothing on record"
-      }
-      right={stateWord(doc)}
-      rightSub={doc.state === "expiring" && doc.days != null ? `${doc.days} days` : undefined}
-      tone={stateTone(doc.state)}
-    />
+    <div className="flex min-h-[72px] items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 last:border-0">
+      <div className="min-w-0">
+        <p className="truncate text-base font-semibold text-ink-900">{doc.label}</p>
+        <p className="truncate text-sm text-slate-500">
+          {doc.expiry
+            ? `${doc.number ? `${doc.number} · ` : ""}${fmtDate(doc.expiry)}`
+            : doc.number
+              ? `${doc.number} · no expiry date recorded`
+              : "nothing on record"}
+        </p>
+        {doc.documentUrl ? (
+          <a href={doc.documentUrl} target="_blank" rel="noreferrer" className="mt-1 inline-flex min-h-8 items-center text-sm font-bold text-brand-700 underline underline-offset-2">
+            View document
+          </a>
+        ) : (
+          <p className="mt-1 text-xs font-medium text-slate-400">No scan uploaded</p>
+        )}
+      </div>
+      <div className="shrink-0 text-right">
+        <p className={`text-base font-bold ${stateToneClass(doc.state)}`}>{stateWord(doc)}</p>
+        {doc.state === "expiring" && doc.days != null && <p className="text-sm text-slate-400">{doc.days} days</p>}
+      </div>
+    </div>
   );
 }
 
@@ -125,4 +142,9 @@ function stateTone(state: DocRow["state"]): Tone | undefined {
   if (state === "expired" || state === "missing") return "bad";
   if (state === "expiring") return "warn";
   return "ok";
+}
+
+function stateToneClass(state: DocRow["state"]): string {
+  const tone = stateTone(state);
+  return tone === "bad" ? "text-rose-800" : tone === "warn" ? "text-amber-900" : "text-emerald-800";
 }

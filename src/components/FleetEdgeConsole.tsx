@@ -26,6 +26,8 @@ import {
 import { cn, num } from "@/lib/utils";
 import { AssetGlass } from "@/components/AssetGlass";
 import type { LiveFleet, LiveStatus, LiveVehicle } from "@/lib/fleet-edge-live";
+import { liveVehicleReportRows } from "@/lib/live-vehicle-report";
+import { toCsv } from "@/lib/reporting";
 import type { FleetEdgeMapMarker, MapView } from "@/components/FleetEdgeMap";
 import { PlaybackBar, useTrack } from "@/components/FleetEdgePlayback";
 import { useLiveFleet } from "@/lib/query-hooks";
@@ -41,6 +43,28 @@ const FleetEdgeMap = dynamic(() => import("./FleetEdgeMap"), {
 });
 
 const POLL_MS = 15_000;
+
+function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
+  const url = URL.createObjectURL(new Blob([toCsv(rows)], { type: "text/csv;charset=utf-8" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function downloadLiveVehicleReport(vehicle: LiveVehicle) {
+  // Asset codes normally contain only letters, digits and hyphens, but a
+  // conservative filename keeps a malformed imported master record from
+  // producing an invalid download name on any browser.
+  const safeCode = vehicle.code.replace(/[^a-z0-9_-]/gi, "-") || "vehicle";
+  downloadCsv(
+    `fleetview-live-report-${safeCode}-${new Date().toISOString().slice(0, 10)}.csv`,
+    liveVehicleReportRows(vehicle),
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Presentation vocabulary
@@ -209,14 +233,24 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
   );
 
   const unpositioned = visible.length - markers.length;
+  // The map fills this container while the two panels sit above it. Give the
+  // map their combined width when a vehicle is selected, so its focus point is
+  // in the unobscured area rather than behind either panel.
+  const focusRightInsetPx = selected
+    ? sidebarOpen ? 700 : 380
+    : sidebarOpen ? 320 : 0;
 
   return (
     <div className="space-y-3">
-      <div className="relative h-[calc(100vh-15rem)] min-h-150 w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-sm">
+      {/* Leaflet panes use large internal z-indices. Isolate them so a map
+          control can never rise above global UI such as the header's
+          notification drawer, dialogs, or toast messages. */}
+      <div className="relative z-0 isolate h-[calc(100vh-15rem)] min-h-150 w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-sm">
         <FleetEdgeMap
           markers={markers}
           selectedId={selectedId}
           focusRequest={focusRequest}
+          focusRightInsetPx={focusRightInsetPx}
           onSelect={focusVehicle}
           view={view}
           track={playbackOpen ? track.points : null}
@@ -460,27 +494,17 @@ function SidebarActions({
    * gets sixty rows they then circulate as "the breakdown list".
    */
   const download = () => {
-    const header = [
-      "Code", "Registration", "Chassis", "Model", "Status", "Last update",
-      "Speed (km/h)", "Odometer (km)", "Fuel (L)", "Fuel (%)",
-      "Distance today (km)", "Idling today (min)", "km/L today", "Confidence",
-    ];
-    const rows = vehicles.map((v) => [
-      v.code, v.registrationNo ?? "", v.chassisNo ?? "", v.modelLabel,
-      STATUS_LABEL[v.status], v.lastUpdate ?? "",
-      v.live.speedKph ?? "", v.live.odometerKm ?? "", v.live.fuelLitres ?? "", v.live.fuelPct ?? "",
-      v.today.distanceKm ?? "", v.today.idlingMinutes ?? "", v.today.kmPerL ?? "",
-      v.today.confidence ?? "",
-    ]);
-    const csv = [header, ...rows]
-      .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
-      .join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `fleet-live-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCsv(
+      `fleet-live-${new Date().toISOString().slice(0, 10)}.csv`,
+      vehicles.map((v) => ({
+        Code: v.code, Registration: v.registrationNo ?? "", Chassis: v.chassisNo ?? "", Model: v.modelLabel,
+        Status: STATUS_LABEL[v.status], "Last update": v.lastUpdate ?? "",
+        "Speed (km/h)": v.live.speedKph ?? "", "Odometer (km)": v.live.odometerKm ?? "",
+        "Fuel (L)": v.live.fuelLitres ?? "", "Fuel (%)": v.live.fuelPct ?? "",
+        "Distance today (km)": v.today.distanceKm ?? "", "Idling today (min)": v.today.idlingMinutes ?? "",
+        "km/L today": v.today.kmPerL ?? "", Confidence: v.today.confidence ?? "",
+      })),
+    );
   };
 
   const share = async () => {
@@ -825,7 +849,7 @@ function DetailCard({
         </div>
       </Section>
 
-      <div className="grid grid-cols-3 gap-2 border-t border-slate-100 px-3.5 py-3">
+      <div className="grid grid-cols-2 gap-2 border-t border-slate-100 px-3.5 py-3">
         <button
           onClick={onPlayback}
           className="rounded-lg border border-slate-200 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-brand-300 hover:text-brand-600"
@@ -838,6 +862,13 @@ function DetailCard({
         >
           <ExternalLink className="mr-1 h-3.5 w-3.5" /> Full Page
         </Link>
+        <button
+          onClick={() => downloadLiveVehicleReport(v)}
+          className="rounded-lg border border-slate-200 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-brand-300 hover:text-brand-600"
+          title="Download this vehicle's live, daily, service and assignment details as CSV"
+        >
+          <Download className="mr-1 inline h-3.5 w-3.5" /> Download Report
+        </button>
         <button
           onClick={onOpenGlass}
           className="rounded-lg bg-brand-600 py-2 text-xs font-semibold text-white transition-colors hover:bg-brand-700"

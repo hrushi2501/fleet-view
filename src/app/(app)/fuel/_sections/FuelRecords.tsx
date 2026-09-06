@@ -21,8 +21,12 @@ export async function FuelRecords() {
   const visible = assetScope(access);
   const [issues, assets, tanks, dieselRate] = await Promise.all([
     db.fuelTransaction.findMany({
-      where: { type: "ISSUE" },
-      include: { asset: true, project: true },
+      where: { type: "ISSUE", asset: visible },
+      include: {
+        asset: true,
+        project: true,
+        session: { select: { id: true, startedAt: true, driver: { select: { name: true, empCode: true } } } },
+      },
       orderBy: { date: "desc" },
       take: 100,
     }),
@@ -174,6 +178,7 @@ export async function FuelRecords() {
               <tr>
                 <th className="px-5 py-3 font-medium">Timestamp</th>
                 <th className="px-5 py-3 font-medium">Vehicle</th>
+                <th className="px-5 py-3 font-medium">Driver claim</th>
                 <th className="px-5 py-3 font-medium">Litres</th>
                 <th className="px-5 py-3 font-medium">Meter Value</th>
                 <th className="px-5 py-3 font-medium">Rate</th>
@@ -197,6 +202,16 @@ export async function FuelRecords() {
                     </td>
                     <td className="px-5 py-3 font-semibold text-brand-700">
                       {a ? <Link href={`/fleet/${a.id}`} className="hover:underline">{a.code} ({a.registrationNo ?? a.name})</Link> : "—"}
+                    </td>
+                    <td className="px-5 py-3 text-xs text-slate-600">
+                      {f.session?.driver ? (
+                        <>
+                          <p className="font-semibold text-ink-900">{f.session.driver.name}</p>
+                          <p>{f.session.driver.empCode} · checked in {fmtDate(f.session.startedAt)}</p>
+                        </>
+                      ) : f.issuedBy ? (
+                        <p>{f.issuedBy}<span className="block text-slate-400">manual entry</span></p>
+                      ) : "—"}
                     </td>
                     <td className="px-5 py-3 font-bold text-ink-900">{num(f.quantity)} L</td>
                     <td className="px-5 py-3 text-slate-600">{f.meterValue ? num(f.meterValue) : "—"}</td>
@@ -223,7 +238,12 @@ export async function FuelRecords() {
                             <img src={f.pumpPhoto} alt="pump" className="h-8 w-8 rounded object-cover ring-1 ring-slate-200" />
                           </a>
                         )}
-                        {!f.odometerPhoto && !f.pumpPhoto && <span className="text-slate-300">—</span>}
+                        {f.afterOdometerPhoto && (
+                          <a href={f.afterOdometerPhoto} target="_blank" rel="noreferrer">
+                            <img src={f.afterOdometerPhoto} alt="dashboard after fuelling" className="h-8 w-8 rounded object-cover ring-1 ring-slate-200" />
+                          </a>
+                        )}
+                        {!f.odometerPhoto && !f.pumpPhoto && !f.afterOdometerPhoto && <span className="text-slate-300">—</span>}
                       </div>
                     </td>
                     <td className="px-5 py-3">

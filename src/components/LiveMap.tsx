@@ -49,7 +49,9 @@ export function LiveMap({ markers }: { markers: Marker[] }) {
           ))}
         </div>
 
-        <div className="relative h-140 w-full overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
+        {/* Leaflet's internal panes are deliberately high; contain that local
+            stacking scale so global drawers and dialogs always sit above it. */}
+        <div className="relative z-0 isolate h-140 w-full overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
           <div className="absolute right-3 top-3 z-1000 rounded-lg bg-white/85 px-3 py-1.5 text-xs font-medium text-slate-700 shadow ring-1 ring-black/5 backdrop-blur">
             <Navigation className="mr-1 inline h-3 w-3 text-brand-600" /> Rajasthan · {shown.length} assets live
           </div>

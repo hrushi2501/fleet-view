@@ -7,17 +7,45 @@
  */
 import { db } from "@/lib/db";
 
+type HeaderReader = Pick<Headers, "get">;
+
+function asHeaderReader(value: unknown): HeaderReader | null {
+  if (typeof value !== "object" || value === null) return null;
+  const candidate = value as { get?: unknown; headers?: unknown };
+
+  // `ReadonlyHeaders` returned by Next's `headers()` has a direct `get()`
+  // method, but it can also expose a `headers` member. Prefer the direct
+  // reader: treating it as a Request selects that member instead and turns a
+  // valid sign-in into `headers.get is not a function` before authentication.
+  if (typeof candidate.get === "function") return candidate as HeaderReader;
+
+  const nested = candidate.headers as { get?: unknown } | undefined;
+  return typeof nested?.get === "function" ? nested as HeaderReader : null;
+}
+
+function readHeader(headers: HeaderReader, name: string): string | null {
+  // Request metadata must never make authentication unavailable. Some Next
+  // wrappers are lazy/proxied, so treat an unreadable forwarding header as
+  // absent and use the shared, conservative `unknown` limiter bucket.
+  try {
+    return headers.get(name);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Extracts client IP from Request or Headers safely.
  */
 export function clientIp(req: Request | Headers): string {
-  const headers = "headers" in req ? req.headers : req;
-  const fwd = headers.get("x-forwarded-for");
+  const headers = asHeaderReader(req);
+  if (!headers) return "unknown";
+  const fwd = readHeader(headers, "x-forwarded-for");
   if (fwd) {
     const first = fwd.split(",")[0]?.trim();
     if (first) return first;
   }
-  const real = headers.get("x-real-ip")?.trim();
+  const real = readHeader(headers, "x-real-ip")?.trim();
   if (real) return real;
   return "unknown";
 }

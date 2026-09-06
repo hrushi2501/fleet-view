@@ -33,7 +33,7 @@ export function VehicleMiniMap({ marker }: { marker: MapMarker | null }) {
 
   if (!marker) {
     return (
-      <div className="flex h-[170px] flex-col items-center justify-center rounded-xl bg-slate-50 text-center">
+      <div className="flex h-42.5 flex-col items-center justify-center rounded-xl bg-slate-50 text-center">
         <MapPinOff className="mb-2 h-7 w-7 text-slate-300" />
         <b className="text-[13px] font-semibold text-[#1c2a42]">No position reported</b>
         <span className="text-xs text-[#667085]">This vehicle has not sent a location yet</span>
@@ -42,7 +42,7 @@ export function VehicleMiniMap({ marker }: { marker: MapMarker | null }) {
   }
 
   return (
-    <div className="h-[170px] overflow-hidden rounded-xl">
+    <div className="h-42.5 overflow-hidden rounded-xl">
       <RajasthanMap markers={markers} selectedId={marker.id} onSelect={noop} />
     </div>
   );

@@ -120,7 +120,7 @@ export function StatCard({
     >
       {/* A wash rather than a band: it tints the tile without drawing an edge
           that competes with the card's own hairline. */}
-      <div className={cn("pointer-events-none absolute inset-0 bg-gradient-to-br to-transparent", a.wash)} />
+      <div className={cn("pointer-events-none absolute inset-0 bg-linear-to-br to-transparent", a.wash)} />
 
       <div className="relative flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -201,7 +201,7 @@ export function HeroStat({
         <p className={cn("mt-1.5 text-[3rem] font-bold leading-none tracking-tight", tones[tone])}>{value}</p>
         {sub && <p className="mt-2 max-w-lg text-sm leading-relaxed text-slate-500">{sub}</p>}
       </div>
-      {children && <div className="min-w-[180px] flex-1">{children}</div>}
+      {children && <div className="min-w-45 flex-1">{children}</div>}
       {action}
     </div>
   );
@@ -285,7 +285,7 @@ export function MeterRow({
 export function Table({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <div className="-mx-5 overflow-x-auto px-5">
-      <table className={cn("w-full min-w-[32rem] text-sm", className)}>{children}</table>
+      <table className={cn("w-full min-w-lg text-sm", className)}>{children}</table>
     </div>
   );
 }

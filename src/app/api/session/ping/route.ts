@@ -1,7 +1,7 @@
 import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getSession } from "@/lib/auth";
+import { getAccess } from "@/lib/access";
 import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 import { requireSameOrigin } from "@/lib/request-security";
 
@@ -15,13 +15,16 @@ export const dynamic = "force-dynamic";
  * telemetry, and dropped entirely when the fix is too poor to be worth storing.
  */
 async function handlePOST(req: Request) {
-  const auth = await getSession();
-  if (!auth) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  const access = await getAccess();
+  if (!access) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  if (access.group !== "DRIVER" || !access.driverId) {
+    return NextResponse.json({ error: "Only a linked driver account can send vehicle location." }, { status: 403 });
+  }
   requireSameOrigin(req);
 
   const limit = await reserveRateLimit({
     scope: "mobile-ping",
-    subject: auth.id,
+    subject: access.session.id,
     limit: 60,
     windowMs: 60_000,
   });
@@ -45,12 +48,15 @@ async function handlePOST(req: Request) {
     return NextResponse.json({ ok: true, stored: false, reason: `Position accurate only to ${Math.round(accuracy)} m — not stored.` });
   }
 
-  const account = await db.user.findUnique({ where: { id: auth.id }, include: { driverRef: true } });
-  const person = account?.driverRef;
-  if (!person) return NextResponse.json({ error: "Login not linked to a driver record" }, { status: 409 });
+  const person = await db.driver.findFirst({
+    where: { id: access.driverId, status: "Active" },
+    select: { id: true },
+  });
+  if (!person) return NextResponse.json({ error: "This driver account is inactive or no longer linked." }, { status: 409 });
 
   const active = await db.tripSession.findFirst({
-    where: { driverId: person.id, status: "ACTIVE" }, orderBy: { startedAt: "desc" },
+    where: { driverId: person.id, userId: access.session.id, status: "ACTIVE" },
+    orderBy: { startedAt: "desc" },
   });
   if (!active) return NextResponse.json({ ok: true, stored: false, reason: "No active trip." });
 

@@ -28,6 +28,30 @@ describe("Cyber Security Hardening — Rate Limiting & Abuse Prevention", () => 
       const req = new Request("https://fleetview.example.com/api/test");
       assert.equal(clientIp(req), "unknown");
     });
+
+    test("uses a Next-style header reader directly even when it also has a headers member", () => {
+      const nextHeadersLike = {
+        // `ReadonlyHeaders` can satisfy both shapes. The direct `get` is the
+        // one Next server actions must use; its `headers` member is not a
+        // Fetch `Headers` object.
+        headers: {},
+        get(name: string) {
+          return name === "x-forwarded-for" ? "203.0.113.77" : null;
+        },
+      } as unknown as Headers;
+
+      assert.equal(clientIp(nextHeadersLike), "203.0.113.77");
+    });
+
+    test("does not let an unreadable header wrapper abort authentication", () => {
+      const unreadableHeaders = {
+        get() {
+          throw new TypeError("header wrapper is unavailable");
+        },
+      } as unknown as Headers;
+
+      assert.equal(clientIp(unreadableHeaders), "unknown");
+    });
   });
 
   describe("rateLimitDecision sliding window mechanics", () => {

@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "next dev --webpack",
     "build": "prisma generate && next build --webpack",
-    "vercel-build": "npm run deploy:check && npm run build",
+    "vercel-build": "npm run deploy:check && npm run db:check && npm run build",
     "deploy:check": "node scripts/check-deployment.mjs",
     "test:deploy": "node --test scripts/deployment-env.test.mjs",
     "test:integration": "node --import ./scripts/test-setup.mjs --test tests/integration/*.test.ts",
