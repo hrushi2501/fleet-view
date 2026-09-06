@@ -4,13 +4,14 @@ import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireApi } from "@/lib/access";
 import { notificationScope } from "@/lib/notification-feed";
+import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
+import { requireSameOrigin } from "@/lib/request-security";
 
 /**
  * Both handlers were open: GET returned every alert in the fleet and PATCH let
  * anyone acknowledge, assign or resolve one — i.e. silence a live alert without
- * an account. `fleet.view` is the coarsest gate that still excludes drivers;
- * acknowledging really wants its own `alerts.manage` permission in the
- * catalogue, which is a change for the owners of `rbac.ts` consumers to make.
+ * an account. Reading remains `fleet.view`; a state transition requires the
+ * existing `fleet.edit` capability and the same row predicate.
  */
 async function handleGET(request: NextRequest) {
   const auth = await requireApi("fleet.view");
@@ -70,16 +71,22 @@ async function handleGET(request: NextRequest) {
 }
 
 async function handlePATCH(request: NextRequest) {
-  const auth = await requireApi("fleet.view");
+  const auth = await requireApi("fleet.edit");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  requireSameOrigin(request);
 
   try {
     const body = await request.json();
     const { id, action, supervisor } = body as { id: string; action: string; supervisor?: string };
 
-    if (!id || !action) {
+    if (typeof id !== "string" || id.length > 128 || !["acknowledge", "escalate", "assign", "resolve"].includes(action)) {
       return NextResponse.json({ error: "Missing id or action" }, { status: 400 });
     }
+    if (supervisor != null && (typeof supervisor !== "string" || supervisor.trim().length === 0 || supervisor.length > 160)) {
+      return NextResponse.json({ error: "Supervisor name is invalid." }, { status: 400 });
+    }
+    const limit = await reserveRateLimit({ scope: "alert-mutation", subject: auth.access.session.id, limit: 30, windowMs: 60_000 });
+    if (!limit.ok) return rateLimitResponse(limit.retryInSeconds, "Too many alert updates. Please wait.");
 
     // Look up through the same row-level predicate as the list. An alert id
     // alone is never authority to resolve another project's safety alert.
@@ -95,7 +102,7 @@ async function handlePATCH(request: NextRequest) {
        await db.alert.update({ where: { id }, data: { escalatedAt: new Date() } });
     } else if (action === "assign") {
        if (!supervisor) return NextResponse.json({ error: "supervisor required for assign action" }, { status: 400 });
-       await db.alert.update({ where: { id }, data: { assignedTo: supervisor, status: "Acknowledged", acknowledgedAt: new Date() } });
+       await db.alert.update({ where: { id }, data: { assignedTo: supervisor.trim(), status: "Acknowledged", acknowledgedAt: new Date() } });
     } else if (action === "resolve") {
        await db.alert.update({ where: { id }, data: { status: "Resolved", resolvedAt: new Date() } });
     } else {

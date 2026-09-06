@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { ROLE_LABEL } from "@/lib/utils";
 import { LogOut, Search, Bell, BellRing, CircleAlert, Fuel, ShieldAlert, Wrench, FileWarning, X } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { CommandPalette } from "@/components/CommandPalette";
 import { QuickActionMenu } from "@/components/QuickActionMenu";
 import type { NotificationFeed, NotificationItem } from "@/lib/notification-types";
@@ -24,12 +25,17 @@ export function Topbar({
   initialNotifications?: NotificationItem[];
   notificationLogHref?: string | null;
 }) {
+  const router = useRouter();
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationFeed, setNotificationFeed] = useState<NotificationFeed>({
     items: initialNotifications,
     attentionCount: notifCount,
   });
+  const signOut = useCallback(async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+  }, [router]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
   const initials = user.name.split(" ").map((p) => p[0]).slice(0, 2).join("");
@@ -143,13 +149,14 @@ export function Topbar({
               {initials}
             </div>
           </Link>
-          <a
-            href="/api/auth/logout"
+          <button
+            type="button"
+            onClick={() => void signOut()}
             className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-rose-600"
             title="Sign out"
           >
             <LogOut className="h-4 w-4" />
-          </a>
+          </button>
         </div>
       </header>
 

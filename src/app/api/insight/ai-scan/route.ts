@@ -1,26 +1,28 @@
 import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
-import { requirePermission } from "@/lib/auth";
+import { requireApi } from "@/lib/access";
 import { createTelemetryAdapter } from "@/lib/telemetry-ingestion";
 import { AiFraudDetectionService } from "@/lib/ai-fraud";
 import { reserveRateLimit } from "@/lib/request-rate-limit";
+import { requireSameOrigin } from "@/lib/request-security";
 
 /**
  * Runs the fraud scan and writes cases. Was callable anonymously, so anyone
  * could both drive the AI spend on this account and cause cases to be raised
- * against real drivers. Gated on `fleet.view`, the permission every non-driver
- * role holds — the UI poller that calls this sits on pages those roles use.
+ * against real drivers. Creating fraud cases is investigation work, not a
+ * fleet read; it is intentionally limited to loss investigators.
  */
-async function handlePOST() {
-  const auth = await requirePermission("fleet.view");
+async function handlePOST(req: Request) {
+  const auth = await requireApi("loss.investigate");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  requireSameOrigin(req);
 
   // Fraud scans can fetch telemetry and write cases, so make the cooldown
   // explicit per operator instead of letting a repeated UI click exhaust AI
   // provider quota or create duplicate investigations.
   const limit = await reserveRateLimit({
     scope: "ai-fraud-scan",
-    subject: auth.session.id,
+    subject: auth.access.session.id,
     limit: 1,
     windowMs: 5 * 60_000,
   });

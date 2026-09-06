@@ -28,7 +28,8 @@ async function syncScore(driverId: string) {
 /* ------------------------------- competencies ------------------------------- */
 
 async function saveCompetency__impl(fd: FormData) {
-  await requireAction("people.edit");
+  const scopeAccess = await requireAction("people.edit");
+  await assertFormAccess(scopeAccess, fd);
   const driverId = s(fd, "driverId");
   const assetClass = s(fd, "assetClass");
   if (!driverId || !assetClass) throw new ActionError("Driver and machine class are required");

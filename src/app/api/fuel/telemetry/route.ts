@@ -2,10 +2,11 @@ import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { checkSharedSecret } from "@/lib/auth";
-import { requireApi } from "@/lib/access";
+import { requireApi, assetScope, type Access } from "@/lib/access";
 import { getTelemetryAdapter } from "@/lib/telematics-adapters";
 import { normaliseReading, assetCacheUpdate, detectSchemaDrift, describeDrift, readTelemetryJson } from "@/lib/telemetry-normalization";
 import { db } from "@/lib/db";
+import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -19,10 +20,14 @@ async function handleGET(req: Request) {
   const url = new URL(req.url);
   const authSecret = checkSharedSecret(req, "FLEET_INGEST_KEY");
   let isAuthorized = authSecret.ok;
+  let sessionAccess: Access | null = null;
 
   if (!isAuthorized) {
     const sessionAuth = await requireApi("fuel.view");
-    if (sessionAuth.ok) isAuthorized = true;
+    if (sessionAuth.ok) {
+      isAuthorized = true;
+      sessionAccess = sessionAuth.access;
+    }
   }
 
   if (!isAuthorized) {
@@ -40,9 +45,12 @@ async function handleGET(req: Request) {
     whereClause.assetId = assetId;
   }
 
+  const scopedWhere: Prisma.TelemetryReadingWhereInput = sessionAccess
+    ? { AND: [whereClause, { asset: assetScope(sessionAccess) as Prisma.AssetWhereInput }] }
+    : whereClause;
   const [readings, totalCount, activeAssets] = await Promise.all([
     db.telemetryReading.findMany({
-      where: whereClause,
+      where: scopedWhere,
       orderBy: { recordedAt: "desc" },
       take: limit,
       include: {
@@ -67,11 +75,12 @@ async function handleGET(req: Request) {
         },
       },
     }),
-    db.telemetryReading.count({ where: whereClause }),
+    db.telemetryReading.count({ where: scopedWhere }),
     db.asset.findMany({
       where: {
         fuelCapacity: { gt: 0 },
         decommissionedOn: null,
+        ...(sessionAccess ? assetScope(sessionAccess) : {}),
       },
       select: {
         id: true,
@@ -121,6 +130,9 @@ async function handlePOST(req: Request) {
   const auth = checkSharedSecret(req, "FLEET_INGEST_KEY");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
+  const limit = await reserveRateLimit({ scope: "fuel-telemetry-ingest", subject: "provider", limit: 300, windowMs: 60_000 });
+  if (!limit.ok) return rateLimitResponse(limit.retryInSeconds, "Telemetry ingestion rate exceeded.");
+
   try {
     const url = new URL(req.url);
     const providerCode = url.searchParams.get("provider") || "GENERIC";
@@ -130,6 +142,10 @@ async function handlePOST(req: Request) {
     if (!parsed.ok) return NextResponse.json({ success: false, error: parsed.error }, { status: parsed.status });
     const rawBody = parsed.value;
     const pings = await adapter.parsePayload(rawBody);
+
+    if (pings.length > 1_000) {
+      return NextResponse.json({ success: false, error: "Telemetry payload contains too many readings." }, { status: 413 });
+    }
 
     if (!pings.length) {
       return NextResponse.json({ success: true, processed: 0, message: "No pings found in payload" });

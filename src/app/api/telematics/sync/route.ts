@@ -5,6 +5,7 @@ import { requireApi } from "@/lib/access";
 import { recordSystemAudit } from "@/lib/audit-writer";
 import { syncTataFleetEdge, isTataEnabled, missingConfigKeys } from "@/lib/tata-fleet-edge";
 import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
+import { requireSameOrigin } from "@/lib/request-security";
 
 export const dynamic = "force-dynamic";
 // Fleet Edge is polled for the whole fleet; allow room for a slow upstream.
@@ -16,13 +17,14 @@ export const maxDuration = 120;
  * Called by Vercel Cron (sends `Authorization: Bearer ${CRON_SECRET}`) or
  * by internal worker / manual admin check.
  */
-async function handleGET(req: Request) {
+async function handleSync(req: Request, allowSession: boolean) {
   const authSecret = checkSharedSecret(req, "CRON_SECRET");
   let isAuthorized = authSecret.ok;
 
-  if (!isAuthorized) {
-    const sessionAuth = await requireApi("fleet.view");
+  if (!isAuthorized && allowSession) {
+    const sessionAuth = await requireApi("fleet.edit");
     if (sessionAuth.ok) {
+      requireSameOrigin(req);
       const limit = await reserveRateLimit({
         scope: "telematics-sync",
         subject: sessionAuth.access.session.id,
@@ -73,4 +75,8 @@ async function handleGET(req: Request) {
   return NextResponse.json(result, { status: result.ok ? 200 : 502 });
 }
 
+async function handleGET(req: Request) { return handleSync(req, false); }
+async function handlePOST(req: Request) { return handleSync(req, true); }
+
 export const GET = withApiErrors(handleGET);
+export const POST = withApiErrors(handlePOST);

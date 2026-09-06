@@ -1,8 +1,9 @@
 import { withApiErrors } from "@/lib/api-error";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getAccess, assetScope, projectScope } from "@/lib/access";
+import { requireApi, assetScope, projectScope } from "@/lib/access";
 import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
+import { recordScope } from "@/lib/record-access";
 
 export const dynamic = "force-dynamic";
 
@@ -18,10 +19,9 @@ export interface SearchResultItem {
 
 async function handleGET(req: NextRequest) {
   try {
-    const access = await getAccess();
-    if (!access) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApi("fleet.view");
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    const access = auth.access;
 
     const limit = await reserveRateLimit({
       scope: "search",
@@ -65,11 +65,10 @@ async function handleGET(req: NextRequest) {
       }),
       db.driver.findMany({
         where: {
+          ...recordScope("driver", access),
           OR: [
             { name: { contains: q, mode: "insensitive" } },
             { empCode: { contains: q, mode: "insensitive" } },
-            { phone: { contains: q, mode: "insensitive" } },
-            { licenseNo: { contains: q, mode: "insensitive" } },
           ],
         },
         take: 5,
@@ -88,6 +87,7 @@ async function handleGET(req: NextRequest) {
       }),
       db.site.findMany({
         where: {
+          ...recordScope("site", access),
           OR: [
             { code: { contains: q, mode: "insensitive" } },
             { name: { contains: q, mode: "insensitive" } },
@@ -111,6 +111,7 @@ async function handleGET(req: NextRequest) {
       }),
       db.fuelTank.findMany({
         where: {
+          ...recordScope("fuelTank", access),
           OR: [
             { name: { contains: q, mode: "insensitive" } },
             { location: { contains: q, mode: "insensitive" } },
@@ -121,6 +122,7 @@ async function handleGET(req: NextRequest) {
       }),
       db.weighbridgeTicket.findMany({
         where: {
+          ...recordScope("weighbridgeTicket", access),
           OR: [
             { ticketNo: { contains: q, mode: "insensitive" } },
             { material: { contains: q, mode: "insensitive" } },
@@ -153,7 +155,7 @@ async function handleGET(req: NextRequest) {
         id: d.id,
         category: "driver",
         title: d.name,
-        subtitle: `${d.empCode} · ${d.phone || "No phone"} · ${d.type}`,
+        subtitle: `${d.empCode} · ${d.type}`,
         badge: d.status,
         badgeColor: d.status === "Active" ? "bg-emerald-100 text-emerald-700 ring-emerald-600/20" : "bg-slate-100 text-slate-700 ring-slate-500/20",
         href: `/people?tab=staff`,

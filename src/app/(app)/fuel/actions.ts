@@ -2,8 +2,8 @@
 
 import { db } from "@/lib/db";
 import { businessTransaction } from "@/lib/business-transaction";
-import { formNumber } from "@/lib/input-validation";
-import { assertRecordAccess, assertFormAccess, assertGlobalAccess } from "@/lib/record-access";
+import { formNumber, positiveNumber } from "@/lib/input-validation";
+import { assertRecordAccess, assertFormAccess, assertGlobalAccess, fuelAnomalyScope } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { getDieselRate } from "@/lib/settings";
@@ -33,13 +33,19 @@ function refresh() {
 /* --------------------------------- tanks --------------------------------- */
 
 async function saveTank__impl(id: string | null, fd: FormData) {
-  await requireAction("fuel.receipt");
+  const scopeAccess = await requireAction("fuel.receipt");
+  await assertFormAccess(scopeAccess, fd);
+  if (id) await assertRecordAccess(scopeAccess, "fuelTank", id);
+  const capacity = positiveNumber(fd.get("capacity"), "Tank capacity");
+  const minLevel = n(fd, "minLevel");
+  const openingLevel = n(fd, "openingLevel");
+  if (minLevel < 0 || openingLevel < 0 || minLevel > capacity || openingLevel > capacity) throw new ActionError("Tank levels must be within tank capacity.");
   const data = {
     name: s(fd, "name"),
     location: s(fd, "location"),
-    capacity: n(fd, "capacity"),
-    minLevel: n(fd, "minLevel"),
-    openingLevel: n(fd, "openingLevel"),
+    capacity,
+    minLevel,
+    openingLevel,
     projectId: s(fd, "projectId") || null,
     status: s(fd, "status") || "Active",
     code: s(fd, "code") || null,
@@ -63,10 +69,15 @@ async function saveReceipt__impl(fd: FormData) {
   const scopeAccess = await requireAction("fuel.receipt");
   await assertFormAccess(scopeAccess, fd);
   const qtyInvoiced = n(fd, "qtyInvoiced");
-  const qtyReceived = n(fd, "qtyReceived") || qtyInvoiced;
-  const rate = n(fd, "rate") || (await getDieselRate());
+  const enteredReceived = n(fd, "qtyReceived");
+  const qtyReceived = enteredReceived === 0 ? qtyInvoiced : enteredReceived;
+  const enteredRate = n(fd, "rate");
+  const rate = enteredRate === 0 ? await getDieselRate() : enteredRate;
   const tankId = s(fd, "tankId");
   if (!tankId) throw new ActionError("Tank is required");
+  if (qtyInvoiced <= 0 || qtyReceived <= 0 || rate <= 0 || qtyReceived > qtyInvoiced) throw new ActionError("Receipt quantities and rate must be positive, and received fuel cannot exceed the invoice.");
+  const tank = await db.fuelTank.findFirst({ where: { id: tankId }, select: { capacity: true } });
+  if (!tank) throw new ActionError("Tank not found");
 
   const photo = await uploadPhoto(fd.get("invoicePhoto"), "receipt");
   const session = await getSession();
@@ -95,7 +106,8 @@ async function saveReceipt__impl(fd: FormData) {
     });
 
     // Book balance moves on litres actually received
-    await tx.fuelTank.update({ where: { id: tankId }, data: { currentLevel: { increment: qtyReceived } } });
+    const credited = await tx.fuelTank.updateMany({ where: { id: tankId, currentLevel: { lte: tank.capacity - qtyReceived } }, data: { currentLevel: { increment: qtyReceived } } });
+    if (credited.count !== 1) throw new ActionError("The receipt would exceed the selected tank's capacity.");
 
     if (shortfall > 0) {
       await tx.fuelAnomaly.create({
@@ -122,7 +134,8 @@ async function deleteReceipt__impl(id: string) {
   await businessTransaction(scopeAccess.session, async (tx) => {
     const r = await tx.fuelReceipt.findUnique({ where: { id } });
     if (r) {
-      await tx.fuelTank.update({ where: { id: r.tankId }, data: { currentLevel: { decrement: r.qtyReceived } } });
+      const reversed = await tx.fuelTank.updateMany({ where: { id: r.tankId, currentLevel: { gte: r.qtyReceived } }, data: { currentLevel: { decrement: r.qtyReceived } } });
+      if (reversed.count !== 1) throw new ActionError("Receipt cannot be removed because its fuel has already been issued.");
       await tx.fuelReceipt.delete({ where: { id } });
     }
   });
@@ -138,6 +151,9 @@ async function saveDip__impl(fd: FormData) {
   const tankId = s(fd, "tankId");
   if (!tankId) throw new ActionError("Tank is required");
   const level = n(fd, "level");
+  if (level < 0) throw new ActionError("Dip level cannot be negative.");
+  const tank = await db.fuelTank.findFirst({ where: { id: tankId }, select: { capacity: true } });
+  if (!tank || level > tank.capacity) throw new ActionError("Dip level must be within tank capacity.");
   const photo = await uploadPhoto(fd.get("photo"), "dip");
   const session = await getSession();
 
@@ -282,7 +298,9 @@ async function setReconStatus__impl(id: string, status: string, notes?: string) 
 /* -------------------------------- anomalies -------------------------------- */
 
 async function updateAnomaly__impl(id: string, fd: FormData) {
-  await requireAction("fuel.approve");
+  const scopeAccess = await requireAction("fuel.approve");
+  const visible = await db.fuelAnomaly.findFirst({ where: { id, ...await fuelAnomalyScope(scopeAccess) }, select: { id: true } });
+  if (!visible) throw new ActionError("This anomaly is unavailable or outside your assigned sites.");
   const status = s(fd, "status");
   const session = await getSession();
   await db.fuelAnomaly.update({

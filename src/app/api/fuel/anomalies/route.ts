@@ -2,6 +2,7 @@ import { fuelAnomalyScope, recordScope } from "@/lib/record-access";
 import { finiteNumber, oneOf } from "@/lib/input-validation";
 import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 import { withApiErrors } from "@/lib/api-error";
+import { requireSameOrigin } from "@/lib/request-security";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireApi } from "@/lib/access";
@@ -81,6 +82,7 @@ async function handleGET(req: Request) {
 async function handlePATCH(req: Request) {
   const auth = await requireApi("fuel.approve");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  requireSameOrigin(req);
 
   try {
     const body = await req.json();

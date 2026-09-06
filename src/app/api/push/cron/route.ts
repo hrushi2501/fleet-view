@@ -8,8 +8,8 @@ import { administratorNotificationUserIds } from "@/lib/notification-recipients"
 
 export const dynamic = "force-dynamic";
 
-// Called by Vercel Cron (sends Authorization: Bearer ${CRON_SECRET}) or manually
-// with ?key=. Fails closed when CRON_SECRET is unset — an unauthenticated
+// Called by Vercel Cron with Authorization: Bearer ${CRON_SECRET}. Fails closed
+// when CRON_SECRET is unset — an unauthenticated
 // trigger here pushes a notification to every subscribed device.
 async function handleGET(req: Request) {
   const auth = checkSharedSecret(req, "CRON_SECRET");

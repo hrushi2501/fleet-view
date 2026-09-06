@@ -31,6 +31,7 @@ export function recordScope(model: string, access: Access): Record<string, unkno
     case "tyre": case "majorComponent": return { OR: [{ asset }, { warehouse: project }] };
     case "tyreEvent": return { tyre: recordScope("tyre", access) };
     case "attendance": case "personDocument": case "competency": case "violation": return { driver: recordScope("driver", access) };
+    case "alert": return { OR: [{ asset }, { driver: recordScope("driver", access) }] };
     default: return { id: "__none__" };
   }
 }

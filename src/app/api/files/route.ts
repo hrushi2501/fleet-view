@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { canSeeAsset, requireApi, type Access } from "@/lib/access";
 import { db } from "@/lib/db";
 import { privateFileUrl } from "@/lib/private-upload";
+import { recordScope } from "@/lib/record-access";
 
 export const dynamic = "force-dynamic";
 
@@ -62,9 +63,10 @@ async function handleGET(req: Request) {
     permitted = auth.ok && await canReadAssetFile(auth.access, compliance.assetId);
   } else if (personDocument) {
     const auth = await requireApi("people.view");
-    // Person records are not asset-scoped. Drivers do not hold people.view;
-    // supervisors/admins who do hold it may read the document register.
-    permitted = auth.ok;
+    permitted = !!auth.ok && !!await db.driver.findFirst({
+      where: { id: personDocument.driverId, ...recordScope("driver", auth.access) },
+      select: { id: true },
+    });
   } else if (transaction) {
     const auth = await requireApi("fuel.view");
     permitted = auth.ok && (

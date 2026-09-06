@@ -8,6 +8,7 @@ import { sweepAlerts, dueForEscalation, DEFAULT_ALERT_RULES, type AlertRuleLite,
 import { pmDue, type ScheduleLite } from "@/lib/maintenance";
 import { allocationConflicts, mobilizationStats, type AllocationLite, type MobLite } from "@/lib/operations";
 import { requireAction, safe } from "@/lib/guard";
+import { assertRecordAccess } from "@/lib/record-access";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
@@ -22,7 +23,8 @@ function refresh() {
  * now also stamps who acted and when, which M18's response-time stats need.
  */
 async function updateAlert__impl(id: string, status: "Acknowledged" | "Resolved") {
-  await requireAction("maintenance.edit");
+  const scopeAccess = await requireAction("maintenance.edit");
+  await assertRecordAccess(scopeAccess, "alert", id);
   const session = await getSession();
   await db.alert.update({
     where: { id },
@@ -37,7 +39,8 @@ async function updateAlert__impl(id: string, status: "Acknowledged" | "Resolved"
 }
 
 async function acknowledgeAlert__impl(id: string) {
-  await requireAction("maintenance.edit");
+  const scopeAccess = await requireAction("maintenance.edit");
+  await assertRecordAccess(scopeAccess, "alert", id);
   const session = await getSession();
   await db.alert.update({
     where: { id },
@@ -47,13 +50,15 @@ async function acknowledgeAlert__impl(id: string) {
 }
 
 async function resolveAlert__impl(id: string) {
-  await requireAction("maintenance.edit");
+  const scopeAccess = await requireAction("maintenance.edit");
+  await assertRecordAccess(scopeAccess, "alert", id);
   await db.alert.update({ where: { id }, data: { status: "Resolved", resolvedAt: new Date() } });
   refresh();
 }
 
 async function escalateAlert__impl(id: string) {
-  await requireAction("maintenance.edit");
+  const scopeAccess = await requireAction("maintenance.edit");
+  await assertRecordAccess(scopeAccess, "alert", id);
   const session = await getSession();
   await db.alert.update({
     where: { id },
@@ -63,7 +68,8 @@ async function escalateAlert__impl(id: string) {
 }
 
 async function assignAlert__impl(id: string, supervisor: string) {
-  await requireAction("maintenance.edit");
+  const scopeAccess = await requireAction("maintenance.edit");
+  await assertRecordAccess(scopeAccess, "alert", id);
   const session = await getSession();
   await db.alert.update({
     where: { id },

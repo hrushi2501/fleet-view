@@ -2,6 +2,7 @@ import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { clearSession, getSession } from "@/lib/auth";
 import { auditAs } from "@/lib/audit";
+import { requireSameOrigin } from "@/lib/request-security";
 
 /**
  * Sign out.
@@ -9,7 +10,8 @@ import { auditAs } from "@/lib/audit";
  * Reads the session before clearing it so the event can name who left — the
  * audit screen renders a `LOGOUT` badge that nothing had ever written.
  */
-async function handleGET(req: Request) {
+async function handlePOST(req: Request) {
+  requireSameOrigin(req);
   const session = await getSession();
   await clearSession();
 
@@ -20,7 +22,7 @@ async function handleGET(req: Request) {
     });
   }
 
-  return NextResponse.redirect(new URL("/login", req.url));
+  return NextResponse.json({ ok: true });
 }
 
-export const GET = withApiErrors(handleGET);
+export const POST = withApiErrors(handlePOST);

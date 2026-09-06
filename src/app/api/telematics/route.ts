@@ -66,7 +66,8 @@ async function ingestOne(body: Record<string, unknown>) {
     recordedAt = parsed;
   }
 
-  const source = typeof body.source === "string" && body.source.trim() ? body.source.trim() : "DEVICE";
+  const suppliedSource = typeof body.source === "string" ? body.source.trim().toUpperCase() : "";
+  const source = ["DEVICE", "MOBILE", "LOCANAV", "MAPMYINDIA", "TATA_FLEET_EDGE"].includes(suppliedSource) ? suppliedSource : "DEVICE";
 
   const previous = await db.telemetryReading.findFirst({
     where: { assetId: asset.id, odometerKm: { not: null } },
@@ -194,6 +195,7 @@ async function handlePOST(req: Request) {
   if (!limit.ok) return rateLimitResponse(limit.retryInSeconds);
 
   if (Array.isArray(body.readings)) {
+    if (body.readings.length > 1_000) return NextResponse.json({ error: "Telemetry payload contains too many readings." }, { status: 413 });
     const results = [];
     for (const r of body.readings as Record<string, unknown>[]) {
       const { key: _ignored, ...reading } = r;

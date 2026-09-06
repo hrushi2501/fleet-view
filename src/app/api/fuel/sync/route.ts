@@ -4,22 +4,24 @@ import { checkSharedSecret } from "@/lib/auth";
 import { requireApi } from "@/lib/access";
 import { syncTataFleetEdge, isTataEnabled, missingConfigKeys } from "@/lib/tata-fleet-edge";
 import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
+import { requireSameOrigin } from "@/lib/request-security";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 /**
- * GET or POST /api/fuel/sync
+ * GET (cron only) or POST (cron or authenticated operator) /api/fuel/sync
  *
  * Trigger live telemetry & fuel sync from Tata Fleet Edge API.
  */
-async function handleSync(req: Request) {
+async function handleSync(req: Request, allowSession: boolean) {
   const authSecret = checkSharedSecret(req, "CRON_SECRET");
   let isAuthorized = authSecret.ok;
 
-  if (!isAuthorized) {
-    const sessionAuth = await requireApi("fuel.view");
+  if (!isAuthorized && allowSession) {
+    const sessionAuth = await requireApi("fleet.edit");
     if (sessionAuth.ok) {
+      requireSameOrigin(req);
       const limit = await reserveRateLimit({
         scope: "fuel-sync",
         subject: sessionAuth.access.session.id,
@@ -55,11 +57,11 @@ async function handleSync(req: Request) {
 }
 
 async function handleGET(req: Request) {
-  return handleSync(req);
+  return handleSync(req, false);
 }
 
 async function handlePOST(req: Request) {
-  return handleSync(req);
+  return handleSync(req, true);
 }
 
 export const GET = withApiErrors(handleGET);

@@ -335,7 +335,7 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
       <div className="min-h-screen bg-slate-50">
         <header className="flex items-center justify-between bg-ink-900 px-4 py-4 text-white">
           <div className="flex items-center gap-2"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500"><Truck className="h-6 w-6" /></div><p className="text-base font-bold">{driverName.split(" ")[0]}</p></div>
-          <a href="/api/auth/logout" className="rounded-xl bg-white/10 p-3"><LogOut className="h-6 w-6" /></a>
+          <button type="button" onClick={() => { void fetch("/api/auth/logout", { method: "POST" }).then(() => router.push("/login")); }} className="rounded-xl bg-white/10 p-3" aria-label="Sign out"><LogOut className="h-6 w-6" /></button>
         </header>
         <div className="p-5">
           <button onClick={() => { setMode("fuel"); setStep("vehicle"); }} className="flex w-full flex-col items-center gap-3 rounded-3xl bg-linear-to-br from-brand-500 to-brand-700 py-10 text-white shadow-xl shadow-brand-500/30 active:scale-[0.98]">

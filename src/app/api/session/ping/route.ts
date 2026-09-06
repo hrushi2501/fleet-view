@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
+import { requireSameOrigin } from "@/lib/request-security";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ export const dynamic = "force-dynamic";
 async function handlePOST(req: Request) {
   const auth = await getSession();
   if (!auth) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  requireSameOrigin(req);
 
   const limit = await reserveRateLimit({
     scope: "mobile-ping",
@@ -39,7 +41,7 @@ async function handlePOST(req: Request) {
 
   // A fix worse than half a kilometre tells us nothing useful about a vehicle.
   const accuracy = body.accuracy != null ? Number(body.accuracy) : null;
-  if (accuracy != null && accuracy > 500) {
+  if (accuracy != null && (!Number.isFinite(accuracy) || accuracy < 0 || accuracy > 500)) {
     return NextResponse.json({ ok: true, stored: false, reason: `Position accurate only to ${Math.round(accuracy)} m — not stored.` });
   }
 

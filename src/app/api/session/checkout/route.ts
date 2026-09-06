@@ -6,6 +6,7 @@ import { completeDuty } from "@/lib/trip-service";
 import { businessTransaction } from "@/lib/business-transaction";
 import { finiteNumber } from "@/lib/input-validation";
 import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
+import { requireSameOrigin } from "@/lib/request-security";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,7 @@ async function handlePost(req: Request) {
   const access = await getAccess();
   if (!access) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   if (access.group !== "DRIVER") return NextResponse.json({ error: "Only a driver account can end a vehicle trip." }, { status: 403 });
+  requireSameOrigin(req);
 
   const limit = await reserveRateLimit({
     scope: "session-checkout",

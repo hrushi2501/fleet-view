@@ -11,12 +11,13 @@ export const dynamic = "force-dynamic";
  *  this response is readable by every signed-in user. */
 const RAW_SECRET_FIELDS = new Set(["key", "token", "secret", "password", "apikey", "api_key", "authorization"]);
 
-function redactRaw(raw: unknown): unknown {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw ?? null;
+function redactRaw(raw: unknown, depth = 0): unknown {
+  if (depth > 12 || raw == null || typeof raw !== "object") return raw ?? null;
+  if (Array.isArray(raw)) return raw.slice(0, 200).map((value) => redactRaw(value, depth + 1));
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
     if (RAW_SECRET_FIELDS.has(k.toLowerCase())) continue;
-    out[k] = v;
+    out[k] = redactRaw(v, depth + 1);
   }
   return out;
 }

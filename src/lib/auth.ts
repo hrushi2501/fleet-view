@@ -227,9 +227,10 @@ function safeEqual(a: string, b: string): boolean {
  * unset variable silently published a key that is committed to this repository,
  * i.e. known to anyone who can read it.
  *
- * Accepts `Authorization: Bearer <secret>`, `x-fleet-key: <secret>`, a
- * `?key=<secret>` query parameter, or a `key` field already parsed out of a JSON
- * body. Comparison is constant-time.
+ * Accepts `Authorization: Bearer <secret>`, `x-fleet-key: <secret>`, or a key
+ * field already parsed out of a JSON body. Query-string credentials are never
+ * accepted because URL logs and referrers are not a secret store. Comparison is
+ * constant-time.
  */
 export function checkSharedSecret(
   req: Request,
@@ -248,12 +249,9 @@ export function checkSharedSecret(
   const auth = req.headers.get("authorization") ?? "";
   const bearer = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : "";
   const header = req.headers.get("x-fleet-key")?.trim() ?? "";
-  // Secrets in a query string end up in access logs and browser history; kept
-  // only because the runbook documents a manual `?key=` check.
-  const query = new URL(req.url).searchParams.get("key")?.trim() ?? "";
   const body = typeof opts.bodyKey === "string" ? opts.bodyKey : "";
 
-  const supplied = [bearer, header, query, body].filter(Boolean);
+  const supplied = [bearer, header, body].filter(Boolean);
   if (!supplied.some((s) => safeEqual(s, expected))) {
     return { ok: false, status: 401, error: "Unauthorized" };
   }

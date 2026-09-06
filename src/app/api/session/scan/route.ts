@@ -15,6 +15,7 @@ import {
 import { assetCompliance, DOC_LABEL, type DocLite } from "@/lib/compliance";
 import { eligibility, safetyScore, type DriverLite, type CompetencyLite, type ViolationLite } from "@/lib/drivers";
 import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
+import { requireSameOrigin } from "@/lib/request-security";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,7 @@ async function handlePost(req: Request) {
   const access = await getAccess();
   if (!access) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   if (access.group !== "DRIVER") return NextResponse.json({ error: "Only a driver account can check in to a vehicle." }, { status: 403 });
+  requireSameOrigin(req);
 
   const limit = await reserveRateLimit({
     scope: "qr-scan",
@@ -69,6 +71,9 @@ async function handlePost(req: Request) {
 
   const num = (k: string) => (body[k] != null && isFinite(Number(body[k])) ? Number(body[k]) : null);
   const lat = num("lat"), lng = num("lng");
+  if ((lat != null && (lat < -90 || lat > 90)) || (lng != null && (lng < -180 || lng > 180))) {
+    return NextResponse.json({ error: "Coordinates are outside physical bounds." }, { status: 400 });
+  }
   const manualOdo = num("odometer");
   const odoCheck = validateOdometerAtScan(manualOdo, asset.meterValue);
   if (!odoCheck.valid) {

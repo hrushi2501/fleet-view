@@ -38,5 +38,6 @@ self.addEventListener("push", (e) => {
 
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
-  e.waitUntil(self.clients.openWindow(e.notification.data || "/notifications"));
+  const target = typeof e.notification.data === "string" && /^\/(?!\/)/.test(e.notification.data) ? e.notification.data : "/notifications";
+  e.waitUntil(self.clients.openWindow(target));
 });

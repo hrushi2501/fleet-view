@@ -8,6 +8,7 @@ import {
   runPeriodicDatabaseAudit,
 } from "@/lib/db-audit";
 import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
+import { requireSameOrigin } from "@/lib/request-security";
 
 export const dynamic = "force-dynamic";
 
@@ -42,9 +43,10 @@ async function handleGET() {
  * Triggers a full database audit sweep, prunes expired rate limit rows,
  * and writes a durable SYSTEM_HEALTH event to the AuditEvent log.
  */
-async function handlePOST() {
+async function handlePOST(req: Request) {
   const auth = await requireApi("admin.settings");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  requireSameOrigin(req);
 
   const limit = await reserveRateLimit({
     scope: "admin-db-audit",

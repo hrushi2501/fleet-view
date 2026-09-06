@@ -6,6 +6,8 @@ import { z } from "zod";
 import { visionModelForOdometer, visionModelForPump, visionModelForGauge, ocrAvailable } from "@/lib/ai";
 import { validatePhotoVerification } from "@/lib/fuel-verification";
 import { reserveRateLimit } from "@/lib/request-rate-limit";
+import { requireSameOrigin } from "@/lib/request-security";
+import { detectAllowedFile, MAX_IMAGE_UPLOAD_BYTES } from "@/lib/private-upload";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -71,6 +73,7 @@ const consistent = (o: { amount: number | null; volume: number | null; rate: num
 async function handlePOST(req: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  requireSameOrigin(req);
 
   // Each attempt can make one or two paid vision requests. Reserve before
   // reading the multipart body so a caller cannot use large uploads to bypass
@@ -110,8 +113,14 @@ async function handlePOST(req: Request) {
     const lat = form.get("lat") ? Number(form.get("lat")) : null;
     const lng = form.get("lng") ? Number(form.get("lng")) : null;
 
-    if (!file || typeof file === "string") return NextResponse.json({ error: "no image" });
-    const bytes = new Uint8Array(await (file as File).arrayBuffer());
+    if (!file || typeof file === "string") return NextResponse.json({ error: "no image" }, { status: 400 });
+    if (file.size <= 0 || file.size > MAX_IMAGE_UPLOAD_BYTES) return NextResponse.json({ error: "Image must be between 1 byte and 5 MB." }, { status: 413 });
+    const signature = new Uint8Array(await file.slice(0, 16).arrayBuffer());
+    const detected = detectAllowedFile(signature);
+    if (!detected || detected.extension === "pdf" || (file.type && file.type !== detected.contentType)) {
+      return NextResponse.json({ error: "Upload a valid JPEG, PNG, or WebP image." }, { status: 400 });
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
 
     // Perform photo validation (pHash, geofence, screenshot check)
     const deviceGeo = lat != null && lng != null ? { lat, lng } : null;
