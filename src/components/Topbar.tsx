@@ -7,6 +7,7 @@ import Link from "next/link";
 import { CommandPalette } from "@/components/CommandPalette";
 import { QuickActionMenu } from "@/components/QuickActionMenu";
 import type { NotificationFeed, NotificationItem } from "@/lib/notification-types";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 /**
  * The header adapts to who is looking at it and provides global search.
@@ -98,6 +99,15 @@ export function Topbar({
           <QuickActionMenu isDriver={isDriver} />
         </div>
         <div className="flex items-center gap-3">
+          {/* Reachable from every screen, and on a phone too: somebody who
+              cannot read the English is exactly the person who must not have to
+              navigate through English menus to find this. */}
+          <div className="hidden sm:block">
+            <LanguageSwitcher />
+          </div>
+          <div className="sm:hidden">
+            <LanguageSwitcher compact />
+          </div>
           {!isDriver && (
             <button
               onClick={() => setSearchOpen(true)}

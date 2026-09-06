@@ -26,6 +26,8 @@
 import type { Access, UserGroup } from "@/lib/access";
 
 export type NavChild = {
+  /** Key into the Hindi dictionary; the English label is the fallback. */
+  i18nKey?: string;
   href: string;
   label: string;
   /** Permission the destination page enforces. Null = any signed-in user. */
@@ -35,6 +37,8 @@ export type NavChild = {
 };
 
 export type NavItem = {
+  /** Key into the Hindi dictionary; the English label is the fallback. */
+  i18nKey?: string;
   href: string;
   label: string;
   /** One line under the heading, in plain language. */
@@ -54,100 +58,100 @@ export type NavItem = {
  */
 export const MODULES: NavItem[] = [
   {
-    href: "/",
+    href: "/", i18nKey: "nav.dashboard",
     label: "Dashboard",
     hint: "Kya chal raha hai",
     icon: "LayoutDashboard",
     permission: null,
   },
   {
-    href: "/fleet",
+    href: "/fleet", i18nKey: "nav.fleet",
     label: "Fleet",
     hint: "Gaadi kahan hai",
     icon: "Truck",
     permission: "fleet.view",
     children: [
-      { href: "/fleet", label: "Vehicles & Equipment", permission: "fleet.view" },
-      { href: "/fleet/tracking", label: "Vehicle Tracking", permission: "fleet.view" },
-      { href: "/fleet/trips", label: "Trips", permission: "fleet.view" },
+      { href: "/fleet", i18nKey: "nav.fleet", label: "Vehicles & Equipment", permission: "fleet.view" },
+      { href: "/fleet/tracking", i18nKey: "nav.tracking", label: "Vehicle Tracking", permission: "fleet.view" },
+      { href: "/fleet/trips", i18nKey: "nav.trips", label: "Trips", permission: "fleet.view" },
     ],
   },
   {
-    href: "/fuel",
+    href: "/fuel", i18nKey: "nav.fuel",
     label: "Fuel",
     hint: "Kitna diesel use hua",
     icon: "Fuel",
     permission: "fuel.view",
     children: [
-      { href: "/fuel", label: "Fuel Overview", permission: "fuel.view" },
-      { href: "/fuel/tanks", label: "Site Tanks", permission: "fuel.view" },
-      { href: "/fuel/checks", label: "Fuel Checks", permission: "fuel.view" },
-      { href: "/fuel/problems", label: "Fuel Problems", permission: "fuel.view" },
+      { href: "/fuel", i18nKey: "nav.fuel", label: "Fuel Overview", permission: "fuel.view" },
+      { href: "/fuel/tanks", i18nKey: "nav.fuel.tanks", label: "Site Tanks", permission: "fuel.view" },
+      { href: "/fuel/checks", i18nKey: "nav.fuel.checks", label: "Fuel Checks", permission: "fuel.view" },
+      { href: "/fuel/problems", i18nKey: "nav.fuel.problems", label: "Fuel Problems", permission: "fuel.view" },
     ],
   },
   {
-    href: "/people",
+    href: "/people", i18nKey: "nav.people",
     label: "People",
     hint: "Kaun kaam par hai",
     icon: "Users",
     permission: "people.view",
     children: [
-      { href: "/people", label: "Staff & Drivers", permission: "people.view" },
-      { href: "/people/attendance", label: "Attendance", permission: "people.view" },
-      { href: "/people/payroll", label: "Payroll", permission: "payroll.view" },
-      { href: "/people/contractors", label: "Contractors", permission: "hire.view" },
+      { href: "/people", i18nKey: "nav.people", label: "Staff & Drivers", permission: "people.view" },
+      { href: "/people/attendance", i18nKey: "nav.people.attendance", label: "Attendance", permission: "people.view" },
+      { href: "/people/payroll", i18nKey: "nav.people.payroll", label: "Payroll", permission: "payroll.view" },
+      { href: "/people/contractors", i18nKey: "nav.people.contractors", label: "Contractors", permission: "hire.view" },
     ],
   },
   {
-    href: "/sites",
+    href: "/sites", i18nKey: "nav.sites",
     label: "Sites & Work",
     hint: "Site par kya kaam chal raha hai",
     icon: "MapPin",
     permission: "production.view",
     children: [
-      { href: "/sites", label: "Sites", permission: "production.view" },
+      { href: "/sites", i18nKey: "nav.sites", label: "Sites", permission: "production.view" },
       { href: "/sites/work", label: "Work & Production", permission: "production.view" },
       { href: "/sites/materials", label: "Material Weighing", permission: "weighbridge.view" },
     ],
   },
   {
-    href: "/maintenance",
+    href: "/maintenance", i18nKey: "nav.maintenance",
     label: "Maintenance",
     hint: "Kiski service karni hai",
     icon: "Wrench",
     permission: "maintenance.view",
     children: [
-      { href: "/maintenance", label: "Service & Repairs", permission: "maintenance.view" },
+      { href: "/maintenance", i18nKey: "nav.maintenance", label: "Service & Repairs", permission: "maintenance.view" },
       { href: "/maintenance/tyres", label: "Tyres & Parts", permission: "maintenance.view" },
       { href: "/maintenance/reminders", label: "Service Due", permission: "maintenance.view" },
     ],
   },
   {
-    href: "/compliance",
+    href: "/compliance", i18nKey: "nav.compliance",
     label: "Compliance",
     hint: "Kaunse documents expire ho rahe hain",
     icon: "ShieldCheck",
     permission: "compliance.view",
     children: [
-      { href: "/compliance", label: "Documents", permission: "compliance.view" },
+      { href: "/compliance", i18nKey: "nav.compliance", label: "Documents", permission: "compliance.view" },
       { href: "/compliance/checks", label: "Documents & Checks", permission: "compliance.view" },
     ],
   },
   {
-    href: "/reports",
+    href: "/reports", i18nKey: "nav.reports",
     label: "Reports",
     hint: "Business kaisa chal raha hai",
     icon: "BarChart3",
     permission: "reports.view",
     children: [
-      { href: "/reports", label: "Reports", permission: "reports.view" },
+      { href: "/reports", i18nKey: "nav.reports", label: "Reports", permission: "reports.view" },
       { href: "/reports/notifications", label: "Notification Log", permission: "reports.view" },
       { href: "/reports/summary", label: "Management Summary", permission: "cost.view" },
       { href: "/reports/costs", label: "Total Cost & Profit", permission: "cost.view" },
     ],
   },
   {
-    href: "/admin",
+    href: "/admin", i18nKey: "nav.admin",
     label: "Admin",
     hint: "System management",
     icon: "Settings",
@@ -156,7 +160,7 @@ export const MODULES: NavItem[] = [
     permission: null,
     groups: ["ADMIN"],
     children: [
-      { href: "/admin", label: "Users & Access", permission: "admin.users", groups: ["ADMIN"] },
+      { href: "/admin", i18nKey: "nav.admin", label: "Users & Access", permission: "admin.users", groups: ["ADMIN"] },
       { href: "/admin/roles", label: "Roles & Permissions", permission: "admin.roles", groups: ["ADMIN"] },
       { href: "/admin/audit", label: "Audit Log", permission: "admin.audit", groups: ["ADMIN"] },
       { href: "/admin/diagnostics", label: "Advanced Diagnostics", permission: "admin.settings", groups: ["ADMIN"] },

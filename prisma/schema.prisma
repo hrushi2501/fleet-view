@@ -28,6 +28,14 @@ model User {
   driverId  String?   @unique
   driverRef Driver?   @relation(fields: [driverId], references: [id])
 
+  /// Which language this person reads the software in: "en" or "hi".
+  ///
+  /// Held against the account rather than the browser so a supervisor who picks
+  /// Hinglish on the office desktop still gets it on the phone at the site, and
+  /// keeps it after clearing the browser or changing handset. A driver should
+  /// not have to find the setting twice.
+  language  String    @default("en")
+
   // Postgres does not index a foreign key on its own, so every filter and join
   // on these columns was a sequential scan. Declared here as well as in the
   // database, because `prisma db push` makes the database match this file and

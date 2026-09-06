@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import type { NavItem } from "@/lib/navigation";
+import { useT } from "@/components/LanguageProvider";
 
 /**
  * The navigation is rendered from data the *server* resolved, not from a list
@@ -36,6 +37,7 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const t = useT();
 
   // Admin is drawn apart from the operational modules so it reads as a
   // different kind of place, rather than as one more thing on the same list.
@@ -69,12 +71,12 @@ export function Sidebar({
         >
           <Icon className="h-[18px] w-[18px] shrink-0" />
           <span className="flex-1 leading-tight">
-            {item.label}
+            {t(item.i18nKey ?? "", item.label)}
             {/* The hint is what the module answers, in the words a supervisor
                 would use. It is the difference between "Fleet" meaning nothing
                 and meaning "gaadi kahan hai". */}
             <span className={cn("block text-[10px] font-normal", active ? "text-white/70" : "text-slate-500")}>
-              {item.hint}
+              {t(item.i18nKey ? `${item.i18nKey}.hint` : "", item.hint ?? "")}
             </span>
           </span>
         </Link>
@@ -93,7 +95,7 @@ export function Sidebar({
                     : "text-slate-400 hover:bg-white/5 hover:text-white"
                 )}
               >
-                {c.label}
+                {t(c.i18nKey ?? "", c.label)}
               </Link>
             ))}
           </div>

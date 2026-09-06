@@ -5,6 +5,8 @@ import { getAccess } from "@/lib/access";
 import { navFor } from "@/lib/navigation";
 import { getNotificationFeed } from "@/lib/notification-feed";
 import { redirect } from "next/navigation";
+import { getLang } from "@/lib/lang-server";
+import { LanguageProvider } from "@/components/LanguageProvider";
 
 /**
  * Resolves who the caller is once, and hands the navigation their own menu.
@@ -24,8 +26,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const notificationFeed = await getNotificationFeed(access);
 
+  // Resolved once here and handed down, so thirty client components do not each
+  // need their own lookup.
+  const lang = await getLang();
+
   return (
-    <ToastProvider>
+    <LanguageProvider lang={lang}>
+      <ToastProvider>
       <div className="min-h-screen">
         <Sidebar items={items} isDriver={isDriver} />
         <div className="lg:pl-64">
@@ -39,6 +46,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <main className="mx-auto max-w-[1500px] px-4 py-6 lg:px-8">{children}</main>
         </div>
       </div>
-    </ToastProvider>
+      </ToastProvider>
+    </LanguageProvider>
   );
 }
