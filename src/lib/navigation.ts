@@ -176,6 +176,7 @@ export const DRIVER_MODULES: NavItem[] = [
   { href: "/my/fuel", label: "Fuel", hint: "Diesel bharna", icon: "Fuel", permission: null },
   { href: "/my/service", label: "Service", hint: "Service aur problem", icon: "Wrench", permission: null },
   { href: "/my/documents", label: "My Documents", hint: "Licence aur papers", icon: "ShieldCheck", permission: null },
+  { href: "/my/help", label: "Help", hint: "Kaise karein", icon: "CircleHelp", permission: null },
 ];
 
 /** The menu this particular person should see. */

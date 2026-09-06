@@ -30,7 +30,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <ToastProvider>
       <div className="min-h-screen">
         <Sidebar items={items} isDriver={isDriver} />
-        <div className="lg:pl-64">
+        <div className={isDriver ? "" : "lg:pl-64"}>
           <Topbar
             user={access.session}
             notifCount={notificationFeed.attentionCount}
@@ -38,7 +38,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             notificationLogHref={access.can("reports.view") ? "/reports/notifications" : null}
             isDriver={isDriver}
           />
-          <main className="mx-auto max-w-[1500px] px-4 py-6 lg:px-8">{children}</main>
+          <main className={isDriver ? "mx-auto max-w-xl px-4 py-4 pb-24" : "mx-auto max-w-[1500px] px-4 py-6 lg:px-8"}>{children}</main>
         </div>
       </div>
     </ToastProvider>

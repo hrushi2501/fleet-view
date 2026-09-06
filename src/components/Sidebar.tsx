@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Truck, MapPin, Fuel, Wrench, Users, ShieldCheck,
-  BarChart3, Settings, Route, Menu, X,
+  BarChart3, Settings, Route, Menu, X, CircleHelp,
 } from "lucide-react";
 import { useState } from "react";
 import type { NavItem } from "@/lib/navigation";
@@ -24,7 +24,7 @@ import type { NavItem } from "@/lib/navigation";
  */
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  LayoutDashboard, Truck, MapPin, Fuel, Wrench, Users, ShieldCheck, BarChart3, Settings, Route,
+  LayoutDashboard, Truck, MapPin, Fuel, Wrench, Users, ShieldCheck, BarChart3, Settings, Route, CircleHelp,
 };
 
 export function Sidebar({
@@ -46,6 +46,27 @@ export function Sidebar({
     href === "/" || href === "/my"
       ? pathname === href
       : pathname === href || pathname.startsWith(href + "/");
+
+  // Drivers use this on a phone. Four fixed, labelled destinations are easier
+  // to operate than a slide-out menu; the remaining pages stay reachable from
+  // the large tiles on My Work.
+  if (isDriver) {
+    const mobileItems = items.filter((item) => ["/my", "/my/fuel", "/my/service", "/my/help"].includes(item.href));
+    return (
+      <nav aria-label="Driver navigation" className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(15,23,42,0.08)]">
+        {mobileItems.map((item) => {
+          const Icon = ICONS[item.icon] ?? LayoutDashboard;
+          const active = isActive(item.href);
+          return (
+            <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} className={cn("flex min-h-16 flex-col items-center justify-center gap-1 px-1 text-[11px] font-semibold", active ? "text-brand-700" : "text-slate-500")}>
+              <Icon className="h-5 w-5" />
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
+    );
+  }
 
   const renderItem = (item: NavItem) => {
     const Icon = ICONS[item.icon] ?? LayoutDashboard;

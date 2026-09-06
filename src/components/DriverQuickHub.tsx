@@ -132,8 +132,8 @@ export function DriverQuickHub({
       <div className="overflow-hidden rounded-3xl border border-emerald-500/30 bg-linear-to-br from-emerald-600 to-teal-800 p-5 text-white shadow-xl shadow-emerald-700/15">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-300 animate-ping" />
-            <span className="text-xs font-bold uppercase tracking-wider text-emerald-100">Duty Active</span>
+            <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-300" />
+            <span className="text-xs font-bold uppercase tracking-wider text-emerald-100">ड्यूटी चालू / Duty active</span>
           </div>
           <DriverTripEndScanner vehicleCode={vehicle.code} sessionId={sessionId} />
         </div>
@@ -151,7 +151,7 @@ export function DriverQuickHub({
 
         {/* Quick Meter / Fuel Level mini-bar */}
         {vehicle.fuelLevelPct != null && (
-          <div className="mt-3 rounded-2xl bg-black/20 p-2.5 backdrop-blur-sm">
+          <div className="mt-3 rounded-2xl bg-black/20 p-2.5">
             <div className="flex justify-between text-[11px] font-semibold text-emerald-100">
               <span>Fuel Tank Level</span>
               <span>{Math.round(vehicle.fuelLevelPct)}% ({Math.round((vehicle.fuelLevelPct / 100) * vehicle.fuelCapacity)} L)</span>
@@ -159,7 +159,7 @@ export function DriverQuickHub({
             <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-white/20">
               <div
                 className={cn(
-                  "h-full rounded-full transition-all",
+                  "h-full rounded-full",
                   vehicle.fuelLevelPct < 20 ? "bg-rose-400" : vehicle.fuelLevelPct < 40 ? "bg-amber-400" : "bg-emerald-300"
                 )}
                 style={{ width: `${Math.min(100, vehicle.fuelLevelPct)}%` }}
@@ -170,42 +170,41 @@ export function DriverQuickHub({
       </div>
 
       {/* 2. THE BIG 3 FIELD ACTION TILES (56px+ Touch Targets) */}
-      <div className="grid grid-cols-3 gap-2.5">
+      <div className="grid grid-cols-2 gap-3">
         {/* ACTION 1: Fill Diesel */}
         <Link
           href="/my/fuel?action=fuel"
-          className="flex flex-col items-center justify-center rounded-3xl border border-amber-200 bg-amber-50/80 p-4 text-center transition-transform active:scale-95 hover:bg-amber-100/70 shadow-xs"
+          className="flex min-h-32 flex-col items-center justify-center rounded-3xl border border-amber-200 bg-amber-50/80 p-4 text-center active:bg-amber-100/70 shadow-xs"
         >
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-md shadow-amber-500/30">
             <Fuel className="h-6 w-6" />
           </div>
-          <span className="mt-2 text-xs font-black text-amber-950">Fill Diesel</span>
-          <span className="text-[10px] font-semibold text-amber-700">Diesel Bharna</span>
+          <span className="mt-2 text-sm font-black text-amber-950">डीज़ल भरें</span>
+          <span className="text-[11px] font-semibold text-amber-700">Add diesel</span>
         </Link>
 
         {/* ACTION 2: Log Trip */}
         <button
           type="button"
           onClick={() => setTripModalOpen(true)}
-          className="flex flex-col items-center justify-center rounded-3xl border border-brand-200 bg-brand-50/80 p-4 text-center transition-transform active:scale-95 hover:bg-brand-100/70 shadow-xs"
+          className="flex min-h-32 flex-col items-center justify-center rounded-3xl border border-brand-200 bg-brand-50/80 p-4 text-center active:bg-brand-100/70 shadow-xs"
         >
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-md shadow-brand-600/30">
             <Route className="h-6 w-6" />
           </div>
-          <span className="mt-2 text-xs font-black text-brand-950">Log Trip</span>
-          <span className="text-[10px] font-semibold text-brand-700">Trip Shuru</span>
+          <span className="mt-2 text-sm font-black text-brand-950">ट्रिप लिखें</span>
+          <span className="text-[11px] font-semibold text-brand-700">Add trip</span>
         </button>
 
         {/* ACTION 3: Report Breakdown / Emergency Help */}
         <Link
           href="/my/service"
-          className="flex flex-col items-center justify-center rounded-3xl border border-rose-200 bg-rose-50/80 p-4 text-center transition-transform active:scale-95 hover:bg-rose-100/70 shadow-xs"
+          className="col-span-2 flex min-h-24 flex-row items-center justify-center gap-3 rounded-3xl border border-rose-200 bg-rose-50/80 p-4 text-center active:bg-rose-100/70 shadow-xs"
         >
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-500 text-white shadow-md shadow-rose-500/30">
             <Wrench className="h-6 w-6" />
           </div>
-          <span className="mt-2 text-xs font-black text-rose-950">Breakdown</span>
-          <span className="text-[10px] font-semibold text-rose-700">Gaadi Kharab</span>
+          <span className="text-left"><span className="block text-sm font-black text-rose-950">समस्या बताएं</span><span className="block text-[11px] font-semibold text-rose-700">Report a problem</span></span>
         </Link>
       </div>
 
