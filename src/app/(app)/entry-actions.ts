@@ -7,7 +7,8 @@ import { assertRecordAccess, assertFormAccess, assertGlobalAccess } from "@/lib/
 import { changeWorkOrderStatus } from "@/lib/work-order-service";
 import { revalidatePath } from "next/cache";
 import { hashPassword, verifyPassword, getSession, passwordPolicyError, revokeSessions } from "@/lib/auth";
-import { getDieselRate } from "@/lib/settings";
+import { DIESEL_RATE_CACHE_KEY, getDieselRate } from "@/lib/settings";
+import { serverCache } from "@/lib/cache";
 import { requireAction, requireUser, ActionError, safe } from "@/lib/guard";
 import { audit } from "@/lib/audit";
 import { uploadPrivateFile } from "@/lib/private-upload";
@@ -492,6 +493,7 @@ async function setDieselRate__impl(fd: FormData) {
   const rate = n(fd, "rate");
   if (!rate || rate < 30 || rate > 200) throw new ActionError("Enter a valid diesel rate (₹/L).");
   await db.setting.upsert({ where: { key: "dieselRate" }, update: { value: String(rate) }, create: { key: "dieselRate", value: String(rate) } });
+  await serverCache.del(DIESEL_RATE_CACHE_KEY);
   revalidatePath("/fuel");
   revalidatePath("/driver");
 }

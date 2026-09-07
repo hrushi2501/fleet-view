@@ -48,7 +48,37 @@ const NAMESPACE = "fleetview:";
  * in roughly 13 ms. Waiting longer than this would make the cache the reason
  * the page is slow.
  */
-const REDIS_TIMEOUT_MS = 1_000;
+const REDIS_TIMEOUT_MS = 250;
+
+/**
+ * A cache is never a datastore. These bounds make that true even when a new
+ * caller accidentally omits a TTL or tries to put an export-sized payload in
+ * the free 256 MB Upstash database.
+ */
+export const DEFAULT_CACHE_TTL_SECONDS = 300;
+export const MAX_CACHE_TTL_SECONDS = 3_600;
+export const MAX_CACHE_ENTRY_BYTES = 256 * 1024;
+const MAX_MEMORY_ENTRIES = 512;
+const MAX_INVALIDATION_SCAN_PAGES = 10;
+
+function normaliseCacheTtl(ttl: number | undefined): number {
+  if (ttl === undefined) return DEFAULT_CACHE_TTL_SECONDS;
+  if (!Number.isFinite(ttl)) return DEFAULT_CACHE_TTL_SECONDS;
+  return Math.max(1, Math.min(MAX_CACHE_TTL_SECONDS, Math.floor(ttl)));
+}
+
+/** Returns a safe JSON payload, or null when a value must not enter the cache. */
+function cachePayload(value: unknown): string | null {
+  try {
+    const payload = JSON.stringify(value);
+    if (payload === undefined || new TextEncoder().encode(payload).byteLength > MAX_CACHE_ENTRY_BYTES) return null;
+    return payload;
+  } catch {
+    // Circular/non-JSON values are not cacheable. The source request still
+    // succeeds; it simply remains a cache miss.
+    return null;
+  }
+}
 
 export interface CacheStore {
   get<T>(key: string): Promise<T | null>;
@@ -91,7 +121,17 @@ export class MemoryCacheStore implements CacheStore {
   }
 
   async set<T>(key: string, value: T, ttlSeconds?: number): Promise<void> {
-    const expiresAt = ttlSeconds ? Date.now() + ttlSeconds * 1000 : null;
+    const payload = cachePayload(value);
+    const requestedTtl = ttlSeconds === undefined ? DEFAULT_CACHE_TTL_SECONDS : ttlSeconds;
+    if (requestedTtl <= 0) { this.store.delete(key); return; }
+    if (payload === null) return;
+    const expiresAt = Date.now() + normaliseCacheTtl(requestedTtl) * 1000;
+    if (!this.store.has(key) && this.store.size >= MAX_MEMORY_ENTRIES) {
+      // Map preserves insertion order. A bounded best-effort fallback is
+      // preferable to letting a long-lived local process retain data forever.
+      const oldest = this.store.keys().next().value;
+      if (oldest) this.store.delete(oldest);
+    }
     this.store.set(key, { value, expiresAt });
   }
 
@@ -196,15 +236,13 @@ export class RedisCacheStore implements CacheStore {
   }
 
   async set<T>(key: string, value: T, ttlSeconds?: number): Promise<void> {
-    const payload = JSON.stringify(value);
+    const payload = cachePayload(value);
+    const requestedTtl = ttlSeconds === undefined ? DEFAULT_CACHE_TTL_SECONDS : ttlSeconds;
     // A non-positive TTL means "already expired" in the in-memory store, so
-    // honour that here rather than writing a key that never expires.
-    if (ttlSeconds !== undefined && ttlSeconds <= 0) return;
-    if (ttlSeconds === undefined) {
-      await this.command("SET", NAMESPACE + key, payload);
-    } else {
-      await this.command("SET", NAMESPACE + key, payload, "EX", Math.ceil(ttlSeconds));
-    }
+    // honour that here rather than creating a key that never expires.
+    if (requestedTtl <= 0) { await this.del(key); return; }
+    if (payload === null) return;
+    await this.command("SET", NAMESPACE + key, payload, "EX", normaliseCacheTtl(requestedTtl));
   }
 
   async del(key: string | string[]): Promise<void> {
@@ -237,6 +275,7 @@ export class RedisCacheStore implements CacheStore {
   async invalidatePrefix(prefix: string): Promise<number> {
     let cursor = "0";
     let removed = 0;
+    let pages = 0;
     do {
       const page = await this.command<[string, string[]]>(
         "SCAN", cursor, "MATCH", `${NAMESPACE}${prefix}*`, "COUNT", 200,
@@ -248,7 +287,11 @@ export class RedisCacheStore implements CacheStore {
         removed += deleted ?? 0;
       }
       cursor = next;
-    } while (cursor !== "0");
+      pages++;
+      // A malformed high-cardinality prefix must not turn an ordinary write
+      // into an unbounded bill or a long-running serverless request. Anything
+      // beyond this cap still expires by its mandatory TTL.
+    } while (cursor !== "0" && pages < MAX_INVALIDATION_SCAN_PAGES);
     return removed;
   }
 

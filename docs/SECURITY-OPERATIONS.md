@@ -53,10 +53,12 @@ npm run db:rls
 ```
 
 That enables RLS, revokes `anon`/`authenticated` table access, and then runs a
-failing verifier. It uses `DATABASE_URL_UNPOOLED` and must be executed against
-the intended production database by a privileged operator. `npm run
-db:rls:verify` is the read-only repeat check. The direct Prisma database owner
-is intentionally not tested: it needs application access and bypasses RLS.
+failing verifier. It requires `DATABASE_URL_OWNER` because PostgreSQL only lets
+the table owner create RLS policies; do not place this credential in Vercel.
+Alternatively, run `prisma/sql/enable-rls.sql` once in the Supabase Dashboard
+SQL Editor as `postgres`. `npm run db:rls:verify` is the read-only repeat
+check. The direct Prisma database owner is intentionally not tested: it needs
+application access and bypasses RLS.
 
 ## Monitoring
 

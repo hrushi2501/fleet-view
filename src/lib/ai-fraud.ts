@@ -3,6 +3,7 @@ import { TelemetryReading } from "./telemetry-ingestion";
 import { nextCaseNo } from "./loss-prevention";
 import { DEFAULT_FUEL_CONFIG, fuelThresholds } from "./fleet-analytics";
 import { startOfBusinessDay } from "./business-time";
+import { getDieselRate } from "./settings";
 
 /**
  * Opens a loss-prevention case against a named vehicle, so the bar for firing
@@ -125,9 +126,7 @@ export class AiFraudDetectionService {
     // The configured diesel rate, not a hardcoded guess. This number goes on a
     // case as "amount at risk" and may be quoted at a recovery conversation, so
     // it has to be the rate the business actually pays.
-    const setting = await db.setting.findUnique({ where: { key: "dieselRate" } });
-    const parsed = Number(setting?.value);
-    const dieselRate = Number.isFinite(parsed) && parsed > 0 ? parsed : 95;
+    const dieselRate = await getDieselRate();
     const valueAtRisk = Math.round(lostLitres * dieselRate);
     
     const fraudCase = await db.fraudCase.create({

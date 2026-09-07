@@ -42,7 +42,7 @@ const FleetEdgeMap = dynamic(() => import("./FleetEdgeMap"), {
   ),
 });
 
-const POLL_MS = 15_000;
+const POLL_MS = 60_000;
 
 function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
   const url = URL.createObjectURL(new Blob([toCsv(rows)], { type: "text/csv;charset=utf-8" }));

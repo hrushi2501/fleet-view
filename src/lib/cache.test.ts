@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { serverCache, createCacheStore, RedisCacheStore } from "./cache";
+import { serverCache, createCacheStore, RedisCacheStore, MAX_CACHE_ENTRY_BYTES } from "./cache";
 
 describe("Redis-Ready Server Cache Abstraction", () => {
   test("stores and retrieves cached values", async () => {
@@ -46,6 +46,12 @@ describe("Redis-Ready Server Cache Abstraction", () => {
     assert.equal(await serverCache.get("fleet:asset:1"), null);
     assert.equal(await serverCache.get("fleet:asset:2"), null);
     assert.equal(await serverCache.get("fuel:reading:1"), "data3");
+  });
+
+  test("never retains an oversized value in the fallback cache", async () => {
+    const store = createCacheStore({});
+    await store.set("test:oversized", "x".repeat(MAX_CACHE_ENTRY_BYTES + 1));
+    assert.equal(await store.get("test:oversized"), null);
   });
 });
 

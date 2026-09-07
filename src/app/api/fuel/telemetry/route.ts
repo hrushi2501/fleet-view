@@ -8,6 +8,7 @@ import { normaliseReading, assetCacheUpdate, detectSchemaDrift, describeDrift, r
 import { db } from "@/lib/db";
 import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 import { recordTelemetryFuelAnomaly, type FuelAnomalyAsset } from "@/lib/tata-fleet-edge";
+import { invalidateLiveFleetCache } from "@/lib/fleet-edge-live";
 
 export const dynamic = "force-dynamic";
 
@@ -268,6 +269,10 @@ async function handlePOST(req: Request) {
       stored++;
     }
 
+    // One invalidation per provider batch, never one per reading: this keeps
+    // live-map correctness without turning a telemetry burst into an Upstash
+    // command burst.
+    if (stored > 0) await invalidateLiveFleetCache();
     return NextResponse.json({
       success: true,
       provider: adapter.providerCode,

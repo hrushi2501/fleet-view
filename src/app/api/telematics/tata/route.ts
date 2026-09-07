@@ -8,6 +8,7 @@ import { TataFleetEdgeAdapter } from "@/lib/telematics-adapters";
 import { cachedFuelFor } from "@/lib/fuel-cache";
 import type { TelemetryPing } from "@/lib/telematics-adapters";
 import { recordTelemetryFuelAnomaly, type FuelAnomalyAsset } from "@/lib/tata-fleet-edge";
+import { invalidateLiveFleetCache } from "@/lib/fleet-edge-live";
 
 export const dynamic = "force-dynamic";
 // A push may carry the whole fleet in one body; allow room for a slow write.
@@ -525,6 +526,7 @@ async function handlePOST(req: Request) {
     });
   }
 
+  if (accepted > 0) await invalidateLiveFleetCache();
   return NextResponse.json({ ok: true, accepted, duplicates, unmatched });
 }
 

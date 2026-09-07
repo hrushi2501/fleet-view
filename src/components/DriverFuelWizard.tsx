@@ -125,20 +125,34 @@ function speak(text: string) {
 
 type Step = "vehicle" | "odo" | "pump" | "after" | "review" | "rold" | "rnew" | "done";
 type Mode = "fuel" | "repair";
-const FUEL_DRAFT_KEY = "fleetview:driver:fuel-draft:v1";
-type FuelDraft = { vehicleId: string; odoValue: string; litres: string; amount: string; savedAt: number };
+const FUEL_DRAFT_PREFIX = "fleetview:driver:fuel-draft:v2:";
+type FuelDraft = { vehicleId: string; odoValue: string; litres: string; rate: string; amount: string; savedAt: number };
+
+const fuelDraftKey = (vehicleId: string) => `${FUEL_DRAFT_PREFIX}${vehicleId}`;
 
 function loadFuelDraft(vehicles: Vehicle[]): FuelDraft | null {
   try {
-    const raw = window.localStorage.getItem(FUEL_DRAFT_KEY);
-    if (!raw) return null;
-    const draft = JSON.parse(raw) as Partial<FuelDraft>;
-    if (!draft.vehicleId || !vehicles.some((v) => v.id === draft.vehicleId) || Date.now() - Number(draft.savedAt) > 7 * 24 * 60 * 60 * 1000) return null;
-    return draft as FuelDraft;
+    const drafts = vehicles.flatMap((vehicle) => {
+      const raw = window.localStorage.getItem(fuelDraftKey(vehicle.id));
+      if (!raw) return [];
+      const draft = JSON.parse(raw) as Partial<FuelDraft>;
+      if (draft.vehicleId !== vehicle.id || Date.now() - Number(draft.savedAt) > 7 * 24 * 60 * 60 * 1000) return [];
+      return [{ ...draft, rate: String(draft.rate ?? "") } as FuelDraft];
+    });
+    return drafts.sort((a, b) => b.savedAt - a.savedAt)[0] ?? null;
   } catch { return null; }
 }
-function saveFuelDraft(draft: FuelDraft) { try { window.localStorage.setItem(FUEL_DRAFT_KEY, JSON.stringify(draft)); } catch { /* visible form remains available */ } }
-function clearFuelDraft() { try { window.localStorage.removeItem(FUEL_DRAFT_KEY); } catch { /* ignore */ } }
+function loadFuelDraftForVehicle(vehicleId: string): FuelDraft | null {
+  try {
+    const raw = window.localStorage.getItem(fuelDraftKey(vehicleId));
+    if (!raw) return null;
+    const draft = JSON.parse(raw) as Partial<FuelDraft>;
+    if (draft.vehicleId !== vehicleId || Date.now() - Number(draft.savedAt) > 7 * 24 * 60 * 60 * 1000) return null;
+    return { ...draft, rate: String(draft.rate ?? "") } as FuelDraft;
+  } catch { return null; }
+}
+function saveFuelDraft(draft: FuelDraft) { try { window.localStorage.setItem(fuelDraftKey(draft.vehicleId), JSON.stringify(draft)); } catch { /* visible form remains available */ } }
+function clearFuelDraft(vehicleId: string) { try { window.localStorage.removeItem(fuelDraftKey(vehicleId)); } catch { /* ignore */ } }
 
 const PROMPT: Record<string, string> = {
   vehicle: "अपनी गाड़ी चुनें",
@@ -216,7 +230,7 @@ export function DriverFuelWizard({ vehicles, defaultProjectId, dieselRate = 92.5
       const draft = loadFuelDraft(vehicles);
       if (draft) {
         setVehicle(vehicles.find((v) => v.id === draft.vehicleId) ?? null);
-        setOdoValue(draft.odoValue); setLitres(draft.litres); setAmount(draft.amount);
+        setOdoValue(draft.odoValue); setLitres(draft.litres); setRate(draft.rate || String(dieselRate)); setAmount(draft.amount);
       }
       setStep(vehicles.length === 1 ? "review" : "vehicle");
     } else if (a === "repair") {
@@ -224,7 +238,14 @@ export function DriverFuelWizard({ vehicles, defaultProjectId, dieselRate = 92.5
       setMode("repair");
       setStep("vehicle");
     }
-  }, [vehicles]);
+  }, [vehicles, dieselRate]);
+  // Keep typed fuel details safe across a reload or a signal loss. Images stay
+  // out of localStorage: browser quotas are too small and stale photos should
+  // never be silently submitted later.
+  useEffect(() => {
+    if (!vehicle || (!odoValue && !litres && !amount)) return;
+    saveFuelDraft({ vehicleId: vehicle.id, odoValue, litres, rate, amount, savedAt: Date.now() });
+  }, [vehicle, odoValue, litres, rate, amount]);
   useEffect(() => {
     function onPop() {
       if (numpadRef.current) { setNumpad(null); window.history.pushState(null, ""); return; }
@@ -301,7 +322,7 @@ export function DriverFuelWizard({ vehicles, defaultProjectId, dieselRate = 92.5
 
   function finishFuel() {
     if (!vehicle || !litres || Number(litres) <= 0 || !amount || Number(amount) <= 0) return;
-    const persistDraft = () => saveFuelDraft({ vehicleId: vehicle.id, odoValue, litres, amount, savedAt: Date.now() });
+    const persistDraft = () => saveFuelDraft({ vehicleId: vehicle.id, odoValue, litres, rate, amount, savedAt: Date.now() });
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       persistDraft();
       toast.error("Fuel details saved on this phone", "Go online, check recent fuel, then tap Save once only if it is not listed.");
@@ -327,7 +348,7 @@ export function DriverFuelWizard({ vehicles, defaultProjectId, dieselRate = 92.5
           toast.error("Fuel not saved", `${result.error} Your entered details are kept on this phone.`);
           return;
         }
-        clearFuelDraft(); buzz([40, 50, 80]); setStep("done"); router.refresh();
+        clearFuelDraft(vehicle.id); buzz([40, 50, 80]); setStep("done"); router.refresh();
       } catch {
         // A lost signal or an unexpected server response must not look like a
         // successful tap. Keep every entered value on the review screen and
@@ -408,7 +429,14 @@ export function DriverFuelWizard({ vehicles, defaultProjectId, dieselRate = 92.5
 
         <div className="grid grid-cols-2 gap-3 p-4">
           {vehicles.map((v) => (
-            <button key={v.id} onClick={() => { setVehicle(v); setStep(mode === "fuel" ? "review" : "rold"); }} className="flex flex-col items-center gap-2 rounded-2xl bg-white p-4 shadow-sm active:scale-95 active:bg-brand-50">
+            <button key={v.id} onClick={() => {
+              setVehicle(v);
+              if (mode === "fuel") {
+                const draft = loadFuelDraftForVehicle(v.id);
+                if (draft) { setOdoValue(draft.odoValue); setLitres(draft.litres); setRate(draft.rate || String(dieselRate)); setAmount(draft.amount); }
+              }
+              setStep(mode === "fuel" ? "review" : "rold");
+            }} className="flex flex-col items-center gap-2 rounded-2xl bg-white p-4 shadow-sm active:scale-95 active:bg-brand-50">
               <Truck className="h-9 w-9 text-brand-600" />
               <div className="rounded-lg border-2 border-black bg-yellow-300 px-2 py-1 text-center font-mono text-base font-extrabold leading-tight text-black">{v.regNo ?? v.code}</div>
             </button>

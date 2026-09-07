@@ -27,8 +27,8 @@ export function useLiveFleet(initialData?: LiveFleet) {
       return res.json();
     },
     initialData,
-    staleTime: 15 * 1000,
-    refetchInterval: 15 * 1000,
+    staleTime: 60 * 1000,
+    refetchInterval: 60 * 1000,
     // Polling deliberately pauses for a hidden tab — a tracking screen left
     // open on a spare monitor should not query the fleet all night.
     refetchIntervalInBackground: false,

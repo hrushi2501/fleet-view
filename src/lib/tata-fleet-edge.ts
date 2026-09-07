@@ -57,6 +57,8 @@
  */
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { invalidateLiveFleetCache } from "@/lib/fleet-edge-live";
+import { getDieselRate } from "@/lib/settings";
 import { withPollLock } from "@/lib/poll-lock";
 import { reserveCall, budgetStatus, startCooldown, cooldownRemaining, TATA_CALLS_PER_HOUR } from "@/lib/api-budget";
 import { TataFleetEdgeAdapter, type TelemetryPing } from "@/lib/telematics-adapters";
@@ -603,9 +605,7 @@ async function recordSensorRefuel(
 }
 
 async function dieselRate(): Promise<number> {
-  const setting = await db.setting.findUnique({ where: { key: "dieselRate" } });
-  const parsed = Number(setting?.value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 95;
+  return getDieselRate();
 }
 
 function resolveAsset(ping: TelemetryPing, index: Map<string, ResolvedAsset>): ResolvedAsset | null {
@@ -930,6 +930,7 @@ async function runTataSync(base: TataSyncResult): Promise<TataSyncResult> {
       });
     }
 
+    if (stored > 0) await invalidateLiveFleetCache();
     return {
       ok: true,
       fetched: pings.length,

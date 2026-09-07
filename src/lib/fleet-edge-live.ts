@@ -397,8 +397,13 @@ function engineHoursToday(samples: TodaySample[]): number | null {
 
 export type LiveFleetScope = Prisma.AssetWhereInput | undefined;
 
-/** A short TTL protects the polling read model without presenting old locations as live. */
-export const LIVE_FLEET_CACHE_SECONDS = 5;
+/**
+ * The upstream tracker syncs at a coarser cadence. A 90-second cache gives
+ * Upstash-free-tier deployments a useful hit rate; every accepted telemetry or
+ * fleet mutation explicitly invalidates this key, so fresh provider pushes are
+ * visible immediately on the next client refresh.
+ */
+export const LIVE_FLEET_CACHE_SECONDS = 90;
 const liveFleetInFlight = new Map<string, Promise<LiveFleet>>();
 
 /**
@@ -422,7 +427,7 @@ export function liveFleetCacheKey(scope: LiveFleetScope): string {
 
 /**
  * Called by writes that change a vehicle's map representation.  Redis failures
- * deliberately stay non-fatal — the five-second TTL still bounds staleness.
+ * deliberately stay non-fatal — the 90-second TTL still bounds staleness.
  */
 export async function invalidateLiveFleetCache(): Promise<void> {
   liveFleetInFlight.clear();

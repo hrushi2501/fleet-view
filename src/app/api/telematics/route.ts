@@ -6,6 +6,7 @@ import { normaliseReading, assetCacheUpdate, readTelemetryJson } from "@/lib/tel
 import type { TelemetryPing } from "@/lib/telematics-adapters";
 import { reserveRateLimit, rateLimitResponse, clientIp } from "@/lib/request-rate-limit";
 import { recordTelemetryFuelAnomaly, type FuelAnomalyAsset } from "@/lib/tata-fleet-edge";
+import { invalidateLiveFleetCache } from "@/lib/fleet-edge-live";
 
 export const dynamic = "force-dynamic";
 
@@ -220,9 +221,11 @@ async function handlePOST(req: Request) {
       void _ignored;
       results.push(await ingestOne(reading));
     }
+    const accepted = results.filter((r) => r.ok && !("duplicate" in r && r.duplicate)).length;
+    if (accepted > 0) await invalidateLiveFleetCache();
     return NextResponse.json({
       ok: true,
-      accepted: results.filter((r) => r.ok && !("duplicate" in r && r.duplicate)).length,
+      accepted,
       duplicates: results.filter((r) => r.ok && "duplicate" in r && r.duplicate).length,
       rejected: results.filter((r) => !r.ok).length,
       results,
@@ -230,6 +233,7 @@ async function handlePOST(req: Request) {
   }
 
   const r = await ingestOne(body);
+  if (r.ok && !("duplicate" in r && r.duplicate)) await invalidateLiveFleetCache();
   return r.ok ? NextResponse.json(r) : NextResponse.json({ error: r.error }, { status: r.error === "asset not found" ? 404 : 400 });
 }
 
