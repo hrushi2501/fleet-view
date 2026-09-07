@@ -1381,6 +1381,15 @@ const HI: Record<string, string> = {
   "Urgent": "Turant",
   "moving average cost": "chalta ausat kharcha",
 
+  "Advanced Diagnostics": "Takneeki Jaanch",
+  "Cache": "Cache",
+  "Each server keeps its own": "Har server ka apna alag cache",
+  "Falling back — pages still work, just slower": "Bina cache chal raha hai — sab kaam karega, bas thoda dheere",
+  "Memory only": "Sirf memory",
+  "Redis": "Redis",
+  "Redis — not answering": "Redis — jawab nahi de raha",
+  "Shared by every server": "Har server ek hi cache use kar raha hai",
+
   // ── the switcher ────────────────────────────────────────────────────────
   "Language": "Bhasha",
 };

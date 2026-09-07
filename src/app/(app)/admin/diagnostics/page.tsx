@@ -12,6 +12,7 @@ import { requireAdminPage } from "@/lib/access";
 import { Txt } from "@/components/Txt";
 import { auditSchemaAlignment, auditSupabaseSecurity, auditDatabaseHealth } from "@/lib/db-audit";
 import { RunDatabaseAuditButton } from "@/components/RunDatabaseAuditButton";
+import { serverCache } from "@/lib/cache";
 
 export const dynamic = "force-dynamic";
 
@@ -100,6 +101,10 @@ export default async function DiagnosticsPage() {
 
   const configMissing = missingConfigKeys();
 
+  // "Configured" and "working" are different things, and the cache used to
+  // report the first while meaning neither. Ask it.
+  const cacheReachable = await serverCache.healthy();
+
   return (
     <div className="space-y-6">
       <div>
@@ -115,6 +120,19 @@ export default async function DiagnosticsPage() {
         <StatCard label="Tracked Vehicles" value={`${num(assetsTracked)}/${num(assetsTotal)}`} sub="have a device id" accent="violet" icon={<PlugZap className="h-5 w-5" />} />
         <StatCard label="Silent Over 24h" value={num(silent.length)} sub="tracker fitted, no data" accent={silent.length ? "rose" : "emerald"} icon={<TriangleAlert className="h-5 w-5" />} />
         <StatCard label="Payload Fields" value={num(FLEET_EDGE_KNOWN_FIELDS.length)} sub="in the recorded contract" accent="brand" icon={<Database className="h-5 w-5" />} />
+        <StatCard
+          label="Cache"
+          value={serverCache.type === "redis" ? (cacheReachable ? "Redis" : "Redis — not answering") : "Memory only"}
+          sub={
+            serverCache.type === "redis"
+              ? cacheReachable
+                ? "Shared by every server"
+                : "Falling back — pages still work, just slower"
+              : "Each server keeps its own"
+          }
+          accent={serverCache.type === "redis" ? (cacheReachable ? "emerald" : "rose") : "amber"}
+          icon={<Database className="h-5 w-5" />}
+        />
       </div>
 
       {/* Database & Supabase Schema Uniformity */}
