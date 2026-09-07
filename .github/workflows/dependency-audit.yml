@@ -33,7 +33,10 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npx prisma generate
-      - run: npm run check
+      # One command developers can run before every change and CI enforces on
+      # every PR/push: lint, types, all hermetic tests, deployment assertions,
+      # and a production compilation.
+      - run: npm run verify
       # This is the actual Vercel build command. These values are deliberately
       # non-production placeholders: validation needs their shape, while the
       # build must never receive a deployable database URL or signing secret.

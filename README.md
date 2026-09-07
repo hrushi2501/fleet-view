@@ -53,12 +53,18 @@ re-fetched** — the provider only ever returns a vehicle's *current* state.
 ## Checks
 
 ```bash
-npm test        # unit tests (node's runner, no framework)
-npm run check   # lint + typecheck + tests
-npm run build
-npm run deploy:check # validates Vercel settings without changing services
-npm run db:check # verifies Prisma's runtime tables and columns against the DB
+npm run check               # fast: lint + types + all hermetic tests
+npm run verify              # required before every commit/PR: check + production build
+TEST_DATABASE_URL=... npm run verify:integration # adds real transaction tests against an isolated local *_test database
+TEST_DATABASE_URL=... npm run verify:release     # integration gate + read-only runtime DB schema check
 ```
+
+`npm run verify` is the everyday quality gate and the command GitHub Actions
+runs for every pull request and push to `main` or `master`. It is deliberately
+safe to run on a developer machine: it never writes to a database or calls an
+external provider. `verify:integration` refuses any database except a local
+database whose name ends in `_test`; `verify:release` is for a release operator
+with an isolated test database and the intended read-only runtime DB connection.
 
 ## Security operations
 
