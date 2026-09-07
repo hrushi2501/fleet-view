@@ -57,7 +57,7 @@ const UNTRUSTED_FIELDS: Record<string, string> = {
 /** A row in the LIVE TELEMETRY card — 52px tall, hairline between. */
 function Metric({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex h-[52px] items-center justify-between gap-3 border-b border-[#edf0f4] text-[13px] last:border-b-0">
+    <div className="flex h-13 items-center justify-between gap-3 border-b border-[#edf0f4] text-[13px] last:border-b-0">
       <span className="shrink-0 text-[#17233b]">{label}</span>
       {children}
     </div>
@@ -86,6 +86,7 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
       costs: true,
       tyres: true,
       components: true,
+      tripSessions: { where: { status: "ACTIVE" }, include: { driver: true }, take: 1 },
     },
   });
   if (!asset) notFound();
@@ -307,10 +308,11 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
     },
   ];
 
+  const activeDriver = asset.tripSessions[0]?.driver ?? asset.driver;
   const heroDescription =
     `${ASSET_CLASS_LABEL[asset.assetClass] ?? asset.assetClass} on ${asset.ownershipType.toLowerCase()} terms` +
     (asset.project ? `, working ${asset.project.name}` : ", not allocated to a site") +
-    (asset.driver ? `. Operator ${asset.driver.name}.` : ". No operator assigned.");
+    (activeDriver ? `. Operator ${activeDriver.name}${asset.tripSessions[0] ? " (Claimed / On Duty)" : ""}.` : ". No Driver Assigned.");
 
   const cards = specCards({
     fuelCapacity: asset.fuelCapacity, engineNo: asset.engineNo, chassisNo: asset.chassisNo,
@@ -350,8 +352,9 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
       href: asset.project ? `/projects` : undefined,
     },
     { label: "Location on site", value: asset.project?.location ?? null },
-    { label: "Operator", value: asset.driver?.name ?? null, href: asset.driver ? `/drivers` : undefined },
-    { label: "Operator licence", value: asset.driver?.licenseNo ?? null },
+    { label: "Operator", value: activeDriver ? activeDriver.name : "No Driver Assigned", href: activeDriver ? `/people` : undefined },
+    { label: "Operator licence", value: activeDriver?.licenseNo ?? "—" },
+    { label: "Duty status", value: asset.tripSessions[0] ? "Claimed / On Duty" : "No Active Shift" },
     { label: "Ownership", value: asset.ownershipType },
     { label: "Status", value: asset.status.replace(/-/g, " ") },
   ];
@@ -541,7 +544,7 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
               <strong className="text-sm font-medium italic text-slate-400">No sensor reading</strong>
             ) : (
               <>
-                <div className="ml-auto mr-3 h-[9px] w-[120px] overflow-hidden rounded-full bg-[#e6ebf3]">
+                <div className="ml-auto mr-3 h-2.25 w-30 overflow-hidden rounded-full bg-[#e6ebf3]">
                   <div className="h-full rounded-full bg-[#2d66ed]" style={{ width: `${Math.max(0, Math.min(100, fuelPct))}%` }} />
                 </div>
                 <strong className="text-sm font-bold text-[#17233b]">{Math.round(fuelPct)}%</strong>
@@ -581,8 +584,8 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
           return (
             <Panel key={c.label}>
               <div className="flex items-start gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#eef4ff] text-[#155eef]">
-                  <Icon className="h-[22px] w-[22px]" />
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-[#155eef]">
+                  <Icon className="h-5.5 w-5.5" />
                 </div>
                 <div className="min-w-0">
                   <p className="text-[12px] font-extrabold tracking-[.4px] text-[#155eef]">{c.label}</p>
@@ -611,6 +614,7 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
                     assetClass: asset.assetClass, status: asset.status,
                     lat: asset.lat, lng: asset.lng, speed: asset.speed,
                     project: asset.project?.code ?? "—",
+                    driverName: activeDriver?.name ?? null,
                   }
                 : null
             }
@@ -625,7 +629,7 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
             MAINTENANCE LOG
           </PanelTitle>
           {asset.workOrders.length === 0 ? (
-            <div className="grid h-[170px] place-items-center text-center">
+            <div className="grid h-42.5 place-items-center text-center">
               <div>
                 <ClipboardCheck className="mx-auto mb-3 h-11 w-11 text-slate-200" />
                 <b className="mb-1.5 block text-[13px] font-semibold text-[#1c2a42]">
@@ -639,7 +643,7 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
               </div>
             </div>
           ) : (
-            <div className="h-[170px] space-y-2 overflow-x-auto overflow-y-auto pr-1">
+            <div className="h-42.5 space-y-2 overflow-x-auto overflow-y-auto pr-1">
               {asset.workOrders.map((w) => (
                 <div key={w.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-[#edf0f4] pb-2 last:border-0">
                   <div className="min-w-0">
@@ -766,7 +770,7 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
           </div>
         ) : (
           <div className="-mx-6 overflow-x-auto px-6">
-            <table className="w-full min-w-[36rem] text-sm">
+            <table className="w-full min-w-xl text-sm">
               <thead>
                 <tr className="border-b border-slate-100 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                   <th className="pb-2"><Txt text="Document" /></th>
@@ -817,7 +821,7 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
             <p className="py-8 text-center text-sm text-slate-400">No fuel issues recorded against this vehicle.</p>
           ) : (
             <div className="-mx-6 overflow-x-auto px-6">
-              <table className="w-full min-w-[34rem] text-sm">
+              <table className="w-full min-w-136 text-sm">
                 <thead>
                   <tr className="border-b border-slate-100 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                     <th className="pb-2"><Txt text="Date" /></th>

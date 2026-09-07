@@ -1,6 +1,9 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getAccess, assetScope, projectScope } from "@/lib/access";
+import { requireApi, assetScope, projectScope } from "@/lib/access";
+import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
+import { recordScope } from "@/lib/record-access";
 
 export const dynamic = "force-dynamic";
 
@@ -14,19 +17,32 @@ export interface SearchResultItem {
   href: string;
 }
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   try {
-    const access = await getAccess();
-    if (!access) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const auth = await requireApi("fleet.view");
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    const access = auth.access;
+
+    const limit = await reserveRateLimit({
+      scope: "search",
+      subject: access.session.id,
+      limit: 60,
+      windowMs: 60_000,
+    });
+    if (!limit.ok) {
+      return rateLimitResponse(limit.retryInSeconds, "Too many search requests. Please wait a moment.");
     }
 
     const { searchParams } = new URL(req.url);
-    const query = (searchParams.get("q") || "").trim();
+    const query = (searchParams.get("q") || "").replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim();
 
     if (!query || query.length < 2) {
       return NextResponse.json({ results: [] });
     }
+    if (query.length > 100) {
+      return NextResponse.json({ error: "Search query exceeds maximum length of 100 characters." }, { status: 400 });
+    }
+
 
     const q = query.toLowerCase();
     const visibleAssets = assetScope(access);
@@ -49,11 +65,10 @@ export async function GET(req: NextRequest) {
       }),
       db.driver.findMany({
         where: {
+          ...recordScope("driver", access),
           OR: [
             { name: { contains: q, mode: "insensitive" } },
             { empCode: { contains: q, mode: "insensitive" } },
-            { phone: { contains: q, mode: "insensitive" } },
-            { licenseNo: { contains: q, mode: "insensitive" } },
           ],
         },
         take: 5,
@@ -72,6 +87,7 @@ export async function GET(req: NextRequest) {
       }),
       db.site.findMany({
         where: {
+          ...recordScope("site", access),
           OR: [
             { code: { contains: q, mode: "insensitive" } },
             { name: { contains: q, mode: "insensitive" } },
@@ -95,6 +111,7 @@ export async function GET(req: NextRequest) {
       }),
       db.fuelTank.findMany({
         where: {
+          ...recordScope("fuelTank", access),
           OR: [
             { name: { contains: q, mode: "insensitive" } },
             { location: { contains: q, mode: "insensitive" } },
@@ -105,6 +122,7 @@ export async function GET(req: NextRequest) {
       }),
       db.weighbridgeTicket.findMany({
         where: {
+          ...recordScope("weighbridgeTicket", access),
           OR: [
             { ticketNo: { contains: q, mode: "insensitive" } },
             { material: { contains: q, mode: "insensitive" } },
@@ -137,7 +155,7 @@ export async function GET(req: NextRequest) {
         id: d.id,
         category: "driver",
         title: d.name,
-        subtitle: `${d.empCode} · ${d.phone || "No phone"} · ${d.type}`,
+        subtitle: `${d.empCode} · ${d.type}`,
         badge: d.status,
         badgeColor: d.status === "Active" ? "bg-emerald-100 text-emerald-700 ring-emerald-600/20" : "bg-slate-100 text-slate-700 ring-slate-500/20",
         href: `/people?tab=staff`,
@@ -212,6 +230,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ results });
   } catch (error) {
     console.error("Search API error:", error);
-    return NextResponse.json({ error: "Search failed" }, { status: 500 });
+    throw error;
   }
 }
+
+export const GET = withApiErrors(handleGET);

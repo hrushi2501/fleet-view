@@ -38,7 +38,7 @@ export function MorningActionCenter({ data }: { data: ActionCenterData }) {
   const isAllClear = totalActionItems === 0;
 
   return (
-    <div className="overflow-hidden rounded-3xl border border-slate-200/90 bg-gradient-to-br from-white via-slate-50/50 to-brand-50/20 p-5 shadow-sm sm:p-6">
+    <div className="overflow-hidden rounded-3xl border border-slate-200/90 bg-linear-to-br from-white via-slate-50/50 to-brand-50/20 p-5 shadow-sm sm:p-6">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
         <div className="flex items-center gap-3">

@@ -5,6 +5,8 @@ import { getSession } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { raiseWoFromSchedule } from "@/app/(app)/maintenance/actions";
 import { requireAction, ActionError, safe, isActionError } from "@/lib/guard";
+import { assertRecordAccess } from "@/lib/record-access";
+import { finiteNumber } from "@/lib/input-validation";
 
 function refresh() {
   revalidatePath("/notifications");
@@ -19,13 +21,13 @@ function s(fd: FormData, key: string): string {
 function n(fd: FormData, key: string): number {
   const v = fd.get(key);
   if (v === null || v === "") return 0;
-  const parsed = Number(v);
-  return Number.isNaN(parsed) ? 0 : parsed;
+  return finiteNumber(v, key.replace(/([A-Z])/g, " $1"), { fallback: 0 });
 }
 
 /** Acknowledge an alert / reminder */
 async function acknowledgeAlert__impl(alertId: string) {
-  await requireAction("maintenance.edit");
+  const scopeAccess = await requireAction("maintenance.edit");
+  await assertRecordAccess(scopeAccess, "alert", alertId);
   const session = await getSession();
   await db.alert.update({
     where: { id: alertId },
@@ -41,7 +43,8 @@ async function acknowledgeAlert__impl(alertId: string) {
 
 /** Resolve an alert / reminder */
 async function resolveAlert__impl(alertId: string) {
-  await requireAction("maintenance.edit");
+  const scopeAccess = await requireAction("maintenance.edit");
+  await assertRecordAccess(scopeAccess, "alert", alertId);
   await db.alert.update({
     where: { id: alertId },
     data: {
@@ -55,13 +58,16 @@ async function resolveAlert__impl(alertId: string) {
 
 /** Snooze a service reminder with mandatory reason logging */
 async function snoozeAlert__impl(fd: FormData) {
-  await requireAction("maintenance.edit");
+  const scopeAccess = await requireAction("maintenance.edit");
   const alertId = s(fd, "alertId");
   const snoozeDays = n(fd, "snoozeDays") || 7;
   const reason = s(fd, "reason");
 
   if (!alertId) throw new ActionError("Alert ID is required");
+  await assertRecordAccess(scopeAccess, "alert", alertId);
   if (!reason) throw new ActionError("A reason for deferring the reminder is required");
+  if (reason.length > 1_000) throw new ActionError("Deferral reason is too long.");
+  if (snoozeDays < 1 || snoozeDays > 90) throw new ActionError("Deferral must be between 1 and 90 days.");
 
   const alert = await db.alert.findUnique({ where: { id: alertId } });
   if (!alert) throw new ActionError("Alert not found");
@@ -86,7 +92,8 @@ async function snoozeAlert__impl(fd: FormData) {
 
 /** Create PM Work Order directly from a due service reminder */
 async function createWoFromReminder__impl(scheduleId: string) {
-  await requireAction("maintenance.edit");
+  const scopeAccess = await requireAction("maintenance.edit");
+  await assertRecordAccess(scopeAccess, "maintenanceSchedule", scheduleId);
   const created = await raiseWoFromSchedule(scheduleId);
   // `raiseWoFromSchedule` is wrapped, so a refusal arrives as data rather
   // than an exception. Re-raise it so this action fails instead of quietly

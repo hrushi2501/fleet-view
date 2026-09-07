@@ -17,7 +17,7 @@
 import { db } from "@/lib/db";
 
 /** Failures allowed inside the window before the account is locked. */
-export const MAX_ATTEMPTS = 5;
+export const MAX_ATTEMPTS = 8;
 /** How long failures accumulate for. */
 export const WINDOW_MS = 15 * 60 * 1000;
 /** How long a lock lasts once tripped. */

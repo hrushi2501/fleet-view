@@ -1,13 +1,14 @@
+import { recordScope } from "@/lib/record-access";
 import { db } from "@/lib/db";
 import { StatCard, Card, SectionTitle, Badge, Progress } from "@/components/ui";
 import { Donut } from "@/components/charts";
 import { WorkOrderEntry, WorkOrderStatus } from "@/components/EntryForms";
-import { ScheduleForm, SeedPmButton, RaiseWoButton, CompleteWoForm, DeleteRow, PreOpChecklistForm } from "@/components/MaintTyreForms";
+import { ScheduleForm, SeedPmButton, RaiseWoButton, CompleteWoForm, DeleteRow, PreOpChecklistForm, WoLineForm } from "@/components/MaintTyreForms";
 import { MaintenanceKanban } from "@/components/MaintenanceKanban";
 import { pmDue, reliability, SERVICE_TIERS, FAILURE_CODES, type ScheduleLite, type WoLite } from "@/lib/maintenance";
 import { scoreBreakdownRisk } from "@/lib/analytics";
 import { inr, num, fmtDate, timeAgo, STATUS_COLOR, ASSET_CLASS_LABEL } from "@/lib/utils";
-import { Wrench, TriangleAlert, Clock, BadgeCheck, Brain, CalendarClock, Activity, IndianRupee, Users, LayoutGrid, ListFilter, AlertCircle } from "lucide-react";
+import { Wrench, TriangleAlert, Clock, BadgeCheck, Brain, CalendarClock, Activity, IndianRupee, Users, LayoutGrid, ListFilter, AlertCircle, Volume2 } from "lucide-react";
 import Link from "next/link";
 import { requirePage, assetScope } from "@/lib/access";
 import { Txt } from "@/components/Txt";
@@ -43,16 +44,25 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
   since.setDate(since.getDate() - WINDOW_DAYS);
 
 
-  const [wos, assets, schedules, openWos, allWos] = await Promise.all([
+  const [wos, assets, schedules, openWos, allWos, inventoryItems, warehouses] = await Promise.all([
     db.workOrder.findMany({ where: { asset: visible }, include: { asset: true }, orderBy: { reportedAt: "desc" } }),
     db.asset.findMany({ where: visible, orderBy: { code: "asc" } }),
-    db.maintenanceSchedule.findMany({ where: { active: true }, include: { asset: true }, orderBy: { taskName: "asc" } }),
+    db.maintenanceSchedule.findMany({ where: { active: true, asset: visible }, include: { asset: true }, orderBy: { taskName: "asc" } }),
     db.workOrder.findMany({ where: { status: { in: ["Open", "In-Progress"] }, asset: visible }, include: { asset: true, lines: true, checklist: true }, orderBy: { reportedAt: "desc" } }),
-    db.workOrder.findMany({ where: { reportedAt: { gte: since } } }),
+    db.workOrder.findMany({ where: { reportedAt: { gte: since }, asset: visible } }),
+    db.inventoryItem.findMany({ orderBy: { partNo: "asc" } }),
+    db.inventoryWarehouse.findMany({ where: { active: true, ...recordScope("inventoryWarehouse", access) }, orderBy: { code: "asc" } }),
   ]);
 
   const assetOpts = assets.map((a) => ({ id: a.id, label: `${a.code} — ${a.name}` }));
   const classOpts = Object.entries(ASSET_CLASS_LABEL).map(([value, label]) => ({ value, label }));
+  const inventoryItemOpts = inventoryItems.map((i) => ({
+    id: i.id,
+    label: `${i.partNo} — ${i.name} (₹${i.averageCost})`,
+    partNo: i.partNo,
+    averageCost: i.averageCost,
+  }));
+  const warehouseOpts = warehouses.map((w) => ({ id: w.id, label: `${w.code} — ${w.name}` }));
 
   // Work order calculations
   const openJobs = wos.filter((w) => w.status === "Open" || w.status === "In-Progress");
@@ -263,7 +273,7 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
               </Card>
               <Card className="lg:col-span-2">
                 <SectionTitle title="Open &amp; In-Progress Work Orders" subtitle="Prioritized queue" />
-                <div className="max-h-[300px] space-y-2 overflow-x-auto overflow-y-auto mt-4">
+                <div className="max-h-75 space-y-2 overflow-x-auto overflow-y-auto mt-4">
                   {openJobs.slice(0, 12).map((w) => (
                     <div key={w.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 p-2.5 hover:bg-slate-50/50">
                       <div className="min-w-0">
@@ -377,7 +387,7 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
                     <th className="px-5 py-3 font-medium"><Txt text="Downtime" /></th>
                     <th className="px-5 py-3 font-medium"><Txt text="Cost" /></th>
                     <th className="px-5 py-3 font-medium"><Txt text="Status" /></th>
-                    <th className="px-5 py-3 font-medium"><Txt text="Repair Photos" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Evidence" /></th>
                     <th className="px-5 py-3 font-medium"><Txt text="Reported" /></th>
                   </tr>
                 </thead>
@@ -394,13 +404,17 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
                       <td className="px-5 py-3"><WorkOrderStatus id={w.id} status={w.status} /></td>
                       <td className="px-5 py-3">
                         {(() => {
-                          let oldU: string[] = [], newU: string[] = [];
+                          let oldU: string[] = [], newU: string[] = [], reportAudio: string | null = null;
                           try {
                             const p = w.partPhotos ? JSON.parse(w.partPhotos) : null;
                             if (Array.isArray(p)) newU = p;
-                            else if (p) { oldU = p.old || []; newU = p.new || []; }
+                            else if (p) {
+                              oldU = Array.isArray(p.old) ? p.old : [];
+                              newU = Array.isArray(p.new) ? p.new : [];
+                              reportAudio = typeof p.driverReportAudio === "string" ? p.driverReportAudio : null;
+                            }
                           } catch { /* ignore */ }
-                          if (!oldU.length && !newU.length) return <span className="text-slate-300">—</span>;
+                          if (!oldU.length && !newU.length && !reportAudio) return <span className="text-slate-300">—</span>;
                           const grp = (label: string, urls: string[], ring: string) => urls.length ? (
                             <div className="flex items-center gap-1">
                               <span className={`text-[9px] font-bold uppercase ${label === "Old" ? "text-rose-500" : "text-emerald-600"}`}>{label}</span>
@@ -408,7 +422,7 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
                               {urls.length > 2 && <span className="text-[10px] text-slate-400">+{urls.length - 2}</span>}
                             </div>
                           ) : null;
-                          return <div className="flex flex-col gap-1">{grp("Old", oldU, "ring-rose-300")}{grp("New", newU, "ring-emerald-300")}</div>;
+                          return <div className="flex flex-col gap-2">{grp("Old", oldU, "ring-rose-300")}{grp("New", newU, "ring-emerald-300")}{reportAudio && <div className="flex items-center gap-1.5 text-xs font-semibold text-brand-700"><Volume2 className="h-4 w-4 shrink-0" /><audio controls preload="metadata" className="h-8 max-w-48" src={reportAudio}>Driver voice report</audio></div>}</div>;
                         })()}
                       </td>
                       <td className="px-5 py-3 text-xs text-slate-400">{timeAgo(w.reportedAt)}</td>
@@ -575,7 +589,10 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
                           {w.technician ? ` · ${w.technician}` : ""}
                         </p>
                       </div>
-                      <CompleteWoForm wo={{ id: w.id, woNo: w.woNo, laborCost: w.laborCost, partsCost: w.partsCost, downtimeHrs: w.downtimeHrs, meterAtService: w.meterAtService }} />
+                      <div className="flex items-center gap-2">
+                        <WoLineForm workOrderId={w.id} inventoryItems={inventoryItemOpts} warehouses={warehouseOpts} />
+                        <CompleteWoForm wo={{ id: w.id, woNo: w.woNo, laborCost: w.laborCost, partsCost: w.partsCost, downtimeHrs: w.downtimeHrs, meterAtService: w.meterAtService }} />
+                      </div>
                     </div>
 
                     {w.lines.length > 0 && (

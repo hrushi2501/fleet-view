@@ -1,6 +1,10 @@
 "use server";
 
 import { db } from "@/lib/db";
+import { businessTransaction } from "@/lib/business-transaction";
+import { finiteNumber, formNumber } from "@/lib/input-validation";
+import { assertRecordAccess, assertFormAccess, assertGlobalAccess } from "@/lib/record-access";
+import { changeWorkOrderStatus } from "@/lib/work-order-service";
 import { revalidatePath } from "next/cache";
 import { hashPassword, verifyPassword, getSession, passwordPolicyError, revokeSessions } from "@/lib/auth";
 import { getDieselRate } from "@/lib/settings";
@@ -9,6 +13,7 @@ import { audit } from "@/lib/audit";
 import { uploadPrivateFile } from "@/lib/private-upload";
 import { canSeeAsset } from "@/lib/access";
 import { driverFuelFillNotification } from "@/lib/notification-events";
+import { driverFuelDetails } from "@/lib/driver-refuelling";
 
 async function uploadPhoto(file: FormDataEntryValue | null, prefix: string): Promise<string | null> {
   if (!file || typeof file === "string") return null;
@@ -18,7 +23,7 @@ async function uploadPhoto(file: FormDataEntryValue | null, prefix: string): Pro
 }
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
-const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
+const n = formNumber;
 
 /**
  * A number field that may legitimately be blank.
@@ -90,6 +95,10 @@ async function saveAsset__impl(id: string | null, fd: FormData) {
     ...(s(fd, "lng") ? { lng: n(fd, "lng") } : {}),
   };
   if (id) {
+    const before = await db.asset.findUnique({ where: { id }, select: { meterValue: true } });
+    if (before && data.meterValue > 0 && data.meterValue < before.meterValue) {
+      throw new ActionError(`Odometer reading (${data.meterValue} km) cannot be lower than existing reading (${before.meterValue} km).`);
+    }
     const updated = await db.asset.updateMany({ where: { id, decommissionedOn: null }, data });
     if (updated.count !== 1) throw new ActionError("Decommissioned vehicles cannot be edited. Restore it deliberately before changing its register record.");
   }
@@ -100,6 +109,7 @@ async function saveAsset__impl(id: string | null, fd: FormData) {
 
 async function deleteAsset__impl(id: string) {
   const access = await requireAction("fleet.delete");
+  await assertRecordAccess(access, "asset", id);
   const asset = await db.asset.findUnique({
     where: { id },
     select: { id: true, code: true, status: true, decommissionedOn: true },
@@ -112,7 +122,11 @@ async function deleteAsset__impl(id: string) {
   // evidence attached. Removing those rows makes operational history and later
   // financial reconciliation impossible, so the register's former "delete" is
   // intentionally a retirement operation.
-  await db.$transaction(async (tx) => {
+  await businessTransaction(access.session, async (tx) => {
+    await tx.tripSession.updateMany({
+      where: { assetId: id, status: "ACTIVE" },
+      data: { status: "COMPLETED", endedAt: now, endedBy: "ADMIN" },
+    });
     await tx.asset.update({
       where: { id },
       data: {
@@ -145,7 +159,9 @@ async function deleteAsset__impl(id: string) {
 
 /* ----------------------------- DRIVERS ----------------------------- */
 async function saveDriver__impl(id: string | null, fd: FormData) {
-  await requireAction("people.edit");
+  const scopeAccess = await requireAction("people.edit");
+  await assertFormAccess(scopeAccess, fd);
+  if (id) await assertRecordAccess(scopeAccess, "driver", id);
   const phone = s(fd, "phone");
 
   // Phone format validation — 10-digit Indian mobile number (no country code).
@@ -208,6 +224,18 @@ async function saveDriver__impl(id: string | null, fd: FormData) {
   };
   if (id) {
     await db.driver.update({ where: { id }, data });
+    // If the driver is marked Inactive or Suspended, release any active vehicle they hold
+    if (data.status === "Inactive" || data.status === "Suspended") {
+      const now = new Date();
+      await db.tripSession.updateMany({
+        where: { driverId: id, status: "ACTIVE" },
+        data: { status: "COMPLETED", endedAt: now, endedBy: "ADMIN" },
+      });
+      await db.asset.updateMany({
+        where: { driverId: id },
+        data: { driverId: null },
+      });
+    }
   } else {
     const driver = await db.driver.create({ data });
 
@@ -233,7 +261,13 @@ async function saveDriver__impl(id: string | null, fd: FormData) {
 }
 
 async function deleteDriver__impl(id: string) {
-  await requireAction("people.edit");
+  const scopeAccess = await requireAction("people.edit");
+  await assertRecordAccess(scopeAccess, "driver", id);
+  const now = new Date();
+  await db.tripSession.updateMany({
+    where: { driverId: id, status: "ACTIVE" },
+    data: { status: "COMPLETED", endedAt: now, endedBy: "ADMIN" },
+  });
   await db.asset.updateMany({ where: { driverId: id }, data: { driverId: null } });
   await db.trip.updateMany({ where: { driverId: id }, data: { driverId: null } });
   await db.alert.updateMany({ where: { driverId: id }, data: { driverId: null } });
@@ -246,37 +280,60 @@ async function deleteDriver__impl(id: string) {
 /* ----------------------------- FUEL ----------------------------- */
 async function saveFuel__impl(fd: FormData) {
   const access = await requireAction("fuel.issue");
+  await assertFormAccess(access, fd);
   const type = s(fd, "type") || "ISSUE";
+  if (access.group === "DRIVER" && type !== "ISSUE") {
+    throw new ActionError("Drivers can record fuel issued to their checked-in vehicle only.");
+  }
   const quantity = n(fd, "quantity");
-  const rate = n(fd, "rate") || (await getDieselRate());
+  const postedAmount = String(fd.get("amount") ?? "").trim();
+  const amountFromDriver = postedAmount
+    ? finiteNumber(postedAmount, "Fuel amount", { min: 0.01, max: 500_000 })
+    : null;
+  const financials = access.group === "DRIVER"
+    ? driverFuelDetails(quantity, amountFromDriver ?? 0)
+    : { rate: n(fd, "rate") || (await getDieselRate()), amount: 0 };
+  const rate = financials.rate;
   const hasSensor = type === "ISSUE" && String(fd.get("sensorRise") ?? "").trim() !== "";
   const sensorRise = hasSensor ? n(fd, "sensorRise") : 0;
   const variancePct = hasSensor && quantity ? Math.round(((quantity - sensorRise) / quantity) * 1000) / 10 : 0;
   const anomaly = hasSensor && variancePct > 10;
-  const [odometerPhoto, pumpPhoto] = await Promise.all([
-    uploadPhoto(fd.get("odometerPhoto"), "odo"),
-    uploadPhoto(fd.get("pumpPhoto"), "pump"),
-  ]);
-
   // fill location captured from the driver's phone
-  const lat = s(fd, "lat") ? Number(fd.get("lat")) : null;
-  const lng = s(fd, "lng") ? Number(fd.get("lng")) : null;
+  const lat = s(fd, "lat") ? finiteNumber(fd.get("lat"), "Latitude", { min: -90, max: 90 }) : null;
+  const lng = s(fd, "lng") ? finiteNumber(fd.get("lng"), "Longitude", { min: -180, max: 180 }) : null;
   const assetId = s(fd, "assetId") || null;
+
+  if (quantity <= 0) throw new ActionError("Fuel quantity must be greater than 0 litres.");
+
+  const tankId = s(fd, "tankId") || null;
+  const asset = assetId ? await db.asset.findUnique({ where: { id: assetId } }) : null;
+  if (asset && asset.fuelCapacity > 0 && quantity > asset.fuelCapacity * 1.5) {
+    throw new ActionError(`Fuel quantity (${quantity} L) exceeds plausible tank capacity (${asset.fuelCapacity} L).`);
+  }
 
   // The driver wizard calls the same action as the office fuel form. A Server
   // Action is still directly POSTable, so a driver must prove the submitted
   // asset is their assigned vehicle before it can create either a fuel row or
   // the notification that follows it.
   let driverEvent: ReturnType<typeof driverFuelFillNotification> | null = null;
+  let driverName: string | null = null;
+  let claimedSessionId: string | null = null;
   if (access.group === "DRIVER") {
     if (!assetId || !access.driverId || !(await canSeeAsset(access, assetId))) {
       throw new ActionError("You may record fuel only for your assigned vehicle.");
     }
-    const [driver, asset] = await Promise.all([
+    const [driver, claimedSession] = await Promise.all([
       db.driver.findUnique({ where: { id: access.driverId }, select: { id: true, name: true } }),
-      db.asset.findUnique({ where: { id: assetId }, select: { id: true, code: true } }),
+      db.tripSession.findFirst({
+        where: { assetId, driverId: access.driverId, userId: access.session.id, status: "ACTIVE" },
+        orderBy: { startedAt: "desc" },
+        select: { id: true },
+      }),
     ]);
     if (!driver || !asset) throw new ActionError("Your assigned vehicle could not be found.");
+    if (!claimedSession) throw new ActionError("Check in to this vehicle before recording fuel.");
+    driverName = driver.name;
+    claimedSessionId = claimedSession.id;
     driverEvent = driverFuelFillNotification({
       assetId: asset.id,
       assetCode: asset.code,
@@ -287,29 +344,55 @@ async function saveFuel__impl(fd: FormData) {
     });
   }
 
+  // Camera captures are optional verification evidence. The fuel entry itself
+  // must remain usable when a low-end phone has no camera, storage, or signal.
+  // `uploadPhoto` returns null for an omitted capture, preserving that fact.
+  const [odometerPhoto, pumpPhoto, afterOdometerPhoto] = await Promise.all([
+    uploadPhoto(fd.get("odometerPhoto"), "odo-before"),
+    uploadPhoto(fd.get("pumpPhoto"), "pump"),
+    uploadPhoto(fd.get("afterOdometerPhoto"), "odo-after"),
+  ]);
+
   // geofence check: how far is the fill from the vehicle's known GPS position?
   let geofenceOk = fd.get("geofenceOk") !== "false";
-  if (lat != null && lng != null && assetId) {
-    const asset = await db.asset.findUnique({ where: { id: assetId } });
-    if (asset && (asset.lat || asset.lng)) {
-      const R = 6371, dLat = ((asset.lat - lat) * Math.PI) / 180, dLng = ((asset.lng - lng) * Math.PI) / 180;
-      const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat * Math.PI) / 180) * Math.cos((asset.lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-      const distKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      if (distKm > 15) geofenceOk = false; // fill logged >15km from the vehicle
-    }
+  if (lat != null && lng != null && asset && (asset.lat || asset.lng)) {
+    const R = 6371, dLat = ((asset.lat - lat) * Math.PI) / 180, dLng = ((asset.lng - lng) * Math.PI) / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat * Math.PI) / 180) * Math.cos((asset.lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+    const distKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    if (distKm > 15) geofenceOk = false; // fill logged >15km from the vehicle
   }
 
   const meterValue = n(fd, "meterValue");
+  const activeSession = assetId
+    ? await db.tripSession.findFirst({
+        where: { assetId, status: "ACTIVE" },
+        orderBy: { startedAt: "desc" },
+      })
+    : null;
 
-  await db.$transaction(async (tx) => {
+  const fuelledAt = new Date();
+  await businessTransaction(access.session, async (tx) => {
+    // Re-read inside the serializable transaction. A checkout that won the
+    // race after the camera capture must not leave a fill linked to a closed
+    // or different driver's claim.
+    const session = access.group === "DRIVER"
+      ? await tx.tripSession.findFirst({
+          where: { id: claimedSessionId ?? "__none__", assetId: assetId!, driverId: access.driverId!, userId: access.session.id, status: "ACTIVE" },
+          select: { id: true, projectId: true },
+        })
+      : activeSession;
+    if (access.group === "DRIVER" && !session) throw new ActionError("Your vehicle check-in ended before this fuel record was saved. Check in again and retry.");
     await tx.fuelTransaction.create({
       data: {
         type,
         assetId,
-        projectId: s(fd, "projectId") || null,
+        tankId,
+        sessionId: session?.id ?? null,
+        source: tankId ? "SITE_TANK" : s(fd, "source") || "RETAIL",
+        projectId: access.group === "DRIVER" ? session?.projectId ?? asset?.projectId ?? null : s(fd, "projectId") || asset?.projectId || null,
         quantity,
         rate,
-        amount: quantity * rate,
+        amount: access.group === "DRIVER" ? financials.amount : quantity * rate,
         meterValue,
         sensorRise,
         variancePct,
@@ -317,23 +400,45 @@ async function saveFuel__impl(fd: FormData) {
         geofenceOk,
         odometerPhoto,
         pumpPhoto,
+        afterOdometerPhoto,
+        issuedBy: driverName ?? (s(fd, "issuedBy") || null),
         lat,
         lng,
-        date: new Date(),
+        date: fuelledAt,
       },
     });
+
+    if (tankId) {
+      await tx.fuelTank.update({
+        where: { id: tankId },
+        data: { currentLevel: { decrement: quantity } },
+      });
+    }
 
     if (driverEvent) await tx.alert.create({ data: driverEvent });
 
     if (assetId && meterValue > 0) {
-      await tx.asset.update({
-        where: { id: assetId },
-        data: {
-          meterValue,
-          ...(lat != null && lng != null ? { lat, lng } : {}),
-          lastSeen: new Date(),
-        },
-      });
+      const currentMeter = asset?.meterValue ?? 0;
+      // Only advance odometer; prevent backwards rollback
+      if (meterValue >= currentMeter) {
+        await tx.asset.update({
+          where: { id: assetId },
+          data: {
+            meterValue,
+            ...(lat != null && lng != null ? { lat, lng } : {}),
+            lastSeen: new Date(),
+          },
+        });
+        await tx.meterReading.create({
+          data: {
+            assetId,
+            meterType: "ODOMETER",
+            value: meterValue,
+            source: "FUEL",
+            date: new Date(),
+          },
+        });
+      }
     }
   });
 
@@ -346,7 +451,8 @@ async function saveFuel__impl(fd: FormData) {
 
 /* ----------------------------- SERVICE / REPAIR PHOTOS (driver) ----------------------------- */
 async function saveServicePhotos__impl(fd: FormData) {
-  await requireAction("maintenance.edit");
+  const scopeAccess = await requireAction("maintenance.edit");
+  await assertFormAccess(scopeAccess, fd);
   const assetId = s(fd, "assetId");
   if (!assetId) throw new ActionError("Select a vehicle.");
   const collect = async (field: string, prefix: string) => {
@@ -374,7 +480,9 @@ async function saveServicePhotos__impl(fd: FormData) {
 }
 
 async function setDieselRate__impl(fd: FormData) {
-  await requireAction("admin.settings");
+  const scopeAccess = await requireAction("admin.settings");
+  await assertFormAccess(scopeAccess, fd);
+  assertGlobalAccess(scopeAccess);
   const session = await getSession();
   if (session?.role !== "Admin") throw new ActionError("Only admins can set the rate.");
   const rate = n(fd, "rate");
@@ -385,7 +493,9 @@ async function setDieselRate__impl(fd: FormData) {
 }
 
 async function updateFuel__impl(id: string, fd: FormData) {
-  await requireAction("fuel.issue");
+  const scopeAccess = await requireAction("fuel.issue");
+  await assertFormAccess(scopeAccess, fd);
+  await assertRecordAccess(scopeAccess, "fuelTransaction", id);
   const quantity = n(fd, "quantity");
   const rate = n(fd, "rate") || 92.5;
   const data: { quantity: number; rate: number; amount: number; meterValue: number; date?: Date } = {
@@ -399,7 +509,8 @@ async function updateFuel__impl(id: string, fd: FormData) {
 }
 
 async function deleteFuel__impl(id: string) {
-  await requireAction("fuel.approve");
+  const scopeAccess = await requireAction("fuel.approve");
+  await assertRecordAccess(scopeAccess, "fuelTransaction", id);
   await db.fuelTransaction.delete({ where: { id } });
   revalidatePath("/fuel");
   revalidatePath("/");
@@ -407,42 +518,57 @@ async function deleteFuel__impl(id: string) {
 
 /* ----------------------------- WORK ORDER ----------------------------- */
 async function saveWorkOrder__impl(fd: FormData) {
-  await requireAction("maintenance.edit");
+  const scopeAccess = await requireAction("maintenance.edit");
+  await assertFormAccess(scopeAccess, fd);
   const labor = n(fd, "laborCost");
   const parts = n(fd, "partsCost");
-  await db.workOrder.create({
-    data: {
-      woNo: `WO-${Date.now().toString().slice(-8)}`,
-      assetId: s(fd, "assetId"),
-      type: s(fd, "type") || "PM",
-      priority: s(fd, "priority") || "Medium",
-      status: s(fd, "status") || "Open",
-      description: s(fd, "description"),
-      laborCost: labor,
-      partsCost: parts,
-      totalCost: labor + parts,
-      downtimeHrs: n(fd, "downtimeHrs"),
-      warranty: fd.get("warranty") === "on",
-      reportedAt: new Date(),
-      completedAt: s(fd, "status") === "Completed" || s(fd, "status") === "Closed" ? new Date() : null,
-    },
+  const assetId = s(fd, "assetId");
+  const type = s(fd, "type") || "PM";
+  const status = s(fd, "status") || "Open";
+
+  await businessTransaction(scopeAccess.session, async (tx) => {
+    await tx.workOrder.create({
+      data: {
+        woNo: `WO-${Date.now().toString().slice(-8)}`,
+        assetId,
+        type,
+        priority: s(fd, "priority") || "Medium",
+        status,
+        description: s(fd, "description"),
+        laborCost: labor,
+        partsCost: parts,
+        totalCost: labor + parts,
+        downtimeHrs: n(fd, "downtimeHrs"),
+        warranty: fd.get("warranty") === "on",
+        reportedAt: new Date(),
+        completedAt: status === "Completed" || status === "Closed" ? new Date() : null,
+      },
+    });
+
+    if (assetId && (type === "BREAKDOWN" || s(fd, "priority") === "Critical") && status !== "Completed" && status !== "Closed") {
+      await tx.asset.update({
+        where: { id: assetId },
+        data: { status: "Breakdown" },
+      });
+    }
   });
   revalidatePath("/maintenance");
   revalidatePath("/");
 }
 
 async function updateWorkOrderStatus__impl(id: string, status: string) {
-  await requireAction("maintenance.edit");
-  await db.workOrder.update({
-    where: { id },
-    data: { status, completedAt: status === "Completed" || status === "Closed" ? new Date() : null },
-  });
+  const access = await requireAction("maintenance.edit");
+  await changeWorkOrderStatus(access, id, status);
   revalidatePath("/maintenance");
+  revalidatePath("/fleet");
+  revalidatePath("/costs");
+  revalidatePath("/");
 }
 
 /* ----------------------------- COMPLIANCE ----------------------------- */
 async function saveCompliance__impl(fd: FormData) {
-  await requireAction("compliance.edit");
+  const scopeAccess = await requireAction("compliance.edit");
+  await assertFormAccess(scopeAccess, fd);
   const expiry = new Date(s(fd, "expiryDate") || Date.now());
   await db.complianceDoc.create({
     data: {
@@ -461,7 +587,9 @@ async function saveCompliance__impl(fd: FormData) {
 }
 
 async function renewComplianceDoc__impl(id: string, fd: FormData) {
-  await requireAction("compliance.edit");
+  const scopeAccess = await requireAction("compliance.edit");
+  await assertFormAccess(scopeAccess, fd);
+  await assertRecordAccess(scopeAccess, "complianceDoc", id);
   const expiry = new Date(s(fd, "expiryDate") || Date.now());
   const number = s(fd, "number");
   const issueDateStr = s(fd, "issueDate");
@@ -486,7 +614,8 @@ async function renewComplianceDoc__impl(id: string, fd: FormData) {
 
 /* ----------------------------- USERS / ACCESS ----------------------------- */
 async function saveUser__impl(fd: FormData) {
-  await requireAction("admin.users");
+  const scopeAccess = await requireAction("admin.users");
+  await assertFormAccess(scopeAccess, fd);
   const email = s(fd, "email").toLowerCase();
   const existing = await db.user.findUnique({ where: { email } });
   if (existing) throw new ActionError("A user with this email already exists.");
@@ -604,7 +733,9 @@ async function deleteUser__impl(id: string) {
 
 /* ----------------------------- PROJECT ----------------------------- */
 async function saveProject__impl(fd: FormData) {
-  await requireAction("fleet.edit");
+  const scopeAccess = await requireAction("fleet.edit");
+  await assertFormAccess(scopeAccess, fd);
+  assertGlobalAccess(scopeAccess);
   const code = s(fd, "code");
   const name = s(fd, "name");
   if (!code || !name) throw new ActionError("Project code and name are required");
@@ -646,7 +777,9 @@ async function saveProject__impl(fd: FormData) {
 }
 
 async function updateProject__impl(id: string, fd: FormData) {
-  await requireAction("fleet.edit");
+  const scopeAccess = await requireAction("fleet.edit");
+  await assertFormAccess(scopeAccess, fd);
+  await assertRecordAccess(scopeAccess, "project", id);
   const code = s(fd, "code");
   const name = s(fd, "name");
   if (!code || !name) throw new ActionError("Project code and name are required");
@@ -693,12 +826,13 @@ async function updateProject__impl(id: string, fd: FormData) {
 }
 
 async function deleteProject__impl(id: string) {
-  await requireAction("fleet.edit");
+  const scopeAccess = await requireAction("fleet.edit");
+  await assertRecordAccess(scopeAccess, "project", id);
   const project = await db.project.findUnique({ where: { id } });
   if (!project) throw new ActionError("Project not found");
 
   // ACID: single transaction for all cascade cleanup across all 15 project relations
-  await db.$transaction(async (tx) => {
+  await businessTransaction(scopeAccess.session, async (tx) => {
     // 1. Unlink optional relations (set projectId to null so historical logs remain intact)
     await tx.asset.updateMany({ where: { projectId: id }, data: { projectId: null } });
     await tx.trip.updateMany({ where: { projectId: id }, data: { projectId: null } });

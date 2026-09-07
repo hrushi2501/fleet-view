@@ -128,7 +128,11 @@ export function toCsv(rows: Record<string, unknown>[], columns?: string[]): stri
   const cell = (v: unknown): string => {
     if (v == null) return "";
     if (v instanceof Date) return businessDay(v);
-    const s = String(v);
+    const plain = String(v);
+    // Spreadsheet programs evaluate cells that start with a formula marker.
+    // Prefixing an apostrophe preserves the visible data while making imports
+    // inert, including values prefixed by a tab/carriage return.
+    const s = /^[=+\-@\t\r]/.test(plain) ? `'${plain}` : plain;
     return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
 

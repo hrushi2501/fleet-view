@@ -241,7 +241,7 @@ export function AttendanceDashboard({ view }: { view: AttendanceView }) {
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex flex-1 flex-wrap items-center gap-3">
             {/* Search Input */}
-            <div className="relative min-w-[240px] flex-1">
+            <div className="relative min-w-60 flex-1">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input
                 type="text"
@@ -349,7 +349,7 @@ export function AttendanceDashboard({ view }: { view: AttendanceView }) {
                         <div className="font-medium text-slate-800">{dash(record.vehicleCode)}</div>
                         <div className="text-xs text-slate-400">{dash(record.vehicleName)}</div>
                       </td>
-                      <td className="max-w-[200px] px-5 py-3.5">
+                      <td className="max-w-50 px-5 py-3.5">
                         <div className="truncate font-medium text-slate-800">{dash(record.projectName)}</div>
                       </td>
                       <td className="px-5 py-3.5">

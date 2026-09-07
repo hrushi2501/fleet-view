@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { ROLE_LABEL } from "@/lib/utils";
-import { LogOut, Search, Bell, BellRing, CircleAlert, Fuel, ShieldAlert, Wrench, FileWarning, X } from "lucide-react";
+import { LogOut, Search, Bell, BellRing, CircleAlert, Fuel, ShieldAlert, Wrench, FileWarning, Truck, X } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { CommandPalette } from "@/components/CommandPalette";
 import { QuickActionMenu } from "@/components/QuickActionMenu";
+import type { QuickAction } from "@/lib/quick-actions";
 import type { NotificationFeed, NotificationItem } from "@/lib/notification-types";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
@@ -18,19 +20,26 @@ export function Topbar({
   isDriver = false,
   initialNotifications = [],
   notificationLogHref = null,
+  quickActions = [],
 }: {
   user: { name: string; role: string };
   notifCount?: number;
   isDriver?: boolean;
   initialNotifications?: NotificationItem[];
   notificationLogHref?: string | null;
+  quickActions?: QuickAction[];
 }) {
+  const router = useRouter();
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationFeed, setNotificationFeed] = useState<NotificationFeed>({
     items: initialNotifications,
     attentionCount: notifCount,
   });
+  const signOut = useCallback(async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+  }, [router]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
   const initials = user.name.split(" ").map((p) => p[0]).slice(0, 2).join("");
@@ -82,9 +91,15 @@ export function Topbar({
 
   return (
     <>
-      <header className="sticky top-0 z-20 flex h-16 items-center gap-4 border-b border-slate-200 bg-white/80 px-5 backdrop-blur-md lg:px-8">
-        <div className="ml-10 flex flex-1 items-center gap-3 lg:ml-0">
-          {!isDriver && (
+      <header className={`sticky top-0 z-20 flex items-center gap-4 border-b border-slate-200 bg-white/90 px-4 backdrop-blur-md lg:px-8 ${isDriver ? "h-14" : "h-16"}`}>
+        <div className={isDriver ? "flex flex-1 items-center" : "ml-10 flex flex-1 items-center gap-3 lg:ml-0"}>
+          {isDriver ? (
+            <Link href="/my" className="flex min-h-11 items-center gap-2.5 rounded-xl pr-3" aria-label="FleetView driver home">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 text-white"><Truck className="h-5 w-5" aria-hidden /></span>
+              <span><span className="block text-sm font-bold text-ink-900">FleetView</span><span className="block text-[11px] font-medium text-slate-500">ड्राइवर ऐप / Driver</span></span>
+            </Link>
+          ) : (
+            <>
             <button
               onClick={() => setSearchOpen(true)}
               className="group relative hidden w-full max-w-sm items-center justify-between rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-left text-sm text-slate-400 transition-colors hover:border-brand-300 hover:bg-white hover:text-slate-600 sm:flex"
@@ -95,8 +110,9 @@ export function Topbar({
                 <span className="text-xs">⌘</span>K
               </kbd>
             </button>
+            <QuickActionMenu actions={quickActions} />
+            </>
           )}
-          <QuickActionMenu isDriver={isDriver} />
         </div>
         <div className="flex items-center gap-3">
           {/* Reachable from every screen, and on a phone too: somebody who
@@ -144,7 +160,7 @@ export function Topbar({
               />
             )}
           </div>
-          <Link href="/account" className="flex items-center gap-3 rounded-lg p-1 hover:bg-slate-100" title="My account & password">
+          {!isDriver && <Link href="/account" className="flex items-center gap-3 rounded-lg p-1 hover:bg-slate-100" title="My account & password">
             <div className="hidden text-right sm:block">
               <p className="text-sm font-semibold text-ink-900">{user.name}</p>
               <p className="text-xs text-slate-500">{ROLE_LABEL[user.role] ?? user.role}</p>
@@ -152,19 +168,20 @@ export function Topbar({
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-500 text-sm font-bold text-white">
               {initials}
             </div>
-          </Link>
-          <a
-            href="/api/auth/logout"
+          </Link>}
+          <button
+            type="button"
+            onClick={() => void signOut()}
             className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-rose-600"
             title="Sign out"
           >
             <LogOut className="h-4 w-4" />
-          </a>
+          </button>
         </div>
       </header>
 
       {/* Global Command Palette */}
-      <CommandPalette isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
+      {!isDriver && <CommandPalette isOpen={searchOpen} onClose={() => setSearchOpen(false)} quickActions={quickActions} />}
     </>
   );
 }

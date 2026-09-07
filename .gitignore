@@ -64,3 +64,6 @@ DRIVER-CREDENTIALS.local.json
 # Claude Code local state — agent settings and memory, not project source.
 .claude/settings.local.json
 .claude/projects/
+
+# Superdesign local context and resume state — generated design-work metadata.
+.superdesign/

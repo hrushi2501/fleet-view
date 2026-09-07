@@ -366,6 +366,9 @@ type ResolvedAsset = {
   fuelCapacity: number;
 };
 
+/** The minimal registered-vehicle data required for a fuel-change assessment. */
+export type FuelAnomalyAsset = Pick<ResolvedAsset, "id" | "assetClass">;
+
 type RawFields = Record<string, unknown>;
 
 function toFiniteNumber(v: unknown): number | null {
@@ -433,8 +436,8 @@ async function buildAssetIndex(): Promise<Map<string, ResolvedAsset>> {
  * person, and on daily sampling the evidence does not support that. The queue
  * is where a human decides.
  */
-async function raiseFuelAnomaly(
-  asset: ResolvedAsset,
+export async function recordTelemetryFuelAnomaly(
+  asset: FuelAnomalyAsset,
   previous: AnalyticsReading,
   current: AnalyticsReading,
   readingId: string,
@@ -460,9 +463,24 @@ async function raiseFuelAnomaly(
     return false;
   }
 
-  if (segment.event !== "STATIONARY_DROP" && segment.event !== "EXCESS_CONSUMPTION") return false;
+  if (
+    segment.event !== "STATIONARY_DROP" &&
+    segment.event !== "EXCESS_CONSUMPTION" &&
+    segment.event !== "IMPLAUSIBLE_DROP"
+  ) return false;
 
-  const score = riskScore(segment, tankCapacityL);
+  // A physically impossible fall (for example 200 L to 170 L in ten minutes)
+  // is not evidence that a driver stole fuel. It may be a sender fault, leak,
+  // splash, or removal. It must still reach the problem queue, otherwise the
+  // system silently loses the exact signal a supervisor needs to inspect.
+  const rapidSensorDrop = segment.event === "IMPLAUSIBLE_DROP";
+  const involvedLitres = rapidSensorDrop
+    ? Math.abs(segment.fuelDeltaL ?? 0)
+    : segment.excessLitres;
+  const capacity = tankCapacityL && tankCapacityL > 0 ? tankCapacityL : 300;
+  const score = rapidSensorDrop
+    ? Math.max(20, Math.min(50, Math.round((involvedLitres / capacity) * 100)))
+    : riskScore(segment, tankCapacityL);
   const rate = await dieselRate();
 
   await db.fuelAnomaly.upsert({
@@ -476,10 +494,16 @@ async function raiseFuelAnomaly(
       assetId: asset.id,
       severity: severityFor(score),
       score,
-      litres: segment.excessLitres,
-      valueAtRisk: Math.round(segment.excessLitres * rate),
+      litres: involvedLitres,
+      // Keep a fast sender drop out of monetary-loss totals until a person has
+      // verified that there was a real loss. The case is a prompt to inspect,
+      // not an automated allegation or recovery demand.
+      valueAtRisk: rapidSensorDrop ? 0 : Math.round(segment.excessLitres * rate),
       reasons: [
         ...segment.reasons,
+        ...(rapidSensorDrop
+          ? ["Rapid fuel-level change queued for inspection. Cause is unconfirmed: check for a leak, siphoning, or sender fault; no person has been implicated."]
+          : []),
         `Window ${segment.from.toISOString()} → ${segment.to.toISOString()} (${segment.hours} h).`,
         `Confidence ${segment.confidence}` +
           (segment.confidence !== "HIGH"
@@ -508,7 +532,7 @@ const PAPERWORK_WINDOW_MS = 3 * 60 * 60_000;
  *    tank with no issue slip behind it is worth seeing, not discarding.
  */
 async function recordSensorRefuel(
-  asset: ResolvedAsset,
+  asset: Pick<ResolvedAsset, "id">,
   reading: AnalyticsReading,
   litres: number,
   windowHours: number,
@@ -857,7 +881,7 @@ async function runTataSync(base: TataSyncResult): Promise<TataSyncResult> {
 
       if (previous) {
         analysed++;
-        const raised = await raiseFuelAnomaly(
+        const raised = await recordTelemetryFuelAnomaly(
           asset,
           previous as AnalyticsReading,
           {

@@ -1,6 +1,8 @@
 "use server";
 
 import { db } from "@/lib/db";
+import { formNumber } from "@/lib/input-validation";
+import { assertRecordAccess, assertFormAccess, assertGlobalAccess } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { SEVERITY_POINTS, safetyScore } from "@/lib/drivers";
@@ -8,7 +10,7 @@ import { requireAction, ActionError, safe } from "@/lib/guard";
 import { uploadPrivateFile } from "@/lib/private-upload";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
-const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
+const n = formNumber;
 
 function refresh() {
   revalidatePath("/drivers");
@@ -26,7 +28,8 @@ async function syncScore(driverId: string) {
 /* ------------------------------- competencies ------------------------------- */
 
 async function saveCompetency__impl(fd: FormData) {
-  await requireAction("people.edit");
+  const scopeAccess = await requireAction("people.edit");
+  await assertFormAccess(scopeAccess, fd);
   const driverId = s(fd, "driverId");
   const assetClass = s(fd, "assetClass");
   if (!driverId || !assetClass) throw new ActionError("Driver and machine class are required");
@@ -47,7 +50,8 @@ async function saveCompetency__impl(fd: FormData) {
 }
 
 async function deleteCompetency__impl(id: string) {
-  await requireAction("people.edit");
+  const scopeAccess = await requireAction("people.edit");
+  await assertRecordAccess(scopeAccess, "competency", id);
   await db.competency.delete({ where: { id } });
   refresh();
 }
@@ -55,7 +59,8 @@ async function deleteCompetency__impl(id: string) {
 /* -------------------------------- violations -------------------------------- */
 
 async function saveViolation__impl(fd: FormData) {
-  await requireAction("people.discipline");
+  const scopeAccess = await requireAction("people.discipline");
+  await assertFormAccess(scopeAccess, fd);
   const driverId = s(fd, "driverId");
   if (!driverId) throw new ActionError("Driver is required");
   const severity = s(fd, "severity") || "MINOR";
@@ -80,7 +85,9 @@ async function saveViolation__impl(fd: FormData) {
 }
 
 async function updateViolation__impl(id: string, fd: FormData) {
-  await requireAction("people.discipline");
+  const scopeAccess = await requireAction("people.discipline");
+  await assertFormAccess(scopeAccess, fd);
+  await assertRecordAccess(scopeAccess, "violation", id);
   const v = await db.violation.update({
     where: { id },
     data: {
@@ -94,7 +101,8 @@ async function updateViolation__impl(id: string, fd: FormData) {
 }
 
 async function deleteViolation__impl(id: string) {
-  await requireAction("people.discipline");
+  const scopeAccess = await requireAction("people.discipline");
+  await assertRecordAccess(scopeAccess, "violation", id);
   const v = await db.violation.findUnique({ where: { id } });
   if (!v) return;
   await db.violation.delete({ where: { id } });
@@ -106,7 +114,8 @@ async function deleteViolation__impl(id: string) {
 
 /** Save or renew a document. Renewals chain to the old record rather than overwrite it. */
 async function saveDocument__impl(fd: FormData) {
-  await requireAction("compliance.edit");
+  const scopeAccess = await requireAction("compliance.edit");
+  await assertFormAccess(scopeAccess, fd);
   const assetId = s(fd, "assetId");
   if (!assetId) throw new ActionError("Asset is required");
 
@@ -147,14 +156,16 @@ async function saveDocument__impl(fd: FormData) {
 }
 
 async function deleteDocument__impl(id: string) {
-  await requireAction("compliance.edit");
+  const scopeAccess = await requireAction("compliance.edit");
+  await assertRecordAccess(scopeAccess, "complianceDoc", id);
   await db.complianceDoc.delete({ where: { id } });
   refresh();
 }
 
 /** Refresh every document's cached status against today's date. */
 async function refreshDocStatuses__impl() {
-  await requireAction("compliance.edit");
+  const scopeAccess = await requireAction("compliance.edit");
+  assertGlobalAccess(scopeAccess);
   const docs = await db.complianceDoc.findMany();
   let changed = 0;
   for (const d of docs) {

@@ -8,6 +8,7 @@ import { ASSET_CLASS_LABEL } from "@/lib/utils";
 export type MapMarker = {
   id: string; code: string; name: string; assetClass: string; status: string;
   lat: number; lng: number; speed: number; project: string;
+  driverName?: string | null;
 };
 
 const DOT_HEX: Record<string, string> = {
@@ -117,16 +118,24 @@ export default function RajasthanMap({
           eventHandlers={{ click: () => onSelect(m.id) }}
         >
           <Popup>
-            <div style={{ minWidth: 160 }}>
-              <strong>{m.code}</strong> — {m.status}
-              <br />
-              <span style={{ color: "#64748b" }}>{ASSET_CLASS_LABEL[m.assetClass] ?? m.assetClass}</span>
-              <br />
-              <span style={{ color: "#64748b", fontSize: 12 }}>{m.name}</span>
-              <br />
+            <div style={{ minWidth: 170, fontFamily: "ui-sans-serif,system-ui,sans-serif" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <strong style={{ fontSize: 13, color: "#0f172a" }}>{m.code}</strong>
+                <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 5px", borderRadius: 4, color: "#fff", background: DOT_HEX[m.status] ?? "#3366ff" }}>
+                  {m.status}
+                </span>
+              </div>
+              <div style={{ color: "#64748b", fontSize: 11, marginTop: 2 }}>{ASSET_CLASS_LABEL[m.assetClass] ?? m.assetClass}</div>
+              <div style={{ marginTop: 4, fontSize: 11, borderTop: "1px solid #f1f5f9", paddingTop: 4 }}>
+                <span style={{ color: "#64748b" }}>Driver: </span>
+                <strong style={{ color: m.driverName ? "#047857" : "#b45309" }}>
+                  {m.driverName ? m.driverName : "No Driver Assigned"}
+                </strong>
+              </div>
+              <div style={{ color: "#64748b", fontSize: 11 }}>{m.name}</div>
               <button
                 onClick={() => onSelect(m.id)}
-                style={{ marginTop: 6, color: "#1f47e6", fontWeight: 600, cursor: "pointer", background: "none", border: "none", padding: 0 }}
+                style={{ marginTop: 6, color: "#1f47e6", fontWeight: 600, fontSize: 11, cursor: "pointer", background: "none", border: "none", padding: 0 }}
               >
                 View full details →
               </button>

@@ -8,9 +8,11 @@ import { checkReading, type MeterType, type ReadingLite } from "@/lib/master";
 import { parseBusinessDay } from "@/lib/business-time";
 import { requireAction, ActionError, safe } from "@/lib/guard";
 import { uploadPrivateFile } from "@/lib/private-upload";
+import { assertFormAccess, assertRecordAccess } from "@/lib/record-access";
+import { formNumber } from "@/lib/input-validation";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
-const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
+const n = (fd: FormData, k: string) => formNumber(fd, k);
 
 function refresh() {
   revalidatePath("/master/assets");
@@ -29,7 +31,8 @@ function refresh() {
  * The asset's cached meter only moves forward.
  */
 async function saveReading__impl(fd: FormData) {
-  await requireAction("fleet.edit");
+  const scopeAccess = await requireAction("fleet.edit");
+  await assertFormAccess(scopeAccess, fd);
   const assetId = s(fd, "assetId");
   if (!assetId) throw new ActionError("Asset is required");
   const meterType = (s(fd, "meterType") || "ODOMETER") as MeterType;
@@ -74,14 +77,16 @@ async function saveReading__impl(fd: FormData) {
 }
 
 async function deleteReading__impl(id: string) {
-  await requireAction("fleet.edit");
+  const scopeAccess = await requireAction("fleet.edit");
+  await assertRecordAccess(scopeAccess, "meterReading", id);
   await db.meterReading.delete({ where: { id } });
   refresh();
 }
 
 /** Extra master-data fields the demo's asset form never captured. */
 async function saveAssetMaster__impl(assetId: string, fd: FormData) {
-  await requireAction("fleet.edit");
+  const scopeAccess = await requireAction("fleet.edit");
+  await assertRecordAccess(scopeAccess, "asset", assetId);
   const before = await db.asset.findUnique({ where: { id: assetId } });
   await db.asset.update({
     where: { id: assetId },
@@ -101,7 +106,8 @@ async function saveAssetMaster__impl(assetId: string, fd: FormData) {
 }
 
 async function saveLifecycleEvent__impl(fd: FormData) {
-  await requireAction("fleet.edit");
+  const scopeAccess = await requireAction("fleet.edit");
+  await assertFormAccess(scopeAccess, fd);
   const assetId = s(fd, "assetId");
   if (!assetId) throw new ActionError("Asset is required");
   const session = await getSession();
@@ -120,7 +126,15 @@ async function saveLifecycleEvent__impl(fd: FormData) {
   });
 
   if (kind === "DECOMMISSIONED" || kind === "DISPOSED") {
-    await db.asset.update({ where: { id: assetId }, data: { status: "Off-hired", decommissionedOn: new Date() } });
+    const now = new Date();
+    await db.tripSession.updateMany({
+      where: { assetId, status: "ACTIVE" },
+      data: { status: "COMPLETED", endedAt: now, endedBy: "ADMIN" },
+    });
+    await db.asset.update({
+      where: { id: assetId },
+      data: { status: "Off-hired", driverId: null, decommissionedOn: now },
+    });
   }
   await audit({ action: "UPDATE", module: "FLEET", entity: "Asset", entityId: assetId, summary: `Lifecycle event: ${kind}` });
   refresh();
@@ -129,7 +143,8 @@ async function saveLifecycleEvent__impl(fd: FormData) {
 /* ------------------------------ M2 personnel ------------------------------ */
 
 async function saveAttendance__impl(fd: FormData) {
-  await requireAction("people.edit");
+  const scopeAccess = await requireAction("people.edit");
+  await assertFormAccess(scopeAccess, fd);
   const driverId = s(fd, "driverId");
   if (!driverId) throw new ActionError("Person is required");
   const date = parseBusinessDay(s(fd, "date"));
@@ -153,7 +168,8 @@ async function saveAttendance__impl(fd: FormData) {
 }
 
 async function deleteAttendance__impl(id: string) {
-  await requireAction("people.edit");
+  const scopeAccess = await requireAction("people.edit");
+  await assertRecordAccess(scopeAccess, "attendance", id);
   await db.attendance.delete({ where: { id } });
   refresh();
 }
@@ -168,12 +184,14 @@ async function batchSaveAttendance__impl(
     note?: string | null;
   }>
 ) {
-  await requireAction("people.edit");
+  const scopeAccess = await requireAction("people.edit");
   const session = await getSession();
   const markedBy = session?.name || "Supervisor";
 
   for (const item of items) {
     if (!item.driverId) continue;
+    await assertRecordAccess(scopeAccess, "driver", item.driverId);
+    if (item.projectId) await assertRecordAccess(scopeAccess, "project", item.projectId);
     const date = parseBusinessDay(item.date);
     date.setHours(0, 0, 0, 0);
     const shift = item.shift || "DAY";
@@ -193,7 +211,8 @@ async function batchSaveAttendance__impl(
 }
 
 async function savePersonDoc__impl(fd: FormData) {
-  await requireAction("people.edit");
+  const scopeAccess = await requireAction("people.edit");
+  await assertFormAccess(scopeAccess, fd);
   const driverId = s(fd, "driverId");
   if (!driverId) throw new ActionError("Person is required");
 
@@ -221,13 +240,15 @@ async function savePersonDoc__impl(fd: FormData) {
 }
 
 async function deletePersonDoc__impl(id: string) {
-  await requireAction("people.edit");
+  const scopeAccess = await requireAction("people.edit");
+  await assertRecordAccess(scopeAccess, "personDocument", id);
   await db.personDocument.delete({ where: { id } });
   refresh();
 }
 
 async function savePersonMaster__impl(driverId: string, fd: FormData) {
-  await requireAction("people.edit");
+  const scopeAccess = await requireAction("people.edit");
+  await assertRecordAccess(scopeAccess, "driver", driverId);
   await db.driver.update({
     where: { id: driverId },
     data: {

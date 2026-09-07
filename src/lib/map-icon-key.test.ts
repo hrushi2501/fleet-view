@@ -81,3 +81,18 @@ describe("anything a person would see is in the key", () => {
     );
   });
 });
+
+describe("a handover repaints the marker", () => {
+  test("the same vehicle with a new driver is not a cache hit", () => {
+    const base = { status: "MOVING", label: "TRU-053", headingDeg: 90 };
+    assert.notEqual(
+      iconCacheKey({ ...base, driverName: "Ramesh" }, false, true),
+      iconCacheKey({ ...base, driverName: "Suresh" }, false, true),
+    );
+  });
+
+  test("a vehicle with no driver still has a stable key", () => {
+    const m = { status: "IDLE", label: "TRU-109", headingDeg: null, driverName: null };
+    assert.equal(iconCacheKey(m, false, true), iconCacheKey(m, false, true));
+  });
+});

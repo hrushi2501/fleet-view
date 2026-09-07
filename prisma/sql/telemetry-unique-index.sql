@@ -19,14 +19,15 @@
 --
 -- WHY THIS FILE EXISTS RATHER THAN JUST `prisma db push`
 --
--- The constraint is declared in schema.prisma, but the application role
+-- The constraint is intentionally deferred in schema.prisma pending a historical
+-- duplicate review. The application role
 -- (`fleetview_app`) does not own the table — `postgres` does — so neither the
 -- app nor `prisma db push` run as that role can create it:
 --
 --     ERROR: must be owner of table TelemetryReading
 --
--- Run this as the table owner. Verified safe at the time of writing: production
--- held zero duplicate (assetId, recordedAt, source) groups.
+-- Run this as the table owner only after reviewing historical duplicates.
+-- Never assume that a previous audit's row counts still hold.
 --
 --   psql "$DATABASE_URL_UNPOOLED" -f prisma/sql/telemetry-unique-index.sql
 --
@@ -52,7 +53,7 @@ BEGIN
   IF offending > 0 THEN
     RAISE EXCEPTION
       'Cannot add the unique index: % duplicate (assetId, recordedAt, source) group(s) already exist. '
-      'Resolve them first — keep the earliest row in each group and delete the rest.', offending;
+      'Review and reconcile historical observations before retrying. No rows have been deleted.', offending;
   END IF;
 END $$;
 

@@ -196,3 +196,68 @@ export function byVehicle(pairs: PairResult[]): VehicleSummary[] {
 }
 
 export const MATERIALS = ["Earth", "GSB", "WMM", "Aggregate", "Sand", "Bitumen", "Concrete", "Debris", "Other"];
+
+/** Highest plausible gross weight for any commercial truck configuration (150 metric tonnes). */
+export const MAX_REASONABLE_GROSS_KG = 150_000;
+
+export type WeightValidationResult = {
+  valid: boolean;
+  error?: string;
+  computedNetKg: number;
+};
+
+/**
+ * Validates physically possible weighbridge boundaries:
+ * - Weights cannot be negative.
+ * - Gross weight cannot exceed realistic maximums (e.g. 150t).
+ * - Gross weight must be >= tare weight if both are positive.
+ * - Computes or validates net weight.
+ */
+export function validateWeighbridgeWeights(params: {
+  grossKg: number;
+  tareKg: number;
+  netKg?: number;
+}): WeightValidationResult {
+  const { grossKg, tareKg, netKg } = params;
+  if (![grossKg, tareKg, ...(netKg === undefined ? [] : [netKg])].every(Number.isFinite)) {
+    return { valid: false, error: "Weights must be finite numbers.", computedNetKg: 0 };
+  }
+  if (netKg !== undefined && (netKg < 0 || netKg > MAX_REASONABLE_GROSS_KG)) {
+    return { valid: false, error: "Net weight must be between 0 and 150,000 kg.", computedNetKg: 0 };
+  }
+
+  if (grossKg < 0 || tareKg < 0) {
+    return { valid: false, error: "Gross and tare weights cannot be negative.", computedNetKg: 0 };
+  }
+
+  if (grossKg > MAX_REASONABLE_GROSS_KG) {
+    return {
+      valid: false,
+      error: `Gross weight (${grossKg.toLocaleString("en-IN")} kg) exceeds maximum permissible threshold of ${MAX_REASONABLE_GROSS_KG.toLocaleString("en-IN")} kg.`,
+      computedNetKg: 0,
+    };
+  }
+
+  if (tareKg > MAX_REASONABLE_GROSS_KG) {
+    return {
+      valid: false,
+      error: `Tare weight (${tareKg.toLocaleString("en-IN")} kg) exceeds maximum permissible threshold of ${MAX_REASONABLE_GROSS_KG.toLocaleString("en-IN")} kg.`,
+      computedNetKg: 0,
+    };
+  }
+
+  if (grossKg < tareKg) {
+    return {
+      valid: false,
+      error: `Gross weight (${grossKg.toLocaleString("en-IN")} kg) cannot be less than empty tare weight (${tareKg.toLocaleString("en-IN")} kg).`,
+      computedNetKg: 0,
+    };
+  }
+
+  const derived = grossKg - tareKg;
+  if (grossKg > 0 && netKg !== undefined && Math.abs(netKg - derived) > 0.01) {
+    return { valid: false, error: "Net weight must equal gross minus tare weight.", computedNetKg: 0 };
+  }
+  const computed = netKg ?? derived;
+  return { valid: true, computedNetKg: computed };
+}

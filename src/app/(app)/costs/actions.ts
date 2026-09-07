@@ -1,13 +1,15 @@
 "use server";
 
 import { db } from "@/lib/db";
+import { formNumber } from "@/lib/input-validation";
+import { assertFormAccess, assertRecordAccess } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { parseBusinessDay, businessMonth } from "@/lib/business-time";
 import { requireAction, ActionError, safe } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
-const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
+const n = formNumber;
 
 function refresh() {
   revalidatePath("/costs");
@@ -17,14 +19,18 @@ function refresh() {
 
 /** Manual cost line — tyres, insurance, EMI, tolls. Fuel/maintenance/hire come from their modules. */
 async function saveCost__impl(fd: FormData) {
-  await requireAction("cost.edit");
+  const scopeAccess = await requireAction("cost.edit");
+  await assertFormAccess(scopeAccess, fd);
+  const amount = n(fd, "amount");
+  if (amount <= 0) throw new ActionError("Cost amount must be greater than zero");
+
   const date = parseBusinessDay(s(fd, "date"));
   await db.costTransaction.create({
     data: {
       assetId: s(fd, "assetId") || null,
       projectId: s(fd, "projectId") || null,
       costHead: s(fd, "costHead") || "OTHER",
-      amount: n(fd, "amount"),
+      amount,
       period: businessMonth(date),
       date,
     },
@@ -33,7 +39,8 @@ async function saveCost__impl(fd: FormData) {
 }
 
 async function deleteCost__impl(id: string) {
-  await requireAction("cost.edit");
+  const scopeAccess = await requireAction("cost.edit");
+  await assertRecordAccess(scopeAccess, "costTransaction", id);
   const session = await getSession();
   if (!session) throw new ActionError("Not authenticated");
 
@@ -58,15 +65,19 @@ async function deleteCost__impl(id: string) {
 
 /** Money in on a project — RA bills, advances, retention released. */
 async function saveRevenue__impl(fd: FormData) {
-  await requireAction("cost.edit");
+  const scopeAccess = await requireAction("cost.edit");
+  await assertFormAccess(scopeAccess, fd);
   const projectId = s(fd, "projectId");
   if (!projectId) throw new ActionError("Project is required");
+  const amount = n(fd, "amount");
+  if (amount <= 0) throw new ActionError("Revenue amount must be greater than zero");
+
   const date = parseBusinessDay(s(fd, "date"));
   await db.projectRevenue.create({
     data: {
       projectId,
       description: s(fd, "description"),
-      amount: n(fd, "amount"),
+      amount,
       billType: s(fd, "billType") || "RA_BILL",
       period: businessMonth(date),
       date,
@@ -76,7 +87,8 @@ async function saveRevenue__impl(fd: FormData) {
 }
 
 async function deleteRevenue__impl(id: string) {
-  await requireAction("cost.edit");
+  const scopeAccess = await requireAction("cost.edit");
+  await assertRecordAccess(scopeAccess, "projectRevenue", id);
   const session = await getSession();
   if (!session) throw new ActionError("Not authenticated");
 
@@ -101,12 +113,24 @@ async function deleteRevenue__impl(id: string) {
 
 /** Depreciation basis for an asset — drives book value and replace-vs-repair. */
 async function saveDepreciation__impl(assetId: string, fd: FormData) {
-  await requireAction("cost.edit");
+  const scopeAccess = await requireAction("cost.edit");
+  await assertFormAccess(scopeAccess, fd);
+  await assertRecordAccess(scopeAccess, "asset", assetId);
+  const acquisitionCost = n(fd, "acquisitionCost");
+  const salvageValue = n(fd, "salvageValue");
+
+  if (acquisitionCost < 0 || salvageValue < 0) {
+    throw new ActionError("Acquisition cost and salvage value cannot be negative");
+  }
+  if (salvageValue > acquisitionCost) {
+    throw new ActionError("Salvage value cannot exceed original acquisition cost");
+  }
+
   await db.asset.update({
     where: { id: assetId },
     data: {
-      acquisitionCost: n(fd, "acquisitionCost"),
-      salvageValue: n(fd, "salvageValue"),
+      acquisitionCost,
+      salvageValue,
       usefulLifeYears: Math.max(1, Math.round(n(fd, "usefulLifeYears"))),
       depMethod: s(fd, "depMethod") || "SLM",
       inServiceDate: s(fd, "inServiceDate") ? new Date(s(fd, "inServiceDate")) : null,

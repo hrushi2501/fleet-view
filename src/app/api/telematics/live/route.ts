@@ -1,3 +1,4 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { requireApi, assetScope } from "@/lib/access";
 import { getLiveFleet } from "@/lib/fleet-edge-live";
@@ -16,7 +17,7 @@ export const dynamic = "force-dynamic";
  * site's vehicles; the refresh must not become the hole that shows them the
  * company's fleet.
  */
-export async function GET() {
+async function handleGET() {
   const auth = await requireApi("fleet.view");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
@@ -28,3 +29,5 @@ export async function GET() {
     headers: { "Cache-Control": "no-store, max-age=0" },
   });
 }
+
+export const GET = withApiErrors(handleGET);

@@ -15,27 +15,14 @@ const securityHeaders = [
   // Stop the app being framed — clickjacking protection for the approval buttons.
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+  { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
+  { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
+  { key: "X-DNS-Prefetch-Control", value: "off" },
   // Don't leak internal paths to third parties when a user follows a link out.
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   // Geolocation and camera are needed by the driver app; everything else is off.
   { key: "Permissions-Policy", value: "camera=(self), geolocation=(self), microphone=(), payment=(), usb=()" },
-  {
-    key: "Content-Security-Policy",
-    value: [
-      "default-src 'self'",
-      // Next.js requires inline/eval for its runtime.
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-      "style-src 'self' 'unsafe-inline'",
-      // blob:/data: cover camera captures; https: covers Vercel Blob and map tiles.
-      "img-src 'self' blob: data: https:",
-      "font-src 'self' data:",
-      "connect-src 'self' https:",
-      "frame-ancestors 'none'",
-      "base-uri 'self'",
-      "form-action 'self'",
-      "object-src 'none'",
-    ].join("; "),
-  },
 ];
 
 const nextConfig: NextConfig = {
@@ -46,6 +33,12 @@ const nextConfig: NextConfig = {
   // is the worst place to find out. Left external so both resolve from
   // node_modules with their data files intact.
   serverExternalPackages: ["pdfkit", "exceljs"],
+  // A driver may attach up to three optional refuelling verification images. The
+  // wizard compresses each to at most 2 MB (6 MB total); leave room for multipart
+  // boundaries while retaining a firm limit against oversized action bodies.
+  experimental: {
+    serverActions: { bodySizeLimit: "8mb" },
+  },
   turbopack: {
     root: path.join(__dirname),
   },

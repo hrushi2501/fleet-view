@@ -1,7 +1,10 @@
+import { withApiErrors } from "@/lib/api-error";
 import { db } from "@/lib/db";
 import { requireApi, assetScope, projectIdScope } from "@/lib/access";
 import { toCsv } from "@/lib/reporting";
 import { NextResponse } from "next/server";
+import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
+import { recordScope } from "@/lib/record-access";
 
 export const dynamic = "force-dynamic";
 
@@ -16,13 +19,24 @@ const MAX_ROWS = 5000;
  * log because "who took a copy of the vendor rates" is a question that gets
  * asked after someone leaves.
  */
-export async function GET(_req: Request, ctx: { params: Promise<{ key: string }> }) {
+async function handleGET(_req: Request, ctx: { params: Promise<{ key: string }> }) {
   // Same rule as before — `reports.export`, with the legacy-Admin fallback while
   // roles are being installed — now expressed through the shared gate so every
   // route resolves permissions the same way.
   const auth = await requireApi("reports.export");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const session = auth.access.session;
+
+  const limit = await reserveRateLimit({
+    scope: "report-export",
+    subject: session.id,
+    limit: 15,
+    windowMs: 5 * 60_000,
+  });
+  if (!limit.ok) {
+    return rateLimitResponse(limit.retryInSeconds, "Export rate limit reached. Please wait a moment before downloading another report.");
+  }
+
 
   // An export is the easiest way to walk out with more than you can see on
   // screen, so it is bounded by the same scope as every other read.
@@ -43,7 +57,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ key: string }>
       break;
     }
     case "fuel_reconciliation": {
-      const d = await db.fuelReconciliation.findMany({ include: { tank: true }, orderBy: { periodEnd: "desc" }, take: MAX_ROWS });
+      const d = await db.fuelReconciliation.findMany({ where: recordScope("fuelReconciliation", auth.access), include: { tank: true }, orderBy: { periodEnd: "desc" }, take: MAX_ROWS });
       rows = d.map((x) => ({
         Tank: x.tank.name, PeriodStart: x.periodStart, PeriodEnd: x.periodEnd, OpeningDip: x.openingDip,
         Received: x.receiptsL, Issued: x.issuesL, Expected: x.expectedClosing, Actual: x.actualClosing,
@@ -70,7 +84,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ key: string }>
       break;
     }
     case "loss_cases": {
-      const d = await db.fraudCase.findMany({ include: { asset: true }, orderBy: { openedAt: "desc" }, take: MAX_ROWS });
+      const d = await db.fraudCase.findMany({ where: recordScope("fraudCase", auth.access), include: { asset: true }, orderBy: { openedAt: "desc" }, take: MAX_ROWS });
       rows = d.map((x) => ({
         CaseNo: x.caseNo, Opened: x.openedAt, Domain: x.domain, Severity: x.severity, Score: x.score, Title: x.title,
         Asset: x.asset?.code ?? "", Vendor: x.vendor ?? "", AtRisk: x.amountAtRisk, Recovered: x.amountRecovered,
@@ -114,7 +128,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ key: string }>
       break;
     }
     case "weighbridge": {
-      const d = await db.weighbridgeTicket.findMany({ include: { asset: true }, orderBy: { date: "desc" }, take: MAX_ROWS });
+      const d = await db.weighbridgeTicket.findMany({ where: recordScope("weighbridgeTicket", auth.access), include: { asset: true }, orderBy: { date: "desc" }, take: MAX_ROWS });
       rows = d.map((x) => ({
         Date: x.date, Ticket: x.ticketNo, Kind: x.kind, PairedWith: x.pairedTicketNo ?? "", Material: x.material,
         Asset: x.asset?.code ?? "", GrossKg: x.grossKg, TareKg: x.tareKg, NetKg: x.netKg, BilledKg: x.billedKg,
@@ -123,7 +137,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ key: string }>
       break;
     }
     case "attendance": {
-      const d = await db.attendance.findMany({ include: { driver: true, project: true }, orderBy: { date: "desc" }, take: MAX_ROWS });
+      const d = await db.attendance.findMany({ where: recordScope("attendance", auth.access), include: { driver: true, project: true }, orderBy: { date: "desc" }, take: MAX_ROWS });
       rows = d.map((x) => ({
         Date: x.date, Person: x.driver.name, EmpCode: x.driver.empCode, Status: x.status, Shift: x.shift,
         Hours: x.hours, Project: x.project?.code ?? "", MarkedBy: x.markedBy ?? "",
@@ -133,8 +147,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ key: string }>
     case "cost_per_asset": {
       const [assets, fuel, wo] = await Promise.all([
         db.asset.findMany({ where: visibleAssets, orderBy: { code: "asc" }, take: MAX_ROWS }),
-        db.fuelTransaction.groupBy({ by: ["assetId"], where: { type: "ISSUE" }, _sum: { amount: true, quantity: true } }),
-        db.workOrder.groupBy({ by: ["assetId"], _sum: { totalCost: true, downtimeHrs: true } }),
+        db.fuelTransaction.groupBy({ by: ["assetId"], where: { type: "ISSUE", asset: visibleAssets }, _sum: { amount: true, quantity: true } }),
+        db.workOrder.groupBy({ by: ["assetId"], where: { asset: visibleAssets }, _sum: { totalCost: true, downtimeHrs: true } }),
       ]);
       const f = new Map(fuel.map((x) => [x.assetId ?? "", x._sum]));
       const w = new Map(wo.map((x) => [x.assetId, x._sum]));
@@ -167,3 +181,5 @@ export async function GET(_req: Request, ctx: { params: Promise<{ key: string }>
     },
   });
 }
+
+export const GET = withApiErrors(handleGET);

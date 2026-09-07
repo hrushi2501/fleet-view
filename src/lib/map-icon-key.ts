@@ -27,7 +27,7 @@
 export const HEADING_BUCKET_DEG = 10;
 
 export function iconCacheKey(
-  m: { status: string; label: string; headingDeg: number | null },
+  m: { status: string; label: string; headingDeg: number | null; driverName?: string | null },
   active: boolean,
   showLabel: boolean,
 ): string {
@@ -38,5 +38,7 @@ export function iconCacheKey(
   const bucket = known
     ? Math.round((m.headingDeg as number) / HEADING_BUCKET_DEG) * HEADING_BUCKET_DEG
     : "none";
-  return `${m.status}|${bucket}|${active ? 1 : 0}|${showLabel ? 1 : 0}|${m.label}`;
+  // The label carries the driver's name, so a handover has to invalidate the
+  // cached icon too — otherwise the marker keeps showing whoever had it before.
+  return `${m.status}|${bucket}|${active ? 1 : 0}|${showLabel ? 1 : 0}|${m.label}|${m.driverName ?? ""}`;
 }

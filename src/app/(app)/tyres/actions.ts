@@ -1,12 +1,15 @@
 "use server";
 
 import { db } from "@/lib/db";
+import { businessTransaction } from "@/lib/business-transaction";
+import { formNumber } from "@/lib/input-validation";
+import { assertFormAccess, assertRecordAccess } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { requireAction, ActionError, safe } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
-const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
+const n = formNumber;
 
 function refresh() {
   revalidatePath("/tyres");
@@ -17,7 +20,9 @@ function refresh() {
 /* ---------------------------------- tyres ---------------------------------- */
 
 async function saveTyre__impl(id: string | null, fd: FormData) {
-  await requireAction("maintenance.edit");
+  const scopeAccess = await requireAction("maintenance.edit");
+  await assertFormAccess(scopeAccess, fd);
+  if (id) await assertRecordAccess(scopeAccess, "tyre", id);
   const status = s(fd, "status") || "IN_STOCK";
   const data = {
     serialNo: s(fd, "serialNo"),
@@ -41,14 +46,16 @@ async function saveTyre__impl(id: string | null, fd: FormData) {
 
 
 async function deleteTyre__impl(id: string) {
-  await requireAction("maintenance.edit");
+  const scopeAccess = await requireAction("maintenance.edit");
+  await assertRecordAccess(scopeAccess, "tyre", id);
   await db.tyre.delete({ where: { id } });
   refresh();
 }
 
 /** Fit a tyre to a machine. Records the fitment meter so km-run is measurable. */
 async function fitTyre__impl(fd: FormData) {
-  await requireAction("maintenance.edit");
+  const scopeAccess = await requireAction("maintenance.edit");
+  await assertFormAccess(scopeAccess, fd);
   const tyreId = s(fd, "tyreId");
   const assetId = s(fd, "assetId");
   if (!tyreId || !assetId) throw new ActionError("Tyre and machine are required");
@@ -58,30 +65,81 @@ async function fitTyre__impl(fd: FormData) {
   const tread = n(fd, "treadMm");
   const session = await getSession();
 
-  await db.tyre.update({
-    where: { id: tyreId },
-    data: {
-      assetId,
-      position: s(fd, "position") || null,
-      status: "IN_USE",
-      fittedMeter: meter,
-      warehouseId: null, // Clear warehouse when in use
-      ...(tread > 0 ? { currentTreadMm: tread } : {}),
-    },
-  });
-  await db.tyreEvent.create({
-    data: {
-      tyreId, kind: "FIT", assetId, position: s(fd, "position") || null,
-      meterValue: meter, treadMm: tread, note: s(fd, "note") || null, by: session?.name ?? null,
-      date: s(fd, "date") ? new Date(s(fd, "date")) : new Date(),
-    },
+  const pos = s(fd, "position") || null;
+  const existingAtPos = pos
+    ? await db.tyre.findFirst({
+        where: {
+          assetId,
+          position: pos,
+          status: "IN_USE",
+          id: { not: tyreId },
+        },
+      })
+    : null;
+
+  await businessTransaction(scopeAccess.session, async (tx) => {
+    // If another tyre is currently mounted at this wheel position, dismount it cleanly
+    if (existingAtPos) {
+      const ranKm = existingAtPos.fittedMeter != null && meter > existingAtPos.fittedMeter ? meter - existingAtPos.fittedMeter : 0;
+      await tx.tyre.update({
+        where: { id: existingAtPos.id },
+        data: {
+          assetId: null,
+          position: null,
+          status: "REMOVED",
+          fittedMeter: 0,
+          totalKm: { increment: ranKm },
+        },
+      });
+      await tx.tyreEvent.create({
+        data: {
+          tyreId: existingAtPos.id,
+          kind: "REMOVE",
+          assetId,
+          position: pos,
+          meterValue: meter,
+          treadMm: existingAtPos.currentTreadMm,
+          reason: "ROTATION",
+          note: `Auto-unmounted: replaced at position ${pos} (${ranKm} km run banked)`,
+          by: session?.name ?? null,
+          date: s(fd, "date") ? new Date(s(fd, "date")) : new Date(),
+        },
+      });
+    }
+
+    await tx.tyre.update({
+      where: { id: tyreId },
+      data: {
+        assetId,
+        position: pos,
+        status: "IN_USE",
+        fittedMeter: meter,
+        warehouseId: null,
+        ...(tread > 0 ? { currentTreadMm: tread } : {}),
+      },
+    });
+
+    await tx.tyreEvent.create({
+      data: {
+        tyreId,
+        kind: "FIT",
+        assetId,
+        position: pos,
+        meterValue: meter,
+        treadMm: tread,
+        note: s(fd, "note") || null,
+        by: session?.name ?? null,
+        date: s(fd, "date") ? new Date(s(fd, "date")) : new Date(),
+      },
+    });
   });
   refresh();
 }
 
 /** Remove a tyre, banking the kilometres it ran on this fitment. */
 async function removeTyre__impl(fd: FormData) {
-  await requireAction("maintenance.edit");
+  const scopeAccess = await requireAction("maintenance.edit");
+  await assertFormAccess(scopeAccess, fd);
   const tyreId = s(fd, "tyreId");
   if (!tyreId) throw new ActionError("Tyre is required");
   const t = await db.tyre.findUnique({ where: { id: tyreId }, include: { asset: true } });
@@ -119,7 +177,8 @@ async function removeTyre__impl(fd: FormData) {
 }
 
 async function inspectTyre__impl(fd: FormData) {
-  await requireAction("maintenance.edit");
+  const scopeAccess = await requireAction("maintenance.edit");
+  await assertFormAccess(scopeAccess, fd);
   const tyreId = s(fd, "tyreId");
   if (!tyreId) throw new ActionError("Tyre is required");
   const tread = n(fd, "treadMm");
@@ -139,7 +198,8 @@ async function inspectTyre__impl(fd: FormData) {
 }
 
 async function retreadTyre__impl(fd: FormData) {
-  await requireAction("maintenance.edit");
+  const scopeAccess = await requireAction("maintenance.edit");
+  await assertFormAccess(scopeAccess, fd);
   const tyreId = s(fd, "tyreId");
   if (!tyreId) throw new ActionError("Tyre is required");
   const t = await db.tyre.findUnique({ where: { id: tyreId } });
@@ -172,7 +232,9 @@ async function retreadTyre__impl(fd: FormData) {
 /* ------------------------------ major components ------------------------------ */
 
 async function saveComponent__impl(id: string | null, fd: FormData) {
-  await requireAction("maintenance.edit");
+  const scopeAccess = await requireAction("maintenance.edit");
+  await assertFormAccess(scopeAccess, fd);
+  if (id) await assertRecordAccess(scopeAccess, "majorComponent", id);
   const status = s(fd, "status") || "IN_STOCK";
   const data = {
     serialNo: s(fd, "serialNo"),
@@ -195,14 +257,16 @@ async function saveComponent__impl(id: string | null, fd: FormData) {
 }
 
 async function deleteComponent__impl(id: string) {
-  await requireAction("maintenance.edit");
+  const scopeAccess = await requireAction("maintenance.edit");
+  await assertRecordAccess(scopeAccess, "majorComponent", id);
   await db.majorComponent.delete({ where: { id } });
   refresh();
 }
 
 /** Transfer a tyre from its current warehouse/status to another warehouse */
 async function transferTyre__impl(fd: FormData) {
-  await requireAction("maintenance.edit");
+  const scopeAccess = await requireAction("maintenance.edit");
+  await assertFormAccess(scopeAccess, fd);
   const tyreId = s(fd, "tyreId");
   const warehouseId = s(fd, "warehouseId");
   if (!tyreId || !warehouseId) throw new ActionError("Tyre and Destination Warehouse are required");
@@ -240,7 +304,8 @@ async function transferTyre__impl(fd: FormData) {
 
 /** Transfer a major component from its current warehouse/status to another warehouse */
 async function transferComponent__impl(fd: FormData) {
-  await requireAction("maintenance.edit");
+  const scopeAccess = await requireAction("maintenance.edit");
+  await assertFormAccess(scopeAccess, fd);
   const componentId = s(fd, "componentId");
   const warehouseId = s(fd, "warehouseId");
   if (!componentId || !warehouseId) throw new ActionError("Component and Destination Warehouse are required");

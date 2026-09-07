@@ -21,11 +21,13 @@ import Link from "next/link";
 import {
   Search, SlidersHorizontal, Download, Share2, MapPinned, Route, Info,
   Fuel, Droplet, Clock, X, Play,
-  RefreshCw, Loader2, Truck, Radio, ExternalLink,
+  RefreshCw, Loader2, Truck, Radio, ExternalLink, UserRound,
 } from "lucide-react";
 import { cn, num } from "@/lib/utils";
 import { AssetGlass } from "@/components/AssetGlass";
 import type { LiveFleet, LiveStatus, LiveVehicle } from "@/lib/fleet-edge-live";
+import { liveVehicleReportRows } from "@/lib/live-vehicle-report";
+import { toCsv } from "@/lib/reporting";
 import type { FleetEdgeMapMarker, MapView } from "@/components/FleetEdgeMap";
 import { PlaybackBar, useTrack } from "@/components/FleetEdgePlayback";
 import { useLiveFleet } from "@/lib/query-hooks";
@@ -41,6 +43,28 @@ const FleetEdgeMap = dynamic(() => import("./FleetEdgeMap"), {
 });
 
 const POLL_MS = 15_000;
+
+function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
+  const url = URL.createObjectURL(new Blob([toCsv(rows)], { type: "text/csv;charset=utf-8" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function downloadLiveVehicleReport(vehicle: LiveVehicle) {
+  // Asset codes normally contain only letters, digits and hyphens, but a
+  // conservative filename keeps a malformed imported master record from
+  // producing an invalid download name on any browser.
+  const safeCode = vehicle.code.replace(/[^a-z0-9_-]/gi, "-") || "vehicle";
+  downloadCsv(
+    `fleetview-live-report-${safeCode}-${new Date().toISOString().slice(0, 10)}.csv`,
+    liveVehicleReportRows(vehicle),
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Presentation vocabulary
@@ -209,19 +233,32 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
           lat: v.lat as number,
           lng: v.lng as number,
           headingDeg: v.headingDeg,
+          driverName: v.driverName,
+          onTrip: v.onTrip,
+          speedKph: v.live.speedKph,
         })),
     [visible],
   );
 
   const unpositioned = visible.length - markers.length;
+  // The map fills this container while the two panels sit above it. Give the
+  // map their combined width when a vehicle is selected, so its focus point is
+  // in the unobscured area rather than behind either panel.
+  const focusRightInsetPx = selected
+    ? sidebarOpen ? 700 : 380
+    : sidebarOpen ? 320 : 0;
 
   return (
     <div className="space-y-3">
-      <div className="relative h-[calc(100vh-15rem)] min-h-[600px] w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-sm">
+      {/* Leaflet panes use large internal z-indices. Isolate them so a map
+          control can never rise above global UI such as the header's
+          notification drawer, dialogs, or toast messages. */}
+      <div className="relative z-0 isolate h-[calc(100vh-15rem)] min-h-150 w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-sm">
         <FleetEdgeMap
           markers={markers}
           selectedId={selectedId}
           focusRequest={focusRequest}
+          focusRightInsetPx={focusRightInsetPx}
           onSelect={focusVehicle}
           view={view}
           track={playbackOpen ? track.points : null}
@@ -229,7 +266,7 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
         />
 
         {/* Top-left: liveness and playback. */}
-        <div className="pointer-events-none absolute left-3 top-3 z-[1000] flex flex-col items-start gap-2">
+        <div className="pointer-events-none absolute left-3 top-3 z-1000 flex flex-col items-start gap-2">
           <span
             className={cn(
               "pointer-events-auto inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold text-white shadow ring-1 ring-black/10",
@@ -284,7 +321,7 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
         <StatusStrip counts={fleet.counts} active={status} onChange={setStatus} />
 
         {/* Bottom-left: base map. */}
-        <div className="absolute bottom-3 left-3 z-[1000] flex overflow-hidden rounded-lg bg-white/90 shadow ring-1 ring-black/10 backdrop-blur">
+        <div className="absolute bottom-3 left-3 z-1000 flex overflow-hidden rounded-lg bg-white/90 shadow ring-1 ring-black/10 backdrop-blur">
           {(
             [
               ["streets", "Map"],
@@ -308,7 +345,7 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
         {/* Vehicles with no fix at all would otherwise be silently absent from a
             screen whose whole claim is that it shows the fleet. */}
         {unpositioned > 0 && (
-          <div className="absolute bottom-3 left-1/2 z-[1000] -translate-x-1/2 rounded-lg bg-white/90 px-3 py-1.5 text-xs font-medium text-slate-600 shadow ring-1 ring-black/10 backdrop-blur">
+          <div className="absolute bottom-3 left-1/2 z-1000 -translate-x-1/2 rounded-lg bg-white/90 px-3 py-1.5 text-xs font-medium text-slate-600 shadow ring-1 ring-black/10 backdrop-blur">
             {unpositioned} of {visible.length} not on the map — no position reported
           </div>
         )}
@@ -334,7 +371,7 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
 
         <aside
           className={cn(
-            "absolute right-0 top-0 z-[1001] flex h-full w-[min(20rem,90vw)] flex-col border-l border-slate-200 bg-white/95 shadow-xl backdrop-blur transition-transform",
+            "absolute right-0 top-0 z-1001 flex h-full w-[min(20rem,90vw)] flex-col border-l border-slate-200 bg-white/95 shadow-xl backdrop-blur transition-transform",
             sidebarOpen ? "translate-x-0" : "translate-x-full",
           )}
         >
@@ -395,7 +432,7 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
         <button
           onClick={() => setSidebarOpen((v) => !v)}
           className={cn(
-            "absolute top-1/2 z-[1002] -translate-y-1/2 rounded-l-lg bg-white/95 py-4 pl-1.5 pr-1 text-slate-500 shadow ring-1 ring-black/10 transition-all hover:text-brand-600",
+            "absolute top-1/2 z-1002 -translate-y-1/2 rounded-l-lg bg-white/95 py-4 pl-1.5 pr-1 text-slate-500 shadow ring-1 ring-black/10 transition-all hover:text-brand-600",
             sidebarOpen ? "right-[min(20rem,90vw)]" : "right-0",
           )}
           title={sidebarOpen ? "Hide vehicle list" : "Show vehicle list"}
@@ -433,13 +470,13 @@ function StatusStrip({
   ];
 
   return (
-    <div className="absolute left-1/2 top-3 z-[1000] flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 overflow-hidden rounded-xl bg-white/95 shadow-lg ring-1 ring-black/10 backdrop-blur">
+    <div className="absolute left-1/2 top-3 z-1000 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 overflow-hidden rounded-xl bg-white/95 shadow-lg ring-1 ring-black/10 backdrop-blur">
       {cells.map((c) => (
         <button
           key={c.key}
           onClick={() => onChange(c.key)}
           className={cn(
-            "group relative min-w-[4.25rem] px-3 pb-2.5 pt-2 text-center transition-colors",
+            "group relative min-w-17 px-3 pb-2.5 pt-2 text-center transition-colors",
             active === c.key ? "bg-ink-900/95 text-white" : "text-slate-600 hover:bg-slate-50",
           )}
         >
@@ -478,27 +515,17 @@ function SidebarActions({
    * gets sixty rows they then circulate as "the breakdown list".
    */
   const download = () => {
-    const header = [
-      "Code", "Registration", "Chassis", "Model", "Status", "Last update",
-      "Speed (km/h)", "Odometer (km)", "Fuel (L)", "Fuel (%)",
-      "Distance today (km)", "Idling today (min)", "km/L today", "Confidence",
-    ];
-    const rows = vehicles.map((v) => [
-      v.code, v.registrationNo ?? "", v.chassisNo ?? "", v.modelLabel,
-      STATUS_LABEL[v.status], v.lastUpdate ?? "",
-      v.live.speedKph ?? "", v.live.odometerKm ?? "", v.live.fuelLitres ?? "", v.live.fuelPct ?? "",
-      v.today.distanceKm ?? "", v.today.idlingMinutes ?? "", v.today.kmPerL ?? "",
-      v.today.confidence ?? "",
-    ]);
-    const csv = [header, ...rows]
-      .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
-      .join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `fleet-live-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCsv(
+      `fleet-live-${new Date().toISOString().slice(0, 10)}.csv`,
+      vehicles.map((v) => ({
+        Code: v.code, Registration: v.registrationNo ?? "", Chassis: v.chassisNo ?? "", Model: v.modelLabel,
+        Status: STATUS_LABEL[v.status], "Last update": v.lastUpdate ?? "",
+        "Speed (km/h)": v.live.speedKph ?? "", "Odometer (km)": v.live.odometerKm ?? "",
+        "Fuel (L)": v.live.fuelLitres ?? "", "Fuel (%)": v.live.fuelPct ?? "",
+        "Distance today (km)": v.today.distanceKm ?? "", "Idling today (min)": v.today.idlingMinutes ?? "",
+        "km/L today": v.today.kmPerL ?? "", Confidence: v.today.confidence ?? "",
+      })),
+    );
   };
 
   const share = async () => {
@@ -610,6 +637,12 @@ function VehicleCard({
           </div>
           <p className="truncate text-[11px] text-slate-400">{v.chassisNo ?? v.code}</p>
           <p className="truncate text-[11px] text-slate-500">{v.modelLabel}</p>
+          <div className="mt-1 flex items-center gap-1 text-[11px]">
+            <UserRound className={cn("h-3 w-3 shrink-0", v.driverName ? "text-emerald-600" : "text-amber-500")} />
+            <span className={cn("truncate font-medium", v.driverName ? "text-slate-800" : "text-amber-700")}>
+              {v.driverName ? v.driverName : "No Driver Assigned"}
+            </span>
+          </div>
           <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-500">
             <Clock className="h-3 w-3 shrink-0" />
             {v.lastUpdate ? (
@@ -675,13 +708,13 @@ function DetailCard({
   return (
     <div
       className={cn(
-        "absolute top-3 z-[1000] w-[min(23rem,calc(100%-1.5rem))] overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/10",
+        "absolute top-3 z-1000 w-[min(23rem,calc(100%-1.5rem))] overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/10",
         // Sits clear of the vehicle list rather than under it.
         sidebarOpen ? "right-[calc(min(20rem,90vw)+0.75rem)]" : "right-3",
         "max-h-[calc(100%-1.5rem)] overflow-x-auto overflow-y-auto",
       )}
     >
-      <header className="sticky top-0 z-10 flex items-start gap-2.5 bg-gradient-to-r from-violet-100 to-brand-50 px-3.5 py-3">
+      <header className="sticky top-0 z-10 flex items-start gap-2.5 bg-linear-to-r from-violet-100 to-brand-50 px-3.5 py-3">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white shadow-sm">
           <Truck className="h-4.5 w-4.5 text-brand-600" />
         </span>
@@ -825,17 +858,19 @@ function DetailCard({
         </div>
       </Section>
 
-      {(v.onTrip || v.projectCode) && (
-        <Section title="Assignment">
-          <div className="grid grid-cols-3 gap-y-3">
-            <Metric label="Driver" value={v.driverName ?? DASH} muted={!v.driverName} />
-            <Metric label="Project" value={v.projectCode ?? DASH} muted={!v.projectCode} />
-            <Metric label="Trip" value={v.onTrip ? "On trip" : "Not checked in"} muted={!v.onTrip} />
-          </div>
-        </Section>
-      )}
+      <Section title="Assignment">
+        <div className="grid grid-cols-3 gap-y-3">
+          <Metric
+            label="Driver"
+            value={v.driverName ? v.driverName : "No Driver Assigned"}
+            muted={!v.driverName}
+          />
+          <Metric label="Project" value={v.projectCode ?? DASH} muted={!v.projectCode} />
+          <Metric label="Trip" value={v.onTrip ? "On trip" : "Not checked in"} muted={!v.onTrip} />
+        </div>
+      </Section>
 
-      <div className="grid grid-cols-3 gap-2 border-t border-slate-100 px-3.5 py-3">
+      <div className="grid grid-cols-2 gap-2 border-t border-slate-100 px-3.5 py-3">
         <button
           onClick={onPlayback}
           className="rounded-lg border border-slate-200 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-brand-300 hover:text-brand-600"
@@ -848,6 +883,13 @@ function DetailCard({
         >
           <ExternalLink className="mr-1 h-3.5 w-3.5" /> Full Page
         </Link>
+        <button
+          onClick={() => downloadLiveVehicleReport(v)}
+          className="rounded-lg border border-slate-200 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-brand-300 hover:text-brand-600"
+          title="Download this vehicle's details as CSV"
+        >
+          <Download className="mr-1 inline h-3.5 w-3.5" /> Download Report
+        </button>
         <button
           onClick={onOpenGlass}
           className="rounded-lg bg-brand-600 py-2 text-xs font-semibold text-white transition-colors hover:bg-brand-700"

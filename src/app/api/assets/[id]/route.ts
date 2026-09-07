@@ -1,3 +1,4 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireApi, canSeeAsset } from "@/lib/access";
@@ -10,17 +11,18 @@ export const dynamic = "force-dynamic";
  *  this response is readable by every signed-in user. */
 const RAW_SECRET_FIELDS = new Set(["key", "token", "secret", "password", "apikey", "api_key", "authorization"]);
 
-function redactRaw(raw: unknown): unknown {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw ?? null;
+function redactRaw(raw: unknown, depth = 0): unknown {
+  if (depth > 12 || raw == null || typeof raw !== "object") return raw ?? null;
+  if (Array.isArray(raw)) return raw.slice(0, 200).map((value) => redactRaw(value, depth + 1));
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
     if (RAW_SECRET_FIELDS.has(k.toLowerCase())) continue;
-    out[k] = v;
+    out[k] = redactRaw(v, depth + 1);
   }
   return out;
 }
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handleGET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   // Previously this asked only whether a session existed. Any signed-in
   // account — a driver included — could read any vehicle by id: its position,
   // driver, costs, documents and full telemetry payload.
@@ -40,6 +42,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     include: {
       project: { select: { code: true, name: true, location: true } },
       driver: { select: { name: true } },
+      tripSessions: { where: { status: "ACTIVE" }, include: { driver: { select: { name: true } } }, take: 1 },
       compliance: { orderBy: { expiryDate: "asc" } },
       workOrders: { orderBy: { reportedAt: "desc" }, take: 5 },
       fuelTxns: { where: { type: "ISSUE" }, orderBy: { date: "desc" }, take: 5 },
@@ -101,6 +104,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   for (const c of asset.costs) costByHead[c.costHead] = (costByHead[c.costHead] || 0) + c.amount;
   const totalCost = Object.values(costByHead).reduce((s, v) => s + v, 0);
 
+  const activeDriver = asset.tripSessions[0]?.driver ?? asset.driver;
+
   return NextResponse.json({
     id: asset.id, code: asset.code, name: asset.name, registrationNo: asset.registrationNo,
     assetClass: asset.assetClass, category: asset.category, ownershipType: asset.ownershipType,
@@ -108,7 +113,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     meterValue: asset.meterValue, fuelCapacity: asset.fuelCapacity, status: asset.status,
     healthScore: asset.healthScore, utilization: asset.utilization, acquisitionCost: asset.acquisitionCost,
     lat: asset.lat, lng: asset.lng, lastSeen: asset.lastSeen,
-    project: asset.project, driver: asset.driver,
+    project: asset.project, driver: activeDriver,
     compliance: asset.compliance.map((c) => ({ docType: c.docType, number: c.number, expiryDate: c.expiryDate, status: c.status })),
     workOrders: asset.workOrders.map((w) => ({ woNo: w.woNo, type: w.type, description: w.description, totalCost: w.totalCost, status: w.status })),
     fuel: asset.fuelTxns.map((f) => ({ date: f.date, quantity: f.quantity, sensorRise: f.sensorRise, variancePct: f.variancePct, anomaly: f.anomaly })),
@@ -150,3 +155,5 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     },
   });
 }
+
+export const GET = withApiErrors(handleGET);

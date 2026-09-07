@@ -60,6 +60,7 @@ flowchart TB
 FleetView ERP integrates multi-vendor telematics, OEM direct streams, driver mobile telemetry, and computer vision fuel gauge readings into a unified model.
 
 ### 2.1 Ingestion Sources
+
 1. **Tata Fleet Edge Dedicated Push Receiver (`/api/telematics/tata`)**:
    - Accepts real-time webhook push deliveries matching Tata's webhook specification.
    - Matches vehicles by registration number, vehicle code, chassis number (`chassisNo`), or provider-assigned `deviceId`.
@@ -105,7 +106,7 @@ The table below details every telemetric data point collected, normalized, and d
 | **Today's Distance** | Integrated from odometer series | `today.distanceKm` | $\text{km}$ | Today's Summary KPI card, driver shift overview, efficiency denominator. |
 | **Today's Idling Time** | Measured when ignition ON & speed < 3 km/h | `today.idlingMinutes` | Minutes / Hours | Day statistics tile, idle fuel waste analysis, driver performance scoring. |
 | **Today's Stoppage Time** | Measured when ignition OFF & speed = 0 | `today.stoppageMinutes` | Minutes / Hours | Stoppage KPI tile on Live Console. |
-| **Unobserved / Outage Gap** | Detected gaps > 20 min between pings | `today.unobservedMinutes`| Minutes | Transparency metric explaining unrecorded intervals. |
+| **Unobserved / Outage Gap** | Detected gaps > 20 min between pings | `today.unobservedMinutes` | Minutes | Transparency metric explaining unrecorded intervals. |
 | **Calculated Fuel Economy** | Conservation of mass $\frac{\Delta \text{distance}}{\text{burned L}}$ | `today.kmPerL` | $\text{km/L}$ or $\text{L/h}$ | Economy badge with benchmark comparison against class norms. |
 | **Telemetry Confidence** | Frequency & continuity heuristic | `Confidence` | `HIGH` \| `MEDIUM` \| `LOW` | Confidence pill tag alongside economy figures with explanation tooltips. |
 | **Next Service Due** | PM Schedule vs current odometer/date | `ServiceStatus` | $\text{km}$ / Days (`OK`/`DUE`/`OVERDUE`) | Preventive maintenance progress bars on Vehicle Page and Tracking Console. |
@@ -115,7 +116,9 @@ The table below details every telemetric data point collected, normalized, and d
 ## 4. Normalization, Physics Bounds & Anti-Drift Engine
 
 ### 4.1 Physical Bounds (`telemetry-normalization.ts`)
+
 Raw values that violate physical laws are rejected or dropped field-by-field without discarding valid sibling telemetry:
+
 - **Max Speed**: $200 \ \text{km/h}$ (values higher are dropped).
 - **Max Odometer**: $10,000,000 \ \text{km}$ (checks for reverse clocking or overflow).
 - **Max Engine Hours**: $900,000 \ \text{h}$.
@@ -123,6 +126,7 @@ Raw values that violate physical laws are rejected or dropped field-by-field wit
 - **Clock Skew Guard**: Samples $>60\text{ min}$ in the future are discarded; samples older than 400 days are marked as historic replays.
 
 ### 4.2 Mathematical Fuel Anti-Drift Engine (`fleet-analytics.ts`)
+
 - **Conservation of Mass**: Replaces noisy tick-by-tick delta summation with endpoint conservation:
   $$\text{Consumed} = \text{Start Level} - \text{End Level} + \sum \text{Refuels}$$
 - **Slosh vs. Refuel Distinction**: Distinguishes float sensor slosh (up to $9.6\text{ L}$ in 60s during driving) from genuine refuels ($>15\text{ L}$ rise sustained over resting periods).
@@ -175,17 +179,21 @@ classDiagram
 ```
 
 ### 5.1 Session Signing & Authentication (`session-token.ts`)
+
 - Uses HMAC-SHA256 authenticated JSON Web Tokens stored in HTTP-only, SameSite cookies.
 - Server-enforced expiration ($8\text{ hours}$ for office roles, $30\text{ days}$ for driver cabin logins).
 - Global revocation epoch support (`AUTH_REVOCATION_EPOCH`) to invalidate compromised sessions immediately.
 - Login rate-limiting and brute-force throttling (`login-throttle.ts`).
 
 ### 5.2 Server Action Guards (`guard.ts`, `action-result.ts`)
+
 - Every server action requires `await requireAction("<permission>")` or `await requireApproval("<permission>")`.
 - `safe()` wrapper standardizes responses as `{ ok: true, data }` or `{ ok: false, error: string }`, preventing Next.js from redacting friendly validation errors in production builds.
 
 ### 5.3 Workflows & Finite State Machines (`workflow.ts`, `transition.ts`)
+
 Guards lifecycle stages for business-critical entities:
+
 1. **Hire Invoices**: `RECEIVED` $\rightarrow$ `VERIFIED` $\rightarrow$ `APPROVED` $\rightarrow$ `PAID` (with `DISPUTED` loops).
 2. **Loss Prevention / Fraud Cases**: `OPEN` $\rightarrow$ `INVESTIGATING` $\rightarrow$ `PENDING_APPROVAL` $\rightarrow$ `RECOVERED` / `WRITTEN_OFF` $\rightarrow$ `CLOSED`.
 3. **Maintenance Work Orders**: `Open` $\rightarrow$ `In-Progress` $\rightarrow$ `Completed` $\rightarrow$ `Closed` (closing requires `maintenance.approve`).
@@ -195,6 +203,7 @@ Guards lifecycle stages for business-critical entities:
 7. **Driver Violations**: `OPEN` $\rightarrow$ `ACTIONED` / `DISMISSED`.
 
 ### 5.4 Audit Trail Engine (`audit.ts`, `audit-extension.ts`, `audit-writer.ts`)
+
 - Automated logging of mutations across 20+ core Prisma entities (`Asset`, `FuelTransaction`, `WorkOrder`, `ComplianceDoc`, etc.).
 - Captures `actorId`, `actorEmail`, `ipAddress`, `userAgent`, `module`, `action` (`CREATE`, `UPDATE`, `DELETE`, `TRANSITION`), before/after JSON diffs, and plain-English summaries.
 
@@ -203,6 +212,7 @@ Guards lifecycle stages for business-critical entities:
 ## 6. Functional Module & Screen Breakdown
 
 ### 6.1 Executive Dashboard (`src/app/(app)/page.tsx`)
+
 - **Fleet Health Header**: Live counts for Total Fleet, Active, Idle, In-Transit, Breakdown, and Unsubscribed.
 - **Rajasthan Interactive GIS Map (`RajasthanMap.tsx`)**: Regional visualization plotting projects (Barmer, Jodhpur, Jaipur, etc.) and active asset clusters.
 - **Telemetry Sync Banner (`TelematicsSyncBanner.tsx`)**: Live status of Tata Fleet Edge sync, provider latency, and background poller health.
@@ -210,6 +220,7 @@ Guards lifecycle stages for business-critical entities:
 - **Morning Action Center (`MorningActionCenter.tsx`)**: Daily supervisor punch-list (unassigned vehicles, overdue PMs, unacknowledged fuel gaps).
 
 ### 6.2 Fleet & Telematics Console (`/fleet`, `/fleet/[id]`, `/fleet/tracking`, `/fleet/trips`)
+
 - **Fleet Edge Live Console (`FleetEdgeConsole.tsx`)**:
   - Live grid and card view with real-time status badges (`MOVING`, `IDLING`, `STOPPED`, `OFFLINE`, `BREAKDOWN`).
   - Search by code, registration number, make/model, driver, or assigned project.
@@ -223,6 +234,7 @@ Guards lifecycle stages for business-critical entities:
   - Maintenance history, Tyre wear map, Fuel economy trends, and Cost breakdown.
 
 ### 6.3 Fuel Management Suite (`/fuel/*`)
+
 - **Fuel Overview (`/fuel`)**: Consumption analytics, fuel reconciliation status, diesel rate tracker.
 - **Fuel Anomalies & Loss Prevention Queue (`/fuel/anomalies`, `/fuel/problems`)**:
   - Auto-detected fuel siphon incidents, stationary tank drops, and abnormal consumption spikes.
@@ -234,21 +246,25 @@ Guards lifecycle stages for business-critical entities:
   - Log fuel issue with pump photo, odometer photo, nozzle meter reading, and driver QR session verification.
 
 ### 6.4 Maintenance & Workshop Operations (`/maintenance/*`)
+
 - **Maintenance Kanban Board (`MaintenanceKanban.tsx`)**: Visual columns for `Open`, `In-Progress`, `Completed`, and `Closed` work orders.
 - **Preventive Maintenance Reminders (`/maintenance/reminders`)**: Service triggers tracking distance ($\Delta \text{km}$) and runtime ($\Delta \text{hours}$) to next B/C/D-check service.
 - **Tyre Management & Lifecycle (`/maintenance/tyres`, `/tyres`)**: Position-by-position tyre tread depth logging, retreading history, and PSI tracking.
 
 ### 6.5 Compliance & Regulatory Register (`/compliance/*`)
+
 - **Compliance Matrix (`/compliance`)**: Tracks RC, Commercial Insurance, Fitness Certificate, National/State Permit, PUC, and Road Tax.
 - **Auto-Calculated Expiry Status**: `Valid` (>30 days), `Expiring` (1–30 days), `Expired` (<0 days).
 - **Quick Renew Modal (`DocumentRenewModal` in `EntryForms.tsx`)**: One-click compliance renewal updating validity and logging document history.
 
 ### 6.6 Operations, Production & Materials (`/operations`, `/sites/*`, `/production/*`, `/weighbridge`)
+
 - **Site Work & Allocation Tracking (`/sites/work`, `/operations`)**: Equipment allocations to construction projects.
 - **Production Logs (`/production`)**: Excavation volume ($\text{m}^3$), crusher output (tonnes), bitumen paving ($\text{MT}$), and productivity norms.
 - **Weighbridge System (`/weighbridge`, `AdminWeighForms.tsx`)**: Gross, Tare, and Net weight slip generation with automatic overload detection.
 
 ### 6.7 Driver Cabin PWA (`/my/*`, `/driver/*`)
+
 - **Driver Mobile Dashboard (`/my/page.tsx`, `DriverQuickHub.tsx`)**:
   - Cabin QR Scanner (`DriverQrScanner.tsx`) for instant vehicle binding via camera scan.
   - Active Trip Logger (`logDriverTrip`) with origin, destination, material, tonnage, and odometer.
@@ -256,14 +272,17 @@ Guards lifecycle stages for business-critical entities:
   - Driver document wallet (Driving Licence, Badges, Health cards).
 
 ### 6.8 Loss Prevention & Fraud Investigation (`/loss-prevention/*`)
+
 - Unified fraud case management correlating fuel theft, weighbridge mismatch, billing fraud, and ghost trips.
 - Case evidence binder (`CaseEvidence`), investigative action log (`CaseAction`), and financial recovery tracker (`CaseRecovery`).
 
 ### 6.9 Reports & Executive Analytics (`/reports/*`, `/costs`)
+
 - **Executive Summary (`/reports/executive`)**: Fleet utilization rate, operational cost per km ($\text{₹/km}$), fuel intensity, and downtime percentage.
 - **Cost Analysis (`/reports/costs`, `/costs`)**: 9-head cost allocation (Fuel, Maintenance, Tyres, Driver Wages, Insurance, Depreciation, EMI, Toll, Hire).
 
 ### 6.10 Admin, Security & System Health (`/admin/*`, `/users`, `/alerts`, `/notifications`)
+
 - **Audit Log Viewer (`/admin/audit`)**: Filterable timeline of all ERP operations with before/after state diffing.
 - **Role-Based Access Control (`/admin/roles`)**: Granular permission matrix builder.
 - **System Diagnostics (`/admin/diagnostics`)**: Telematics API budget consumption, database latency, and background poller status.
@@ -297,7 +316,8 @@ erDiagram
     Role ||--o{ User : assigns
 ```
 
-### Complete Model Summary:
+### Complete Model Summary
+
 1. `User`: User accounts with bcrypt password hashing, role linkage, and explicit `driverId` reference.
 2. `Role`: RBAC role definitions with comma-separated permission strings.
 3. `Project`: Construction sites / project contracts with budget, coordinates, and site relations.
@@ -377,11 +397,13 @@ erDiagram
 ## 9. Design System & Frontend Component Architecture
 
 ### 9.1 Visual & UX Foundation
+
 - **Modern Industrial Palette**: Deep Slate neutrals (`#0f172a`, `#1e293b`), vibrant Brand Amber/Orange accents (`#f59e0b`, `#ea580c`), Emerald greens for operational statuses, Rose reds for critical alerts.
 - **Glassmorphism & Micro-Interactions**: Translucent frosted panels (`backdrop-blur-md`), subtle border highlights (`ring-1 ring-black/5`), and smooth state transitions.
 - **Responsive Layout**: Dual desktop sidebar navigation with collapsible sections and a bottom-docked mobile navigation bar for field drivers.
 
 ### 9.2 Key Component Hierarchy
+
 - **Map & Spatial Components**: `FleetEdgeMap.tsx` (Leaflet live map), `FleetEdgePlayback.tsx` (route scrubber), `RajasthanMap.tsx` (SVG regional project map), `VehicleMiniMap.tsx` (thumbnail locator).
 - **Telemetry & Visualization Components**: `FleetEdgeConsole.tsx` (live operations center), `AssetGlass.tsx` (glass telemetry cards), `Sparkline.tsx` (SVG micro-charts), `charts.tsx` (Recharts integration for burn rates, speed distributions, and cost trends).
 - **Data & Modal Forms**: `EntryForms.tsx` (unified modal manager for fuel, assets, compliance, users, projects), `DriverCheckInWizard.tsx` (mobile step-by-step driver onboarding), `MaintenanceKanban.tsx` (interactive drag-and-drop maintenance board).

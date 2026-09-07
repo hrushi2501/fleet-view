@@ -29,7 +29,7 @@ import { DRIVER_MODULES } from "@/lib/navigation";
 import type { Tone } from "./_data";
 import {
   LayoutDashboard, Truck, Route, Fuel, Wrench, ShieldCheck,
-  UserX, TruckIcon, ChevronRight, type LucideIcon,
+  UserX, TruckIcon, ChevronRight, CircleHelp, AlertTriangle, FileText, type LucideIcon,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------- tones */
@@ -51,7 +51,7 @@ export const TONE: Record<Tone, { box: string; text: string; dot: string; chip: 
 /* ------------------------------------------------------------------ header */
 
 const ICONS: Record<string, LucideIcon> = {
-  LayoutDashboard, Truck, Route, Fuel, Wrench, ShieldCheck,
+  LayoutDashboard, Truck, Route, Fuel, Wrench, ShieldCheck, CircleHelp, AlertTriangle, FileText,
 };
 
 /**

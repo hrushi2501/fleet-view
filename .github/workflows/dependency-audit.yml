@@ -1,4 +1,4 @@
-name: Dependency audit
+name: Release quality
 
 on:
   pull_request:
@@ -12,14 +12,33 @@ permissions:
   contents: read
 
 jobs:
-  npm-audit:
+  release-quality:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Safe values that are valid enough to generate Prisma Client and exercise
+    # deployment validation. They are not production credentials and cannot
+    # connect to a real database.
+    env:
+      DATABASE_URL: postgresql://ci:ci-build-only-password@aws-0.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1
+      AUTH_SECRET: ci-build-only-auth-secret-that-is-at-least-32-bytes
+      CRON_SECRET: ci-build-only-cron-secret-that-is-at-least-32-bytes
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Keep CI on the exact major Vercel selects from package.json/.nvmrc.
+          # A Node 20 audit cannot prove a Next 16/Prisma production build that
+          # will run under Node 24.
+          node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
+      - run: npx prisma generate
+      - run: npm run check
+      # This is the actual Vercel build command. These values are deliberately
+      # non-production placeholders: validation needs their shape, while the
+      # build must never receive a deployable database URL or signing secret.
+      - run: npm run vercel-build
+        env:
+          VERCEL: "1"
+          VERCEL_ENV: production
       - run: npm audit --omit=dev --audit-level=high

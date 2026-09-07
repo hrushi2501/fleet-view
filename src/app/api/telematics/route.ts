@@ -1,8 +1,11 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { checkSharedSecret } from "@/lib/auth";
 import { normaliseReading, assetCacheUpdate, readTelemetryJson } from "@/lib/telemetry-normalization";
 import type { TelemetryPing } from "@/lib/telematics-adapters";
+import { reserveRateLimit, rateLimitResponse, clientIp } from "@/lib/request-rate-limit";
+import { recordTelemetryFuelAnomaly, type FuelAnomalyAsset } from "@/lib/tata-fleet-edge";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +49,7 @@ async function ingestOne(body: Record<string, unknown>) {
     where: { ...where, decommissionedOn: null },
     select: {
       id: true, code: true, fuelCapacity: true, meterValue: true,
-      hourMeterValue: true, primaryMeter: true, telematicsProviderId: true,
+      hourMeterValue: true, primaryMeter: true, telematicsProviderId: true, assetClass: true,
     },
   });
   if (!asset) return { ok: false as const, error: "asset not found" };
@@ -64,12 +67,16 @@ async function ingestOne(body: Record<string, unknown>) {
     recordedAt = parsed;
   }
 
-  const source = typeof body.source === "string" && body.source.trim() ? body.source.trim() : "DEVICE";
+  const suppliedSource = typeof body.source === "string" ? body.source.trim().toUpperCase() : "";
+  const source = ["DEVICE", "MOBILE", "LOCANAV", "MAPMYINDIA", "TATA_FLEET_EDGE"].includes(suppliedSource) ? suppliedSource : "DEVICE";
 
   const previous = await db.telemetryReading.findFirst({
     where: { assetId: asset.id, odometerKm: { not: null } },
     orderBy: { recordedAt: "desc" },
-    select: { odometerKm: true, engineHours: true },
+    select: {
+      recordedAt: true, lat: true, lng: true, speedKph: true, odometerKm: true,
+      fuelLevelL: true, fuelLevelPct: true, ignitionOn: true, engineHours: true,
+    },
   });
 
   // Reuse the provider-agnostic validator by shaping the body as a ping.
@@ -117,7 +124,7 @@ async function ingestOne(body: Record<string, unknown>) {
     select: { id: true },
   });
 
-  await db.telemetryReading.create({
+  const created = await db.telemetryReading.create({
     data: {
       assetId: asset.id,
       recordedAt: r.recordedAt,
@@ -135,6 +142,20 @@ async function ingestOne(body: Record<string, unknown>) {
       raw: body as never,
     },
   });
+
+  if (previous) {
+    await recordTelemetryFuelAnomaly(
+      asset as FuelAnomalyAsset,
+      previous,
+      {
+        recordedAt: r.recordedAt, lat: r.lat, lng: r.lng, speedKph: r.speedKph,
+        odometerKm: r.odometerKm, fuelLevelL: r.fuelLevelL,
+        fuelLevelPct: r.fuelLevelPct, ignitionOn: r.ignitionOn,
+      },
+      created.id,
+      asset.fuelCapacity,
+    );
+  }
 
   // Status is operational state, not telemetry. Accept only the vocabulary the
   // ERP uses — an arbitrary string here propagates to every status filter,
@@ -160,7 +181,7 @@ async function ingestOne(body: Record<string, unknown>) {
   };
 }
 
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   const parsed = await readTelemetryJson(req);
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: parsed.status });
   if (!parsed.value || typeof parsed.value !== "object" || Array.isArray(parsed.value)) {
@@ -169,14 +190,30 @@ export async function POST(req: Request) {
   const body = parsed.value as Record<string, unknown>;
 
   const auth = checkSharedSecret(req, "FLEET_INGEST_KEY", { bodyKey: body.key });
-  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  if (!auth.ok) {
+    const ip = clientIp(req);
+    const limit = await reserveRateLimit({
+      scope: "failed-ingest-key",
+      subject: ip,
+      limit: 20,
+      windowMs: 60_000,
+    });
+    if (!limit.ok) {
+      return rateLimitResponse(limit.retryInSeconds, "Too many unauthorized attempts. Please wait.");
+    }
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
 
   // The whole body is persisted as `raw` and served back on the asset detail
   // API, so the credential must not travel with it — otherwise the ingest key is
   // readable by every signed-in user.
   delete body.key;
+  const limit = await reserveRateLimit({ scope: "device-ingest", subject: "provider", limit: 600, windowMs: 60_000 });
+  if (!limit.ok) return rateLimitResponse(limit.retryInSeconds);
 
   if (Array.isArray(body.readings)) {
+    if (body.readings.length > 1_000) return NextResponse.json({ error: "Telemetry payload contains too many readings." }, { status: 413 });
     const results = [];
     for (const r of body.readings as Record<string, unknown>[]) {
       const { key: _ignored, ...reading } = r;
@@ -195,3 +232,5 @@ export async function POST(req: Request) {
   const r = await ingestOne(body);
   return r.ok ? NextResponse.json(r) : NextResponse.json({ error: r.error }, { status: r.error === "asset not found" ? 404 : 400 });
 }
+
+export const POST = withApiErrors(handlePOST);

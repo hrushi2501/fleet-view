@@ -1,3 +1,4 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireApi, assetScope } from "@/lib/access";
@@ -12,7 +13,7 @@ const MAX_ROWS = 500;
  * and `deviceId`, so the old `findMany` handed every signed-in caller, drivers
  * included, the credential needed to check in to any machine in the fleet.
  */
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const auth = await requireApi("fleet.view");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
@@ -42,3 +43,5 @@ export async function GET(req: Request) {
   });
   return NextResponse.json({ count: assets.length, data: assets, limit: take });
 }
+
+export const GET = withApiErrors(handleGET);

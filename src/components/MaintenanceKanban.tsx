@@ -119,7 +119,7 @@ export function MaintenanceKanban({ workOrders }: { workOrders: KanbanWorkOrder[
           return (
             <div
               key={col.id}
-              className="flex flex-col rounded-3xl border border-slate-200/80 bg-slate-50/70 p-3.5 shadow-xs min-h-[420px]"
+              className="flex flex-col rounded-3xl border border-slate-200/80 bg-slate-50/70 p-3.5 shadow-xs min-h-105"
             >
               {/* Column Header */}
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 pb-3 px-1">
@@ -152,7 +152,7 @@ export function MaintenanceKanban({ workOrders }: { workOrders: KanbanWorkOrder[
                           <span className="font-mono text-xs font-black text-brand-700 hover:underline">
                             {wo.assetCode}
                           </span>
-                          <p className="text-[11px] text-slate-500 truncate max-w-[140px]">{wo.assetName}</p>
+                          <p className="text-[11px] text-slate-500 truncate max-w-35">{wo.assetName}</p>
                         </div>
                         <div className="flex items-center gap-1">
                           <span className={cn("rounded-md border px-1.5 py-0.5 text-[10px] font-bold uppercase", PRIORITY_BADGE[wo.priority] || PRIORITY_BADGE.Medium)}>

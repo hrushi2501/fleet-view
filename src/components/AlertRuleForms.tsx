@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { X, Plus, Loader2, Radar } from "lucide-react";
 import { seedAlertRules, updateAlertRule, runAlertSweep } from "@/app/(app)/alerts/actions";
 import { isActionError } from "@/lib/action-result";
+import { useToast } from "@/components/Toast";
 
 const inputCls = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
 
@@ -51,10 +52,11 @@ export function SweepButton() {
 }
 
 export function SeedAlertRulesButton() {
+  const toast = useToast();
   const [pending, start] = useTransition();
   const router = useRouter();
   return (
-    <button onClick={() => start(async () => { await seedAlertRules(); router.refresh(); })} disabled={pending}
+    <button onClick={() => start(async () => { const result = await seedAlertRules(); if (isActionError(result)) { toast.error(result.error); return; } router.refresh(); })} disabled={pending}
       className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 disabled:opacity-60">
       {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Install Alert Rules
     </button>
@@ -62,6 +64,7 @@ export function SeedAlertRulesButton() {
 }
 
 export function AlertRuleEditor({ rule }: { rule: { id: string; code: string; name: string; threshold: number; thresholdUnit: string | null; severity: string; enabled: boolean; escalateAfterHours: number; channels: string } }) {
+  const toast = useToast();
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
@@ -70,7 +73,7 @@ export function AlertRuleEditor({ rule }: { rule: { id: string; code: string; na
     <>
       <button onClick={() => setOpen(true)} className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">Tune</button>
       <Modal open={open} onClose={() => setOpen(false)} title={rule.name} subtitle={`Rule ${rule.code} — an alert nobody can turn down is an alert everybody ignores.`}>
-        <form action={(fd) => start(async () => { await updateAlertRule(rule.id, fd); setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
+        <form action={(fd) => start(async () => { const result = await updateAlertRule(rule.id, fd); if (isActionError(result)) { toast.error(result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-slate-600">Threshold{rule.thresholdUnit ? ` (${rule.thresholdUnit})` : ""}</span>
             <input name="threshold" type="number" step="0.1" defaultValue={rule.threshold} className={inputCls} />

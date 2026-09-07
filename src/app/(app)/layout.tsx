@@ -7,6 +7,8 @@ import { getNotificationFeed } from "@/lib/notification-feed";
 import { redirect } from "next/navigation";
 import { getLang } from "@/lib/lang-server";
 import { LanguageProvider } from "@/components/LanguageProvider";
+import { QueryProvider } from "@/components/QueryProvider";
+import { quickActionsFor } from "@/lib/quick-actions";
 
 /**
  * Resolves who the caller is once, and hands the navigation their own menu.
@@ -32,21 +34,24 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <LanguageProvider lang={lang}>
-      <ToastProvider>
+      <QueryProvider key={JSON.stringify([access.session.id, access.driverId, access.projectIds, access.codes])}>
+        <ToastProvider>
       <div className="min-h-screen">
         <Sidebar items={items} isDriver={isDriver} />
-        <div className="lg:pl-64">
+        <div className={isDriver ? "" : "lg:pl-64"}>
           <Topbar
             user={access.session}
             notifCount={notificationFeed.attentionCount}
             initialNotifications={notificationFeed.items}
             notificationLogHref={access.can("reports.view") ? "/reports/notifications" : null}
+            quickActions={quickActionsFor(access)}
             isDriver={isDriver}
           />
-          <main className="mx-auto max-w-[1500px] px-4 py-6 lg:px-8">{children}</main>
+          <main className={isDriver ? "mx-auto max-w-xl px-4 py-4 pb-24" : "mx-auto max-w-[1500px] px-4 py-6 lg:px-8"}>{children}</main>
         </div>
       </div>
-      </ToastProvider>
+        </ToastProvider>
+      </QueryProvider>
     </LanguageProvider>
   );
 }

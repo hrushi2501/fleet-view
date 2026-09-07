@@ -28,13 +28,18 @@ begin
   for r in select tablename from pg_tables where schemaname = 'public'
   loop
     execute format('alter table public.%I enable row level security', r.tablename);
-    execute format('revoke all on public.%I from anon, authenticated', r.tablename);
+    execute format('revoke all on public.%I from public, anon, authenticated', r.tablename);
+    execute format('drop policy if exists "deny_anon_access" on public.%I', r.tablename);
+    execute format('create policy "deny_anon_access" on public.%I as restrictive for all to anon using (false) with check (false)', r.tablename);
+    execute format('drop policy if exists "deny_authenticated_access" on public.%I', r.tablename);
+    execute format('create policy "deny_authenticated_access" on public.%I as restrictive for all to authenticated using (false) with check (false)', r.tablename);
   end loop;
 end $$;
 
 -- Future tables must not inherit access automatically.
-alter default privileges in schema public revoke all on tables from anon, authenticated;
-alter default privileges in schema public revoke all on sequences from anon, authenticated;
+revoke all on all sequences in schema public from public, anon, authenticated;
+alter default privileges in schema public revoke all on tables from public, anon, authenticated;
+alter default privileges in schema public revoke all on sequences from public, anon, authenticated;
 
 -- Verification: every row should read rls = true.
 select tablename,

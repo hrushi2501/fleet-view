@@ -1,13 +1,16 @@
 "use server";
 
 import { db } from "@/lib/db";
+import { businessTransaction } from "@/lib/business-transaction";
+import { formNumber } from "@/lib/input-validation";
+import { assertFormAccess, assertRecordAccess } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { requireAction, ActionError, safe } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
-const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
+const n = formNumber;
 
 /**
  * Revalidate every page that reads project / site / allocation / mob data.
@@ -29,7 +32,9 @@ function refresh() {
 /* ================================ SITES ================================ */
 
 async function saveSite__impl(id: string | null, fd: FormData) {
-  await requireAction("fleet.edit");
+  const scopeAccess = await requireAction("fleet.edit");
+  await assertFormAccess(scopeAccess, fd, { allowProjectMove: true });
+  if (id) await assertRecordAccess(scopeAccess, "site", id);
   const projectId = s(fd, "projectId");
   if (!projectId) throw new ActionError("Project is required");
   const data = {
@@ -64,7 +69,8 @@ async function saveSite__impl(id: string | null, fd: FormData) {
 }
 
 async function deleteSite__impl(id: string) {
-  await requireAction("fleet.edit");
+  const scopeAccess = await requireAction("fleet.edit");
+  await assertRecordAccess(scopeAccess, "site", id);
   const site = await db.site.findUnique({ where: { id }, include: { allocations: { select: { id: true } } } });
   if (!site) throw new ActionError("Site not found");
 
@@ -87,7 +93,8 @@ async function deleteSite__impl(id: string) {
 /* ================================ EQUIPMENT PLAN ================================ */
 
 async function saveEquipmentPlan__impl(fd: FormData) {
-  await requireAction("production.edit");
+  const scopeAccess = await requireAction("production.edit");
+  await assertFormAccess(scopeAccess, fd, { allowProjectMove: true });
   const projectId = s(fd, "projectId");
   const assetClass = s(fd, "assetClass");
   if (!projectId || !assetClass) throw new ActionError("Project and machine class are required");
@@ -128,7 +135,8 @@ async function saveEquipmentPlan__impl(fd: FormData) {
 }
 
 async function deleteEquipmentPlan__impl(id: string) {
-  await requireAction("production.edit");
+  const scopeAccess = await requireAction("production.edit");
+  await assertRecordAccess(scopeAccess, "equipmentPlan", id);
   const plan = await db.equipmentPlan.findUnique({ where: { id }, include: { project: { select: { code: true } } } });
   if (!plan) throw new ActionError("Equipment plan not found");
 
@@ -147,7 +155,8 @@ async function deleteEquipmentPlan__impl(id: string) {
 /* ================================ ALLOCATIONS ================================ */
 
 async function saveAllocation__impl(fd: FormData) {
-  await requireAction("production.edit");
+  const scopeAccess = await requireAction("production.edit");
+  await assertFormAccess(scopeAccess, fd, { allowProjectMove: true });
   const assetId = s(fd, "assetId");
   const projectId = s(fd, "projectId");
   if (!assetId || !projectId) throw new ActionError("Asset and project are required");
@@ -176,7 +185,7 @@ async function saveAllocation__impl(fd: FormData) {
   const session = await getSession();
 
   // ACID: single transaction for allocation creation + asset project sync + race condition check
-  const alloc = await db.$transaction(async (tx) => {
+  const alloc = await businessTransaction(scopeAccess.session, async (tx) => {
     if (status === "ACTIVE") {
       const otherActive = await tx.allocation.findFirst({
         where: { assetId, status: "ACTIVE" },
@@ -216,7 +225,9 @@ async function saveAllocation__impl(fd: FormData) {
 }
 
 async function updateAllocationStatus__impl(id: string, fd: FormData) {
-  await requireAction("production.edit");
+  const scopeAccess = await requireAction("production.edit");
+  await assertFormAccess(scopeAccess, fd, { allowProjectMove: true });
+  await assertRecordAccess(scopeAccess, "allocation", id);
   const status = s(fd, "status");
   if (!status) throw new ActionError("Status is required");
 
@@ -224,7 +235,7 @@ async function updateAllocationStatus__impl(id: string, fd: FormData) {
   if (!existing) throw new ActionError("Allocation not found");
 
   // ACID: single transaction for allocation status change + asset project sync + race condition guard
-  await db.$transaction(async (tx) => {
+  await businessTransaction(scopeAccess.session, async (tx) => {
     if (status === "ACTIVE" && existing.status !== "ACTIVE") {
       const otherActive = await tx.allocation.findFirst({
         where: { assetId: existing.assetId, status: "ACTIVE", NOT: { id } },
@@ -265,7 +276,8 @@ async function updateAllocationStatus__impl(id: string, fd: FormData) {
 }
 
 async function deleteAllocation__impl(id: string) {
-  await requireAction("production.edit");
+  const scopeAccess = await requireAction("production.edit");
+  await assertRecordAccess(scopeAccess, "allocation", id);
   const alloc = await db.allocation.findUnique({
     where: { id },
     include: { asset: { select: { code: true } }, project: { select: { code: true } } },
@@ -273,7 +285,7 @@ async function deleteAllocation__impl(id: string) {
   if (!alloc) throw new ActionError("Allocation not found");
 
   // If this was the ACTIVE allocation, clear the asset's project link
-  await db.$transaction(async (tx) => {
+  await businessTransaction(scopeAccess.session, async (tx) => {
     if (alloc.status === "ACTIVE") {
       await tx.asset.update({ where: { id: alloc.assetId }, data: { projectId: null } });
     }
@@ -293,7 +305,8 @@ async function deleteAllocation__impl(id: string) {
 /* ================================ MOBILISATION ================================ */
 
 async function saveMobilization__impl(fd: FormData) {
-  await requireAction("production.edit");
+  const scopeAccess = await requireAction("production.edit");
+  await assertFormAccess(scopeAccess, fd, { allowProjectMove: true });
   const assetId = s(fd, "assetId");
   if (!assetId) throw new ActionError("Asset is required");
 
@@ -316,7 +329,7 @@ async function saveMobilization__impl(fd: FormData) {
   const session = await getSession();
 
   // Atomic creation + audit in transaction
-  const order = await db.$transaction(async (tx) => {
+  const order = await businessTransaction(scopeAccess.session, async (tx) => {
     return await tx.mobilizationOrder.create({
       data: {
         assetId,
@@ -345,7 +358,9 @@ async function saveMobilization__impl(fd: FormData) {
 }
 
 async function updateMobilization__impl(id: string, fd: FormData) {
-  await requireAction("production.edit");
+  const scopeAccess = await requireAction("production.edit");
+  await assertFormAccess(scopeAccess, fd, { allowProjectMove: true });
+  await assertRecordAccess(scopeAccess, "mobilizationOrder", id);
   const status = s(fd, "status");
   if (!status) throw new ActionError("Status is required");
 
@@ -353,7 +368,7 @@ async function updateMobilization__impl(id: string, fd: FormData) {
   if (!existing) throw new ActionError("Mobilisation order not found");
 
   // ACID: single transaction for mob order update + asset status/project sync + lifecycle event
-  await db.$transaction(async (tx) => {
+  await businessTransaction(scopeAccess.session, async (tx) => {
     const order = await tx.mobilizationOrder.update({
       where: { id },
       data: {
@@ -402,7 +417,8 @@ async function updateMobilization__impl(id: string, fd: FormData) {
 }
 
 async function deleteMobilization__impl(id: string) {
-  await requireAction("production.edit");
+  const scopeAccess = await requireAction("production.edit");
+  await assertRecordAccess(scopeAccess, "mobilizationOrder", id);
   const order = await db.mobilizationOrder.findUnique({
     where: { id },
     include: { asset: true },
@@ -410,7 +426,7 @@ async function deleteMobilization__impl(id: string) {
   if (!order) throw new ActionError("Mobilisation order not found");
 
   // Revert asset status & project assignment if in transit or arrived
-  await db.$transaction(async (tx) => {
+  await businessTransaction(scopeAccess.session, async (tx) => {
     if (order.status === "ARRIVED") {
       await tx.asset.update({
         where: { id: order.assetId },

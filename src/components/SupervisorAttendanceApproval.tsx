@@ -205,7 +205,7 @@ export function SupervisorAttendanceApproval({ view }: { view: AttendanceView })
 
           {activeTab !== "ANALYTICS" && (
             <div className="flex items-center gap-3">
-              <div className="relative min-w-[220px]">
+              <div className="relative min-w-55">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                 <input
                   type="text"
@@ -274,7 +274,7 @@ export function SupervisorAttendanceApproval({ view }: { view: AttendanceView })
                         </td>
                         <td className="px-5 py-4">
                           <div className="font-semibold text-slate-800">{dash(item.vehicleCode)}</div>
-                          <div className="max-w-[180px] truncate text-xs text-slate-500">{dash(item.projectName)}</div>
+                          <div className="max-w-45 truncate text-xs text-slate-500">{dash(item.projectName)}</div>
                         </td>
                         <td className="px-5 py-4">
                           <div className="font-bold text-ink-900">

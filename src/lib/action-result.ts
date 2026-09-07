@@ -12,7 +12,7 @@
  */
 
 /** Returned instead of throwing, so the message survives a production build. */
-export type ActionFailure = { error: string };
+export type ActionFailure = { error: string; ref?: string };
 
 /** `undefined` means the action succeeded and had nothing to report. */
 export type ActionResult = ActionFailure | undefined;

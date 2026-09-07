@@ -1,9 +1,12 @@
+import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireApi, assetScope, projectIdScope } from "@/lib/access";
 import { fleetUsage } from "@/lib/fleet-usage";
 import { getDieselRate } from "@/lib/settings";
+import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
+import { requireSameOrigin, isPrivateFileReference } from "@/lib/request-security";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +46,7 @@ class FuelInputError extends Error {}
  * - Open fuel anomalies & value at risk.
  * - Recent fuel transactions & tank balances.
  */
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const auth = await requireApi("fuel.view");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
@@ -120,7 +123,7 @@ export async function GET(req: Request) {
     });
   } catch (err) {
     console.error("[API] /api/fuel GET error:", err);
-    return NextResponse.json({ error: "Failed to fetch fuel metrics" }, { status: 500 });
+    throw err;
   }
 }
 
@@ -129,9 +132,13 @@ export async function GET(req: Request) {
  *
  * Records a fuel issue or receipt transaction.
  */
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   const auth = await requireApi("fuel.issue");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  requireSameOrigin(req);
+
+  const limit = await reserveRateLimit({ scope: "fuel-api-mutation", subject: auth.access.session.id, limit: 30, windowMs: 60_000 });
+  if (!limit.ok) return rateLimitResponse(limit.retryInSeconds, "Too many fuel entries. Please wait before trying again.");
 
   try {
     const body = await req.json() as Record<string, unknown>;
@@ -144,6 +151,7 @@ export async function POST(req: Request) {
       meterValue,
       odometerPhoto,
       pumpPhoto,
+      afterOdometerPhoto,
       date = new Date(),
     } = body;
 
@@ -156,12 +164,12 @@ export async function POST(req: Request) {
     }
 
     const asset = assetId
-      ? await db.asset.findFirst({ where: { id: String(assetId), ...assetScope(auth.access) }, select: { id: true, projectId: true } })
+      ? await db.asset.findFirst({ where: { id: String(assetId), ...assetScope(auth.access) }, select: { id: true, projectId: true, meterValue: true } })
       : null;
     if (assetId && !asset) return NextResponse.json({ error: "Asset not found" }, { status: 404 });
 
     const tank = tankId
-      ? await db.fuelTank.findFirst({ where: { id: String(tankId), ...projectIdScope(auth.access) }, select: { id: true, projectId: true } })
+      ? await db.fuelTank.findFirst({ where: { id: String(tankId), ...projectIdScope(auth.access) }, select: { id: true, projectId: true, capacity: true } })
       : null;
     if (tankId && !tank) return NextResponse.json({ error: "Tank not found" }, { status: 404 });
     if (!asset && !tank) return NextResponse.json({ error: "An asset or tank is required" }, { status: 400 });
@@ -172,6 +180,14 @@ export async function POST(req: Request) {
     if (parsedMeter != null && (!Number.isFinite(parsedMeter) || parsedMeter < 0)) {
       return NextResponse.json({ error: "Valid meter value required" }, { status: 400 });
     }
+    if (asset && parsedMeter != null && parsedMeter < asset.meterValue) {
+      return NextResponse.json({ error: "Meter value cannot be lower than the vehicle's current reading." }, { status: 400 });
+    }
+    for (const photo of [odometerPhoto, pumpPhoto, afterOdometerPhoto]) {
+      if (photo != null && photo !== "" && !isPrivateFileReference(photo)) {
+        return NextResponse.json({ error: "Evidence photos must be uploaded through FleetView." }, { status: 400 });
+      }
+    }
 
     const defaultRate = await getDieselRate();
     const effectiveRate = Number(rate) > 0 ? Number(rate) : defaultRate;
@@ -179,6 +195,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Valid fuel rate required" }, { status: 400 });
     }
     const amount = qty * effectiveRate;
+    if (!Number.isSafeInteger(Math.round(amount * 100)) || amount > 500_000_000) {
+      return NextResponse.json({ error: "Fuel amount exceeds the permitted transaction limit." }, { status: 400 });
+    }
 
     const txn = await db.$transaction(async (tx) => {
       const created = await tx.fuelTransaction.create({
@@ -191,8 +210,9 @@ export async function POST(req: Request) {
           rate: effectiveRate,
           amount,
           meterValue: parsedMeter ?? undefined,
-          odometerPhoto: typeof odometerPhoto === "string" && odometerPhoto ? odometerPhoto : null,
-          pumpPhoto: typeof pumpPhoto === "string" && pumpPhoto ? pumpPhoto : null,
+          odometerPhoto: isPrivateFileReference(odometerPhoto) ? odometerPhoto : null,
+          pumpPhoto: isPrivateFileReference(pumpPhoto) ? pumpPhoto : null,
+          afterOdometerPhoto: isPrivateFileReference(afterOdometerPhoto) ? afterOdometerPhoto : null,
           date: parsedDate,
         },
       });
@@ -205,18 +225,17 @@ export async function POST(req: Request) {
           });
           if (debited.count !== 1) throw new FuelInputError("The selected tank does not have enough fuel available.");
         } else if (type === "RECEIPT") {
-          await tx.fuelTank.update({
-            where: { id: tank.id },
+          const credited = await tx.fuelTank.updateMany({
+            where: { id: tank.id, currentLevel: { lte: tank.capacity - qty } },
             data: { currentLevel: { increment: qty } },
           });
+          if (credited.count !== 1) throw new FuelInputError("The receipt would exceed the selected tank's capacity.");
         }
       }
 
       if (asset && parsedMeter != null) {
-        await tx.asset.update({
-          where: { id: asset.id },
-          data: { meterValue: parsedMeter },
-        });
+        const updated = await tx.asset.updateMany({ where: { id: asset.id, meterValue: { lte: parsedMeter } }, data: { meterValue: parsedMeter } });
+        if (updated.count !== 1) throw new FuelInputError("Meter value cannot be lower than the vehicle's current reading.");
       }
 
       return created;
@@ -226,6 +245,9 @@ export async function POST(req: Request) {
   } catch (err) {
     if (err instanceof FuelInputError) return NextResponse.json({ error: err.message }, { status: 400 });
     console.error("[API] /api/fuel POST error:", err);
-    return NextResponse.json({ error: "Failed to record fuel transaction" }, { status: 500 });
+    throw err;
   }
 }
+
+export const GET = withApiErrors(handleGET);
+export const POST = withApiErrors(handlePOST);

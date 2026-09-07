@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useTransition } from "react";
+import React, { useState, useEffect, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -12,10 +12,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
+import { isActionError } from "@/lib/action-result";
 import { logDriverTrip } from "@/app/(app)/my/actions";
 import { DriverTripEndScanner } from "@/components/DriverTripEndScanner";
 
 interface DriverQuickHubProps {
+  sessionId?: string;
   driverName?: string;
   vehicle: {
     id: string;
@@ -31,21 +33,76 @@ interface DriverQuickHubProps {
   overdueServiceCount?: number;
 }
 
+/**
+ * Submission IDs are idempotency keys, not credentials. Older Android WebViews
+ * can lack `crypto.randomUUID`, so retain the standard UUID shape with a local
+ * fallback instead of crashing the driver's home screen.
+ */
+function newSubmissionId(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
+  const hex = (length: number) => Array.from({ length }, () => Math.floor(Math.random() * 16).toString(16)).join("");
+  return `${hex(8)}-${hex(4)}-4${hex(3)}-${["8", "9", "a", "b"][Math.floor(Math.random() * 4)]}${hex(3)}-${hex(12)}`;
+}
+
 export function DriverQuickHub({
   driverName: _driverName,
   vehicle,
+  sessionId,
   expiredDocsCount: _expiredDocsCount,
   overdueServiceCount: _overdueServiceCount,
 }: DriverQuickHubProps) {
+  const [submissionId, setSubmissionId] = useState(newSubmissionId);
   const [tripModalOpen, setTripModalOpen] = useState(false);
   const [tripForm, setTripForm] = useState({
-    origin: "Quarry Pit #2",
-    destination: "Crusher Plant A",
-    material: "Aggregate 20mm",
-    tonnage: "32.5",
-    distanceKm: "14",
-    endMeter: String(vehicle.meterValue + 14),
+    tonnage: "",
+    distanceKm: "",
+    endMeter: "",
   });
+
+  // Periodic background telemetry ping from driver device while shift is active
+  useEffect(() => {
+    if (typeof window === "undefined" || !("geolocation" in navigator)) return;
+
+    let cancelled = false;
+
+    const sendPing = () => {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          if (cancelled) return;
+          try {
+            const speedKph =
+              pos.coords.speed != null && pos.coords.speed >= 0
+                ? Math.round(pos.coords.speed * 3.6)
+                : null;
+            await fetch("/api/session/ping", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                lat: pos.coords.latitude,
+                lng: pos.coords.longitude,
+                speed: speedKph,
+                accuracy: pos.coords.accuracy,
+              }),
+            });
+          } catch {
+            // Mobile ping is best-effort — ignore network/intermittent drops
+          }
+        },
+        () => {
+          // Geolocation permission denied or unavailable
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
+      );
+    };
+
+    sendPing();
+    const interval = setInterval(sendPing, 60000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   const [pending, startTransition] = useTransition();
   const toast = useToast();
@@ -55,17 +112,17 @@ export function DriverQuickHub({
     e.preventDefault();
     const fd = new FormData();
     fd.set("assetId", vehicle.id);
-    fd.set("origin", tripForm.origin);
-    fd.set("destination", tripForm.destination);
-    fd.set("material", tripForm.material);
+    fd.set("submissionId", submissionId);
     fd.set("tonnage", tripForm.tonnage);
     fd.set("distanceKm", tripForm.distanceKm);
     fd.set("endMeter", tripForm.endMeter);
 
     startTransition(async () => {
       try {
-        await logDriverTrip(fd);
-        toast.success(`✓ Trip recorded: ${tripForm.origin} ➔ ${tripForm.destination} (${tripForm.tonnage} MT)`);
+        const result = await logDriverTrip(fd);
+        if (isActionError(result)) { toast.error(result.error); return; }
+        setSubmissionId(newSubmissionId());
+        toast.success(`Trip recorded: ${tripForm.tonnage} tonnes, ${tripForm.distanceKm} km.`);
         setTripModalOpen(false);
         router.refresh();
       } catch (err: unknown) {
@@ -77,13 +134,13 @@ export function DriverQuickHub({
   return (
     <div className="space-y-4">
       {/* 1. Live Active Shift Control Card */}
-      <div className="overflow-hidden rounded-3xl border border-emerald-500/30 bg-gradient-to-br from-emerald-600 to-teal-800 p-5 text-white shadow-xl shadow-emerald-700/15">
+      <div className="overflow-hidden rounded-3xl border border-emerald-500/30 bg-linear-to-br from-emerald-600 to-teal-800 p-5 text-white shadow-xl shadow-emerald-700/15">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-300 animate-ping" />
-            <span className="text-xs font-bold uppercase tracking-wider text-emerald-100">Duty Active</span>
+            <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-300" />
+            <span className="text-xs font-bold uppercase tracking-wider text-emerald-100">ड्यूटी चालू / Duty active</span>
           </div>
-          <DriverTripEndScanner vehicleCode={vehicle.code} />
+          <DriverTripEndScanner vehicleCode={vehicle.code} sessionId={sessionId} />
         </div>
 
         <div className="mt-3 flex items-baseline justify-between">
@@ -99,7 +156,7 @@ export function DriverQuickHub({
 
         {/* Quick Meter / Fuel Level mini-bar */}
         {vehicle.fuelLevelPct != null && (
-          <div className="mt-3 rounded-2xl bg-black/20 p-2.5 backdrop-blur-sm">
+          <div className="mt-3 rounded-2xl bg-black/20 p-2.5">
             <div className="flex justify-between text-[11px] font-semibold text-emerald-100">
               <span>Fuel Tank Level</span>
               <span>{Math.round(vehicle.fuelLevelPct)}% ({Math.round((vehicle.fuelLevelPct / 100) * vehicle.fuelCapacity)} L)</span>
@@ -107,7 +164,7 @@ export function DriverQuickHub({
             <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-white/20">
               <div
                 className={cn(
-                  "h-full rounded-full transition-all",
+                  "h-full rounded-full",
                   vehicle.fuelLevelPct < 20 ? "bg-rose-400" : vehicle.fuelLevelPct < 40 ? "bg-amber-400" : "bg-emerald-300"
                 )}
                 style={{ width: `${Math.min(100, vehicle.fuelLevelPct)}%` }}
@@ -118,42 +175,41 @@ export function DriverQuickHub({
       </div>
 
       {/* 2. THE BIG 3 FIELD ACTION TILES (56px+ Touch Targets) */}
-      <div className="grid grid-cols-3 gap-2.5">
+      <div className="grid grid-cols-2 gap-3">
         {/* ACTION 1: Fill Diesel */}
         <Link
           href="/my/fuel?action=fuel"
-          className="flex flex-col items-center justify-center rounded-3xl border border-amber-200 bg-amber-50/80 p-4 text-center transition-transform active:scale-95 hover:bg-amber-100/70 shadow-xs"
+          className="flex min-h-32 flex-col items-center justify-center rounded-3xl border border-amber-200 bg-amber-50/80 p-4 text-center active:bg-amber-100/70 shadow-xs"
         >
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-md shadow-amber-500/30">
             <Fuel className="h-6 w-6" />
           </div>
-          <span className="mt-2 text-xs font-black text-amber-950">Fill Diesel</span>
-          <span className="text-[10px] font-semibold text-amber-700">Diesel Bharna</span>
+          <span className="mt-2 text-sm font-black text-amber-950">डीज़ल भरें</span>
+          <span className="text-[11px] font-semibold text-amber-700">Add diesel</span>
         </Link>
 
         {/* ACTION 2: Log Trip */}
         <button
           type="button"
           onClick={() => setTripModalOpen(true)}
-          className="flex flex-col items-center justify-center rounded-3xl border border-brand-200 bg-brand-50/80 p-4 text-center transition-transform active:scale-95 hover:bg-brand-100/70 shadow-xs"
+          className="flex min-h-32 flex-col items-center justify-center rounded-3xl border border-brand-200 bg-brand-50/80 p-4 text-center active:bg-brand-100/70 shadow-xs"
         >
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-md shadow-brand-600/30">
             <Route className="h-6 w-6" />
           </div>
-          <span className="mt-2 text-xs font-black text-brand-950">Log Trip</span>
-          <span className="text-[10px] font-semibold text-brand-700">Trip Shuru</span>
+          <span className="mt-2 text-sm font-black text-brand-950">ट्रिप लिखें</span>
+          <span className="text-[11px] font-semibold text-brand-700">Add trip</span>
         </button>
 
         {/* ACTION 3: Report Breakdown / Emergency Help */}
         <Link
-          href="/my/service"
-          className="flex flex-col items-center justify-center rounded-3xl border border-rose-200 bg-rose-50/80 p-4 text-center transition-transform active:scale-95 hover:bg-rose-100/70 shadow-xs"
+          href="/my/report"
+          className="col-span-2 flex min-h-24 flex-row items-center justify-center gap-3 rounded-3xl border border-rose-200 bg-rose-50/80 p-4 text-center active:bg-rose-100/70 shadow-xs"
         >
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-500 text-white shadow-md shadow-rose-500/30">
             <Wrench className="h-6 w-6" />
           </div>
-          <span className="mt-2 text-xs font-black text-rose-950">Breakdown</span>
-          <span className="text-[10px] font-semibold text-rose-700">Gaadi Kharab</span>
+          <span className="text-left"><span className="block text-sm font-black text-rose-950">समस्या बताएं</span><span className="block text-[11px] font-semibold text-rose-700">Report a problem</span></span>
         </Link>
       </div>
 
@@ -179,65 +235,30 @@ export function DriverQuickHub({
               </button>
             </div>
 
-            <form onSubmit={handleTripSubmit} className="space-y-3.5 p-6">
+            <form onSubmit={handleTripSubmit} className="space-y-4 p-5 sm:p-6">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-600">Origin / Loading</label>
-                  <input
-                    value={tripForm.origin}
-                    onChange={(e) => setTripForm({ ...tripForm, origin: e.target.value })}
-                    required
-                    placeholder="Quarry Pit #2"
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-brand-500"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-600">Destination / Dump</label>
-                  <input
-                    value={tripForm.destination}
-                    onChange={(e) => setTripForm({ ...tripForm, destination: e.target.value })}
-                    required
-                    placeholder="Crusher Plant A"
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-brand-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-600">Material Type</label>
-                  <select
-                    value={tripForm.material}
-                    onChange={(e) => setTripForm({ ...tripForm, material: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-brand-500"
-                  >
-                    <option value="Aggregate 20mm">Aggregate 20mm (Grit)</option>
-                    <option value="Aggregate 10mm">Aggregate 10mm</option>
-                    <option value="WMM / Base">WMM / Base Material</option>
-                    <option value="Earth / Soil Excavation">Earth / Soil Excavation</option>
-                    <option value="Sand (M-Sand)">Sand (M-Sand)</option>
-                    <option value="Bitumen Mix">Bitumen Mix (Asphalt)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-600">Net Weight (MT)</label>
+                  <label className="mb-1 block text-xs font-bold text-slate-600">Load (MT)</label>
                   <input
                     type="number"
                     step="0.1"
+                    min="0.1"
+                    max="1000"
+                    inputMode="decimal"
                     value={tripForm.tonnage}
                     onChange={(e) => setTripForm({ ...tripForm, tonnage: e.target.value })}
                     required
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold outline-none focus:border-brand-500"
+                    className="min-h-12 w-full rounded-xl border border-slate-200 px-3 text-base font-bold outline-none focus:border-brand-500"
                   />
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-600">Lead Distance (KM)</label>
+                  <label className="mb-1 block text-xs font-bold text-slate-600">Distance (km)</label>
                   <input
                     type="number"
                     step="0.5"
+                    min="0"
+                    max="1000"
+                    inputMode="decimal"
                     value={tripForm.distanceKm}
                     onChange={(e) => {
                       const km = parseFloat(e.target.value) || 0;
@@ -248,16 +269,21 @@ export function DriverQuickHub({
                       });
                     }}
                     required
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-brand-500"
+                    className="min-h-12 w-full rounded-xl border border-slate-200 px-3 text-base outline-none focus:border-brand-500"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-600">Closing meter (optional)</label>
                 <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-600">Ending Odometer</label>
                   <input
                     type="number"
+                    min="0"
+                    max="10000000"
+                    inputMode="decimal"
                     value={tripForm.endMeter}
                     onChange={(e) => setTripForm({ ...tripForm, endMeter: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold outline-none focus:border-brand-500"
+                    className="min-h-12 w-full rounded-xl border border-slate-200 px-3 text-base font-bold outline-none focus:border-brand-500"
                   />
                 </div>
               </div>
@@ -273,7 +299,7 @@ export function DriverQuickHub({
                 <button
                   type="submit"
                   disabled={pending}
-                  className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-brand-700 disabled:opacity-60"
+                  className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-brand-600 px-5 text-sm font-bold text-white shadow-md hover:bg-brand-700 disabled:opacity-60"
                 >
                   {pending && <Loader2 className="h-4 w-4 animate-spin" />}
                   {pending ? "Saving Trip…" : "Save Trip"}

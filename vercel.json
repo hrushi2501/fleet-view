@@ -1,8 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": [
-    "bom1"
-  ],
+  "framework": "nextjs",
+  "buildCommand": "npm run vercel-build",
+  "installCommand": "npm ci",
+  "regions": ["bom1"],
   "crons": [
     {
       "path": "/api/push/cron",

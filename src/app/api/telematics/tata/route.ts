@@ -1,3 +1,5 @@
+import { withApiErrors } from "@/lib/api-error";
+import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { checkSharedSecret } from "@/lib/auth";
@@ -5,6 +7,7 @@ import { normaliseReading, assetCacheUpdate, readTelemetryJson } from "@/lib/tel
 import { TataFleetEdgeAdapter } from "@/lib/telematics-adapters";
 import { cachedFuelFor } from "@/lib/fuel-cache";
 import type { TelemetryPing } from "@/lib/telematics-adapters";
+import { recordTelemetryFuelAnomaly, type FuelAnomalyAsset } from "@/lib/tata-fleet-edge";
 
 export const dynamic = "force-dynamic";
 // A push may carry the whole fleet in one body; allow room for a slow write.
@@ -109,7 +112,7 @@ async function resolveAsset(ping: TelemetryPing) {
       id: true, code: true, fuelCapacity: true, registrationNo: true,
       chassisNo: true, deviceId: true, telematicsProviderId: true,
       // Required by `assetCacheUpdate` to decide which meter a reading advances.
-      meterValue: true, hourMeterValue: true, primaryMeter: true,
+      meterValue: true, hourMeterValue: true, primaryMeter: true, assetClass: true,
     },
   });
 
@@ -141,7 +144,7 @@ async function resolveAsset(ping: TelemetryPing) {
  * the provider issues none — it read "not ready" on a correctly configured
  * deployment.
  */
-export async function GET() {
+async function handleGET() {
   const urlToken = Boolean(process.env.TATA_PUSH_URL_TOKEN?.trim());
   const secret = Boolean(process.env.TATA_PUSH_KEY?.trim());
   return NextResponse.json({
@@ -299,7 +302,7 @@ function authorisePush(
   };
 }
 
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   const parsed = await readTelemetryJson(req);
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: parsed.status });
   const body = parsed.value;
@@ -320,6 +323,8 @@ export async function POST(req: Request) {
 
   const gate = authorisePush(req, body);
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
+  const limit = await reserveRateLimit({ scope: "tata-push", subject: "provider", limit: 600, windowMs: 60_000 });
+  if (!limit.ok) return rateLimitResponse(limit.retryInSeconds);
 
   const pings = await new TataFleetEdgeAdapter().parsePayload(body);
 
@@ -381,7 +386,10 @@ export async function POST(req: Request) {
       db.telemetryReading.findFirst({
         where: { assetId: asset.id, recordedAt: { lt: ping.timestamp } },
         orderBy: { recordedAt: "desc" },
-        select: { odometerKm: true, engineHours: true },
+        select: {
+          recordedAt: true, lat: true, lng: true, speedKph: true, odometerKm: true,
+          fuelLevelL: true, fuelLevelPct: true, ignitionOn: true, engineHours: true,
+        },
       }),
       // Attribute the sample to whoever is checked in, so a fuel drop has an
       // accountable driver and not just a vehicle.
@@ -410,8 +418,9 @@ export async function POST(req: Request) {
     }
     const r = result.reading;
 
+    let created: { id: string };
     try {
-      await db.telemetryReading.create({
+      created = await db.telemetryReading.create({
         data: {
           assetId: asset.id,
           recordedAt: r.recordedAt,
@@ -429,12 +438,26 @@ export async function POST(req: Request) {
           raw: ping.rawPayload as never,
         },
       });
-      accepted++;
     } catch {
       // The unique index is the real guard against a concurrent pull writing
       // the same instant between the check above and this insert.
       duplicates++;
       continue;
+    }
+    accepted++;
+
+    if (previous) {
+      await recordTelemetryFuelAnomaly(
+        asset as FuelAnomalyAsset,
+        previous,
+        {
+          recordedAt: r.recordedAt, lat: r.lat, lng: r.lng, speedKph: r.speedKph,
+          odometerKm: r.odometerKm, fuelLevelL: r.fuelLevelL,
+          fuelLevelPct: r.fuelLevelPct, ignitionOn: r.ignitionOn,
+        },
+        created.id,
+        asset.fuelCapacity,
+      );
     }
 
     // The level a person reads off the screen comes from the median of the
@@ -504,3 +527,6 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ ok: true, accepted, duplicates, unmatched });
 }
+
+export const GET = withApiErrors(handleGET);
+export const POST = withApiErrors(handlePOST);

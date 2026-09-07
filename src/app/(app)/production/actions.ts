@@ -1,6 +1,8 @@
 "use server";
 
 import { db } from "@/lib/db";
+import { formNumber } from "@/lib/input-validation";
+import { assertFormAccess, assertRecordAccess, assertGlobalAccess } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { DEFAULT_PROD_NORMS } from "@/lib/production";
@@ -8,7 +10,7 @@ import { parseBusinessDay } from "@/lib/business-time";
 import { requireAction, ActionError, safe } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
-const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
+const n = formNumber;
 
 function refresh() {
   revalidatePath("/production");
@@ -19,7 +21,8 @@ function refresh() {
 
 /** One shift of output for one machine. Upserted, so a correction overwrites. */
 async function saveProduction__impl(fd: FormData) {
-  await requireAction("production.edit");
+  const scopeAccess = await requireAction("production.edit");
+  await assertFormAccess(scopeAccess, fd);
   const assetId = s(fd, "assetId");
   if (!assetId) throw new ActionError("Asset is required");
   const date = parseBusinessDay(s(fd, "date"));
@@ -53,13 +56,16 @@ async function saveProduction__impl(fd: FormData) {
 }
 
 async function deleteProduction__impl(id: string) {
-  await requireAction("production.edit");
+  const scopeAccess = await requireAction("production.edit");
+  await assertRecordAccess(scopeAccess, "productionLog", id);
   await db.productionLog.delete({ where: { id } });
   refresh();
 }
 
 async function saveProdNorm__impl(fd: FormData) {
-  await requireAction("production.edit");
+  const scopeAccess = await requireAction("production.edit");
+  await assertFormAccess(scopeAccess, fd);
+  assertGlobalAccess(scopeAccess);
   const assetClass = s(fd, "assetClass");
   const unit = s(fd, "unit");
   if (!assetClass || !unit) throw new ActionError("Asset class and unit are required");
@@ -74,7 +80,8 @@ async function saveProdNorm__impl(fd: FormData) {
 
 /** Installs the shipped production targets. Safe to run repeatedly. */
 async function seedProdNorms__impl() {
-  await requireAction("production.edit");
+  const scopeAccess = await requireAction("production.edit");
+  assertGlobalAccess(scopeAccess);
   for (const nm of DEFAULT_PROD_NORMS) {
     await db.productionNorm.upsert({
       where: { assetClass_unit: { assetClass: nm.assetClass, unit: nm.unit } },

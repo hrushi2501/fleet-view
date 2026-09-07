@@ -47,7 +47,7 @@ export default async function MyVehiclePage({
   }
 
   const now = new Date();
-  const [ignition, place, shift] = await Promise.all([latestIgnition(vehicle.id), whereIsIt(vehicle), myShift(driver.id)]);
+  const [ignition, place, shift] = await Promise.all([latestIgnition(vehicle.id), whereIsIt(vehicle), myShift(driver.id, access.session.id)]);
   const state = vehicleState(vehicle, ignition, now);
 
   const meterUnit = vehicle.primaryMeter === "SMU" ? "hours" : "km";

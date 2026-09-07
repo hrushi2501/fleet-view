@@ -41,7 +41,7 @@ export default async function MyWorkPage() {
   // their papers, and the one vehicle assigned to them.
   const [trips, shift, ignition, personDocs] = await Promise.all([
     myTrips(driver.id, 30),
-    myShift(driver.id, now),
+    myShift(driver.id, access.session.id, now),
     vehicle ? latestIgnition(vehicle.id) : Promise.resolve(null),
     myPersonDocs(driver, now),
   ]);
@@ -74,6 +74,7 @@ export default async function MyWorkPage() {
 
       {vehicle && shift.hasActiveTrip && (
         <DriverQuickHub
+          sessionId={shift.sessionId}
           driverName={driver.name}
           vehicle={{
             id: vehicle.id,
@@ -146,21 +147,24 @@ export default async function MyWorkPage() {
       )}
 
       <nav className="space-y-3">
-        <Tile href="/my/vehicle" label="My Vehicle" hint={vehicle ? (vehicle.registrationNo ?? vehicle.code) : "No vehicle yet"} />
-        <Tile href="/my/trips" label="My Trips" hint={`${trips.length} recent trips`} />
-        <Tile href="/my/fuel" label="Fuel" hint="Diesel bharne ka record" />
+        <Tile href="/my/vehicle" label="मेरी गाड़ी / My vehicle" hint={vehicle ? (vehicle.registrationNo ?? vehicle.code) : "कोई गाड़ी नहीं / No vehicle"} />
+        <Tile href="/my/report" label="रिपोर्ट / Report" hint="Problem, accident ya road blockage" />
+        <Tile href="/my/trips" label="मेरी ट्रिप / My trips" hint={`${trips.length} recent trips`} />
+        <Tile href="/my/fuel" label="डीज़ल / Fuel" hint="Diesel bharne ka record" />
         <Tile
           href="/my/service"
-          label="Service"
+          label="सर्विस / Service"
           hint="Service due aur problems"
           badge={overdue.length > 0 ? { tone: "bad", text: String(overdue.length) } : undefined}
         />
         <Tile
           href="/my/documents"
-          label="My Documents"
+          label="कागज़ात / Documents"
           hint="Licence aur vehicle papers"
           badge={expired.length > 0 ? { tone: "bad", text: String(expired.length) } : undefined}
         />
+        <Tile href="/my/help" label="मदद / Help" hint="काम कैसे करें / How to" />
+        <Tile href="/my/policies" label="नियम / Policies" hint="प्राइवेसी और ऐप के नियम / Privacy & rules" />
       </nav>
     </Screen>
   );

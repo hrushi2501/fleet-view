@@ -10,25 +10,32 @@ demo data. Both are gone. Nothing you see in the app is invented.
 
 ## Stack
 
-- **Next.js 16** (App Router, Turbopack) · **React 19** · **TypeScript**
+- **Next.js 16** (App Router, Webpack builds) · **React 19** · **TypeScript**
 - **Prisma 6** · **PostgreSQL** (Supabase, transaction-mode pooler)
 - **Tailwind v4** · Recharts · lucide-react
-- Deployed on **Vercel** (region `bom1`), cron every 2 minutes
+- **Vercel** (region `bom1`), Fleet Edge cron every minute
+
+## Deploy on Vercel
+
+Follow the [Vercel deployment guide](docs/VERCEL-DEPLOYMENT.md): import the repo
+into a Pro team, add the database/auth/cron settings, connect private Blob storage,
+and deploy. Node and build settings are committed. **No Docker or separate worker
+server is required.** Existing integrations and preview isolation are covered there.
 
 ## Getting set up
 
 ```bash
-npm install
-npx prisma generate
+nvm use               # Node 24, matching Vercel
+npm ci                # also generates Prisma Client
 npm run dev            # http://localhost:3000
 ```
 
 You need a `.env.local`. It is gitignored and never committed — ask for the values.
 
 | Variable | Required | What breaks without it |
-|---|---|---|
+| --- | --- | --- |
 | `DATABASE_URL` | yes | Nothing runs. Pooled URL, keep `?pgbouncer=true&connection_limit=1` |
-| `DATABASE_URL_UNPOOLED` | yes | Direct connection for migrations |
+| `DATABASE_URL_UNPOOLED` | operator only | Privileged schema operations; not required in Vercel runtime |
 | `AUTH_SECRET` | production | Browser sessions cannot be issued safely |
 | `TATA_FLEET_EDGE_*` | for telemetry | Vehicle tracking, fuel analysis |
 | `TATA_PUSH_URL_TOKEN` | for Tata push | Strong provider-compatible webhook authentication |
@@ -46,9 +53,10 @@ re-fetched** — the provider only ever returns a vehicle's *current* state.
 ## Checks
 
 ```bash
-npm test        # 385 unit tests (node's runner, no framework)
+npm test        # unit tests (node's runner, no framework)
 npm run check   # lint + typecheck + tests
 npm run build
+npm run deploy:check # validates Vercel settings without changing services
 npm run db:check # verifies Prisma's runtime tables and columns against the DB
 ```
 
@@ -89,7 +97,7 @@ works in IST. Use `businessDay()` / `businessMonth()` from `business-time.ts` �
 
 ## Layout
 
-```
+```text
 src/app/(app)/       nine modules: dashboard, fleet, fuel, people, sites,
                      maintenance, compliance, reports, admin
 src/app/(app)/my/    the driver app — scoped to their own vehicle only

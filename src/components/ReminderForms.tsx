@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { X, Clock, Check, Wrench, Loader2, ShieldCheck } from "lucide-react";
 import { snoozeAlert, acknowledgeAlert, resolveAlert, createWoFromReminder } from "@/app/(app)/notifications/actions";
 import { isActionError } from "@/lib/action-result";
+import { useToast } from "@/components/Toast";
 
 const inputCls = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
 
@@ -30,6 +31,7 @@ export function SnoozeModal({ alertId, alertTitle }: { alertId: string; alertTit
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
 
   return (
     <>
@@ -37,7 +39,7 @@ export function SnoozeModal({ alertId, alertTitle }: { alertId: string; alertTit
         <Clock className="h-3.5 w-3.5" /> Snooze
       </button>
       <Modal open={open} onClose={() => setOpen(false)} title="Snooze Service Reminder" subtitle={`Defer reminder: ${alertTitle}`}>
-        <form action={(fd) => start(async () => { const result = await snoozeAlert(fd); if (isActionError(result)) { alert(result.error); return; } setOpen(false); router.refresh(); })} className="space-y-4">
+        <form action={(fd) => start(async () => { const result = await snoozeAlert(fd); if (isActionError(result)) { toast.error(result.error); return; } setOpen(false); router.refresh(); })} className="space-y-4">
           <input type="hidden" name="alertId" value={alertId} />
           
           <label className="block">
@@ -71,14 +73,15 @@ export function SnoozeModal({ alertId, alertTitle }: { alertId: string; alertTit
 export function AlertActionButtons({ alertId }: { alertId: string }) {
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
 
   return (
     <div className="flex items-center gap-2">
-      <button onClick={() => start(async () => { const result = await acknowledgeAlert(alertId); if (isActionError(result)) { alert(result.error); return; } router.refresh(); })} disabled={pending} className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 bg-sky-50 hover:bg-sky-100 px-2.5 py-1 rounded-md transition-colors disabled:opacity-60">
+      <button onClick={() => start(async () => { const result = await acknowledgeAlert(alertId); if (isActionError(result)) { toast.error(result.error); return; } router.refresh(); })} disabled={pending} className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 bg-sky-50 hover:bg-sky-100 px-2.5 py-1 rounded-md transition-colors disabled:opacity-60">
         {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />} Ack
       </button>
 
-      <button onClick={() => start(async () => { const result = await resolveAlert(alertId); if (isActionError(result)) { alert(result.error); return; } router.refresh(); })} disabled={pending} className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-md transition-colors disabled:opacity-60">
+      <button onClick={() => start(async () => { const result = await resolveAlert(alertId); if (isActionError(result)) { toast.error(result.error); return; } router.refresh(); })} disabled={pending} className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-md transition-colors disabled:opacity-60">
         {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Resolve
       </button>
     </div>
@@ -88,9 +91,10 @@ export function AlertActionButtons({ alertId }: { alertId: string }) {
 export function RaiseWoFromReminderButton({ scheduleId }: { scheduleId: string }) {
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
 
   return (
-    <button onClick={() => start(async () => { const result = await createWoFromReminder(scheduleId); if (isActionError(result)) { alert(result.error); return; } router.push("/maintenance?tab=workorders"); })} disabled={pending} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
+    <button onClick={() => start(async () => { const result = await createWoFromReminder(scheduleId); if (isActionError(result)) { toast.error(result.error); return; } router.push("/maintenance?tab=workorders"); })} disabled={pending} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
       {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wrench className="h-3.5 w-3.5" />} Raise PM WO
     </button>
   );

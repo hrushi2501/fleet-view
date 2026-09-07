@@ -26,9 +26,13 @@ import { canApprove } from "@/lib/rbac";
 import { db } from "@/lib/db";
 import { recordSystemAudit } from "@/lib/audit-writer";
 import { isActionError, type ActionResult, type ActionFailure } from "@/lib/action-result";
+import { toUserFriendlyError, isNextNavigationError } from "@/lib/friendly-error";
+import { ActionError } from "./action-error";
+import { reserveRateLimit } from "./request-rate-limit";
+export { ActionError };
 
 // Re-exported so server-side callers have one import for the guard API.
-export { isActionError };
+export { isActionError, toUserFriendlyError };
 export type { ActionResult, ActionFailure };
 
 /**
@@ -38,13 +42,6 @@ export type { ActionResult, ActionFailure };
  * `ActionError` should be treated as a bug and shown as a generic failure with
  * a reference, never as a raw stack — see `message()` below.
  */
-export class ActionError extends Error {
-  readonly safe = true;
-  constructor(message: string) {
-    super(message);
-    this.name = "ActionError";
-  }
-}
 
 /**
  * Asserts the caller is signed in and holds `code`, and hands back their access
@@ -69,6 +66,10 @@ export async function requireAction(code: string): Promise<Access> {
     );
   }
 
+  if (!code.endsWith(".view")) {
+    const limit = await reserveRateLimit({ scope: "action-mutation", subject: access.session.id, limit: 120, windowMs: 60_000 });
+    if (!limit.ok) throw new ActionError(`Too many changes. Please wait ${limit.retryInSeconds} seconds before trying again.`);
+  }
   return access;
 }
 
@@ -88,6 +89,7 @@ export async function requireUser(): Promise<Access> {
  * escalate rather than guessing why the button failed.
  */
 export async function requireApproval(code: string, amount: number): Promise<Access> {
+  if (!Number.isFinite(amount) || amount < 0) throw new ActionError("Approval amount must be a valid non-negative amount.");
   const access = await requireAction(code);
 
   const role = await db.user.findUnique({
@@ -127,53 +129,28 @@ export async function requireApproval(code: string, amount: number): Promise<Acc
  * to the platform log where it belongs.
  */
 export function message(err: unknown): string {
-  if (err instanceof ActionError) return err.message;
-  const ref = Math.random().toString(36).slice(2, 8).toUpperCase();
-  console.error(`[action:${ref}]`, err);
-  return `Something went wrong and the change was not saved. Quote reference ${ref} if you report this.`;
+  return toUserFriendlyError(err).message;
 }
 
-
 /**
- * Wraps a server action so expected failures reach the user.
+ * Wraps a server action so all errors — both user-authored and unexpected —
+ * reach the client as clean, jargon-free plain English messages.
  *
- * ─────────────────────────────────────────────────────────────────────────────
- * WHY THROWN MESSAGES DO NOT WORK
- *
- * Next redacts errors thrown out of a server action in production builds —
- * the client receives "An error occurred in the Server Components render. The
- * specific message is omitted in production builds to avoid leaking sensitive
- * details." and a digest. That is the right default, but it means every
- * carefully written message in this codebase — "Phone must be a valid 10-digit
- * Indian mobile number", "You do not have permission to do this (fleet.delete)",
- * "Cannot go from RECEIVED to PAID" — is invisible to the person who needs it.
- * The form's error banner renders faithfully and says nothing useful.
- *
- * Next's own guidance is to model expected errors as return values rather than
- * throwing them. This wrapper does that without rewriting every action body:
- * an `ActionError` becomes `{ error }`, which crosses the boundary intact
- * because it is data, not an exception.
- *
- * Anything that is *not* an `ActionError` is a genuine bug and is re-thrown
- * untouched, so it still reaches the error boundary and the platform log —
- * and its text still gets redacted, which for an unexpected error is correct.
- *
- * `redirect()` and `notFound()` work by throwing framework sentinels, so they
- * must pass through unmolested too; they are not `ActionError`s, so they do.
- * ─────────────────────────────────────────────────────────────────────────────
+ * Internal Next.js navigation exceptions (redirect, notFound) pass through untouched.
  */
 export function safe<A extends unknown[], R>(
   fn: (...args: A) => Promise<R>,
-): (...args: A) => Promise<R | { error: string }> {
-  return async (...args: A): Promise<R | { error: string }> => {
+): (...args: A) => Promise<R | ActionFailure> {
+  return async (...args: A): Promise<R | ActionFailure> => {
     try {
-      // The result is passed straight back: several actions return a summary
-      // their caller renders ("3 signals, 1 case opened"), and swallowing that
-      // would break the screen more quietly than the error it was guarding.
       return await fn(...args);
     } catch (err) {
-      if (err instanceof ActionError) return { error: err.message };
-      throw err;
+      // Re-throw Next.js internal navigation sentinels (e.g. redirect, notFound)
+      if (isNextNavigationError(err)) {
+        throw err;
+      }
+      const friendly = toUserFriendlyError(err);
+      return { error: friendly.message, ref: friendly.ref };
     }
   };
 }

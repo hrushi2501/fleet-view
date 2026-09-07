@@ -1,14 +1,17 @@
 "use server";
 
 import { db } from "@/lib/db";
+import { formNumber } from "@/lib/input-validation";
+import { assertFormAccess, assertRecordAccess } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { requireAction, ActionError, safe } from "@/lib/guard";
 import { uploadPrivateFile } from "@/lib/private-upload";
+import { validateWeighbridgeWeights } from "@/lib/weighbridge";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
-const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
+const n = formNumber;
 
 function refresh() {
   revalidatePath("/weighbridge");
@@ -17,15 +20,33 @@ function refresh() {
 }
 
 async function saveTicket__impl(fd: FormData) {
-  await requireAction("weighbridge.edit");
+  const scopeAccess = await requireAction("weighbridge.edit");
+  await assertFormAccess(scopeAccess, fd);
   const ticketNo = s(fd, "ticketNo");
   if (!ticketNo) throw new ActionError("Ticket number is required");
 
+  // Prevent duplicate ticket entry crashes
+  const existing = await db.weighbridgeTicket.findFirst({ where: { ticketNo } });
+  if (existing) throw new ActionError(`Weighbridge ticket ${ticketNo} already exists.`);
+
   const gross = n(fd, "grossKg");
   const tare = n(fd, "tareKg");
-  // Trust the explicit net if given; otherwise derive it.
-  const net = n(fd, "netKg") || Math.max(0, gross - tare);
+  const explicitNet = n(fd, "netKg");
+
+  // Validate physical boundaries: gross >= tare, non-negative, max 150 tonnes
+  const weightVal = validateWeighbridgeWeights({
+    grossKg: gross,
+    tareKg: tare,
+    netKg: s(fd, "netKg") ? explicitNet : undefined,
+  });
+  if (!weightVal.valid) throw new ActionError(weightVal.error!);
+  const net = weightVal.computedNetKg;
+
   const rate = n(fd, "rate");
+  if (rate < 0) throw new ActionError("Rate per tonne cannot be negative.");
+  const billedKg = n(fd, "billedKg");
+  if (billedKg < 0) throw new ActionError("Billed weight cannot be negative.");
+
   const session = await getSession();
 
   let photo: string | null = null;
@@ -70,7 +91,8 @@ async function saveTicket__impl(fd: FormData) {
 }
 
 async function deleteTicket__impl(id: string) {
-  await requireAction("weighbridge.edit");
+  const scopeAccess = await requireAction("weighbridge.edit");
+  await assertRecordAccess(scopeAccess, "weighbridgeTicket", id);
   const t = await db.weighbridgeTicket.findUnique({ where: { id } });
   await db.weighbridgeTicket.delete({ where: { id } });
   if (t) await audit({ action: "DELETE", module: "WEIGHBRIDGE", entity: "WeighbridgeTicket", entityId: id, summary: `Deleted ticket ${t.ticketNo}` });

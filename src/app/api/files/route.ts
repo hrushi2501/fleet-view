@@ -1,13 +1,18 @@
+import { withApiErrors } from "@/lib/api-error";
 import { get } from "@vercel/blob";
 import { NextResponse } from "next/server";
 
-import { canSeeAsset, requireApi, type Access } from "@/lib/access";
+import { canSeeAsset, getAccess, requireApi, type Access } from "@/lib/access";
 import { db } from "@/lib/db";
 import { privateFileUrl } from "@/lib/private-upload";
+import { recordScope } from "@/lib/record-access";
 
 export const dynamic = "force-dynamic";
 
-const INLINE_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
+const INLINE_CONTENT_TYPES = new Set([
+  "image/jpeg", "image/png", "image/webp", "application/pdf",
+  "audio/webm", "audio/ogg", "audio/mp4",
+]);
 
 function isPrivateBlobUrl(value: string) {
   try {
@@ -34,7 +39,7 @@ async function canReadAssetFile(access: Access, assetId: string | null) {
  * token, or arbitrary fetch target; an unknown or unauthorized reference is a
  * uniform 404 to avoid record enumeration.
  */
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const blobUrl = new URL(req.url).searchParams.get("blob");
   if (!blobUrl || !isPrivateBlobUrl(blobUrl)) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const storedUrl = privateFileUrl(blobUrl);
@@ -45,7 +50,7 @@ export async function GET(req: Request) {
     db.complianceDoc.findFirst({ where: { documentUrl: storedUrl }, select: { assetId: true } }),
     db.personDocument.findFirst({ where: { documentUrl: storedUrl }, select: { driverId: true } }),
     db.fuelTransaction.findFirst({
-      where: { OR: [{ odometerPhoto: storedUrl }, { pumpPhoto: storedUrl }] },
+      where: { OR: [{ odometerPhoto: storedUrl }, { pumpPhoto: storedUrl }, { afterOdometerPhoto: storedUrl }] },
       select: { assetId: true, projectId: true },
     }),
     db.fuelReceipt.findFirst({ where: { invoicePhoto: storedUrl }, select: { tank: { select: { projectId: true } } } }),
@@ -57,13 +62,30 @@ export async function GET(req: Request) {
 
   let permitted = false;
   if (compliance) {
-    const auth = await requireApi("compliance.view");
-    permitted = auth.ok && await canReadAssetFile(auth.access, compliance.assetId);
+    const access = await getAccess();
+    // The driver document screen shows the papers for the driver's assigned
+    // vehicle. It is safe to open those files only when the same asset scope
+    // confirms that the vehicle is still theirs; office users retain the
+    // normal compliance permission and project scope check.
+    if (access?.group === "DRIVER") {
+      permitted = await canReadAssetFile(access, compliance.assetId);
+    } else {
+      const auth = await requireApi("compliance.view");
+      permitted = auth.ok && await canReadAssetFile(auth.access, compliance.assetId);
+    }
   } else if (personDocument) {
-    const auth = await requireApi("people.view");
-    // Person records are not asset-scoped. Drivers do not hold people.view;
-    // supervisors/admins who do hold it may read the document register.
-    permitted = auth.ok;
+    const access = await getAccess();
+    // Drivers have no broad people permission. Their one permitted exception
+    // is the document attached to their own linked driver record.
+    if (access?.group === "DRIVER") {
+      permitted = access.driverId === personDocument.driverId;
+    } else {
+      const auth = await requireApi("people.view");
+      permitted = !!auth.ok && !!await db.driver.findFirst({
+        where: { id: personDocument.driverId, ...recordScope("driver", auth.access) },
+        select: { id: true },
+      });
+    }
   } else if (transaction) {
     const auth = await requireApi("fuel.view");
     permitted = auth.ok && (
@@ -113,3 +135,5 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "File unavailable" }, { status: 404 });
   }
 }
+
+export const GET = withApiErrors(handleGET);

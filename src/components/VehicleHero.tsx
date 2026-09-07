@@ -51,7 +51,7 @@ export function VehicleHero({
     <section
       className={
         "relative overflow-hidden bg-[#081b3a] text-white " +
-        (compact ? "min-h-[196px]" : "min-h-[425px]")
+        (compact ? "min-h-49" : "min-h-106.25")
       }
     >
       {/* A photograph only when it is actually this kind of machine. A stock
@@ -80,17 +80,17 @@ export function VehicleHero({
 
       <div
         className={
-          "relative z-[2] w-full sm:w-[60%] sm:min-w-[420px] lg:w-[47%] lg:min-w-[480px] " +
+          "relative z-2 w-full sm:w-[60%] sm:min-w-105 lg:w-[47%] lg:min-w-120 " +
           (compact
             ? "px-6 py-6 lg:pl-8 lg:pr-0"
-            : "px-7 pb-11 pt-14 lg:py-14 lg:pl-[58px] lg:pr-0")
+            : "px-7 pb-11 pt-14 lg:py-14 lg:pl-14.5 lg:pr-0")
         }
       >
         <div
-          className="inline-flex items-center gap-[7px] rounded-lg border px-[13px] py-2 text-xs font-bold tracking-[.2px]"
+          className="inline-flex items-center gap-1.75 rounded-lg border px-3.25 py-2 text-xs font-bold tracking-[.2px]"
           style={{ background: "rgba(9,43,91,.88)", borderColor: "rgba(83,142,255,.25)" }}
         >
-          <span className="inline-block h-[7px] w-[7px] rounded-full" style={{ background: dot }} />
+          <span className="inline-block h-1.75 w-1.75 rounded-full" style={{ background: dot }} />
           {status}
         </div>
 
@@ -99,7 +99,7 @@ export function VehicleHero({
             "font-extrabold leading-[.98] tracking-[-1.5px] " +
             (compact
               ? "mb-2 mt-3 text-[28px]"
-              : "mb-5 mt-[26px] text-[38px] tracking-[-2px] lg:text-[54px]")
+              : "mb-5 mt-6.5 text-[38px] tracking-[-2px] lg:text-[54px]")
           }
         >
           {titleTop}
@@ -108,10 +108,10 @@ export function VehicleHero({
         </h1>
 
         {/* The short rule under the title, as in the design. */}
-        <div className={"h-[3px] w-[62px] rounded-full bg-[#2f6df6] " + (compact ? "mb-4" : "mb-6")} />
+        <div className={"h-0.75 w-15.5 rounded-full bg-[#2f6df6] " + (compact ? "mb-4" : "mb-6")} />
 
         {!compact && (
-          <p className="mb-[30px] max-w-[480px] text-[15px] leading-[1.6] text-[#f0f4fb] lg:text-base">
+          <p className="mb-7.5 max-w-120 text-[15px] leading-[1.6] text-[#f0f4fb] lg:text-base">
             {description}
           </p>
         )}
@@ -121,7 +121,7 @@ export function VehicleHero({
             const Icon = SPEC_ICON[s.icon];
             return (
               <div key={s.label} className="flex items-start gap-2.5">
-                <Icon className="h-[22px] w-[22px] shrink-0 text-[#9dbcf5]" strokeWidth={1.75} />
+                <Icon className="h-5.5 w-5.5 shrink-0 text-[#9dbcf5]" strokeWidth={1.75} />
                 <div>
                   <b className="mb-1 block text-[11px] font-bold tracking-[.6px] text-white">{s.label}</b>
                   {/* An unrecorded spec says so. The alternative is a plausible
@@ -139,8 +139,8 @@ export function VehicleHero({
       {/* The blue angle notched into the bottom-right corner. */}
       <div
         className={
-          "absolute -bottom-px -right-px z-[3] hidden opacity-[.98] sm:block " +
-          (compact ? "h-[48px] w-[110px]" : "h-[76px] w-[170px]")
+          "absolute -bottom-px -right-px z-3 hidden opacity-[.98] sm:block " +
+          (compact ? "h-12 w-27.5" : "h-19 w-42.5")
         }
         style={{ background: "#2468ed", clipPath: "polygon(100% 0, 100% 100%, 0 100%, 35% 45%)" }}
         aria-hidden

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveFuel, saveServicePhotos } from "@/app/(app)/entry-actions";
 import { isActionError } from "@/lib/action-result";
+import { useToast } from "@/components/Toast";
 import { PushButton } from "@/components/PushButton";
 import { Truck, Camera, Check, ArrowLeft, Delete, Volume2, Fuel, LogOut, Loader2, CircleCheck, Wrench, X, Pencil, Sparkles } from "lucide-react";
 
@@ -24,6 +25,17 @@ async function compressImage(file: File): Promise<File> {
     const blob: Blob = await new Promise((res) => c.toBlob((b) => res(b!), "image/jpeg", 0.6)!);
     return new File([blob], "photo.jpg", { type: "image/jpeg" });
   } catch { return file; } finally { URL.revokeObjectURL(url); }
+}
+
+/** Three camera captures travel in one Server Action. Keep the combined body
+ * comfortably below its 8 MB boundary, including multipart overhead. */
+async function compressFuelEvidence(file: File): Promise<File> {
+  const compressed = await compressImage(file);
+  const maxBytes = 2 * 1024 * 1024;
+  if (compressed.size > maxBytes) {
+    throw new Error("Photo is too large. Take a fresh dashboard or pump photo and try again.");
+  }
+  return compressed;
 }
 
 async function compressForOCR(file: File): Promise<File> {
@@ -113,13 +125,14 @@ function speak(text: string) {
   try { const u = new SpeechSynthesisUtterance(text); u.lang = "hi-IN"; u.rate = 0.92; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } catch { /* ignore */ }
 }
 
-type Step = "home" | "vehicle" | "odo" | "pump" | "review" | "rold" | "rnew" | "done";
+type Step = "home" | "vehicle" | "odo" | "pump" | "after" | "review" | "rold" | "rnew" | "done";
 type Mode = "fuel" | "repair";
 
 const PROMPT: Record<string, string> = {
   vehicle: "अपनी गाड़ी चुनें",
-  odo: "मीटर का फोटो खींचें",
+  odo: "ईंधन से पहले डैशबोर्ड का फोटो खींचें",
   pump: "पंप मशीन का फोटो खींचें",
+  after: "ईंधन के बाद डैशबोर्ड का फोटो खींचें",
   review: "जांच लें, फिर भेजें",
   rold: "पुराना निकाला हुआ पुर्ज़ा का फोटो खींचें",
   rnew: "नया लगाया हुआ पुर्ज़ा का फोटो खींचें",
@@ -145,19 +158,21 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [odo, setOdo] = useState<File | null>(null);
   const [pump, setPump] = useState<File | null>(null);
+  const [afterOdo, setAfterOdo] = useState<File | null>(null);
   const [odoValue, setOdoValue] = useState("");
   const [litres, setLitres] = useState("");
-  const [rate, setRate] = useState(String(dieselRate));
+  const [amount, setAmount] = useState("");
   const [odoConf, setOdoConf] = useState<number | null>(null);
   const [pumpConf, setPumpConf] = useState<number | null>(null);
   const [odoAction, setOdoAction] = useState<"AUTO_ADVANCE" | "CONFIRM_NEEDED" | "RETAKE_REQUIRED" | "MANUAL_ENTRY" | null>(null);
   const [pumpAction, setPumpAction] = useState<"AUTO_ADVANCE" | "CONFIRM_NEEDED" | "RETAKE_REQUIRED" | "MANUAL_ENTRY" | null>(null);
   const [captureReasons, setCaptureReasons] = useState<string[]>([]);
   const [ocrBusy, setOcrBusy] = useState(false);
-  const [numpad, setNumpad] = useState<null | "odo" | "litres" | "rate">(null);
+  const [numpad, setNumpad] = useState<null | "odo" | "litres" | "amount">(null);
   const [oldPhotos, setOldPhotos] = useState<File[]>([]);
   const [newPhotos, setNewPhotos] = useState<File[]>([]);
   const [pending, start] = useTransition();
+  const toast = useToast();
   const router = useRouter();
   const camRef = useRef<HTMLInputElement>(null);
   const repairRef = useRef<HTMLInputElement>(null);
@@ -192,13 +207,14 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
       const s = stepRef.current;
       if (s === "home") return; // let it exit the app
       if (s === "vehicle" || s === "done") {
-        setVehicle(null); setOdo(null); setPump(null); setOdoValue(""); setLitres("");
+        setVehicle(null); setOdo(null); setPump(null); setAfterOdo(null); setOdoValue(""); setLitres(""); setAmount("");
         setOdoConf(null); setPumpConf(null); setOdoAction(null); setPumpAction(null);
         setOldPhotos([]); setNewPhotos([]); setStep("home");
       }
       else if (s === "odo") setStep("vehicle");
       else if (s === "pump") setStep("odo");
-      else if (s === "review") setStep("pump");
+      else if (s === "after") setStep("pump");
+      else if (s === "review") setStep("after");
       else if (s === "rold") setStep("vehicle");
       else if (s === "rnew") setStep("rold");
       window.history.pushState(null, ""); // re-arm
@@ -209,13 +225,21 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
   useEffect(() => { if (step !== "home" || numpad) window.history.pushState(null, ""); }, [step, numpad]);
 
   function reset() {
-    setVehicle(null); setOdo(null); setPump(null); setOdoValue(""); setLitres(""); setRate(String(dieselRate));
+    setVehicle(null); setOdo(null); setPump(null); setAfterOdo(null); setOdoValue(""); setLitres(""); setAmount("");
     setOdoConf(null); setPumpConf(null); setOdoAction(null); setPumpAction(null); setCaptureReasons([]);
     setOldPhotos([]); setNewPhotos([]); setNumpad(null); setMode("fuel"); setStep("home");
   }
 
-  async function capture(which: "odo" | "pump", file: File) {
-    if (which === "odo") setOdo(file); else setPump(file);
+  async function capture(which: "odo" | "pump" | "after", file: File) {
+    if (which === "odo") setOdo(file);
+    else if (which === "pump") setPump(file);
+    else {
+      // The post-fill dashboard shot is proof of the final state, not a second
+      // number to guess at. Keeping it camera-only makes the third step quick.
+      setAfterOdo(file);
+      setCaptureReasons([]);
+      return;
+    }
     setOcrBusy(true);
     if (which === "odo") {
       const r = await ocrOdometerEx(file);
@@ -232,7 +256,11 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
     } else {
       const r = await ocrPumpEx(file);
       if (r.litres) setLitres(r.litres);
-      if (r.rate) setRate(r.rate);
+      if (r.amount) setAmount(r.amount);
+      else if (r.litres) {
+        const detectedRate = Number(r.rate) > 0 ? Number(r.rate) : dieselRate;
+        setAmount(String(Math.round(Number(r.litres) * detectedRate * 100) / 100));
+      }
       setPumpConf(r.numericConfidence);
       setPumpAction(r.recommendedUiAction);
       setCaptureReasons(r.reasons);
@@ -247,24 +275,30 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
   }
 
   function finishFuel() {
-    if (!vehicle || !litres || Number(litres) <= 0) return;
+    if (!vehicle || !litres || Number(litres) <= 0 || !amount || Number(amount) <= 0) return;
     const fd = new FormData();
     fd.set("type", "ISSUE");
     fd.set("assetId", vehicle.id);
     if (defaultProjectId) fd.set("projectId", defaultProjectId);
     fd.set("quantity", litres);
     fd.set("meterValue", odoValue || "0");
-    fd.set("rate", rate || "92.5");
+    fd.set("amount", amount);
     start(async () => {
       try {
         const geo = await getGeo();
         if (geo) { fd.set("lat", String(geo.lat)); fd.set("lng", String(geo.lng)); }
-        if (odo) fd.set("odometerPhoto", await compressImage(odo));
-        if (pump) fd.set("pumpPhoto", await compressImage(pump));
+        if (odo) fd.set("odometerPhoto", await compressFuelEvidence(odo));
+        if (pump) fd.set("pumpPhoto", await compressFuelEvidence(pump));
+        if (afterOdo) fd.set("afterOdometerPhoto", await compressFuelEvidence(afterOdo));
         const result = await saveFuel(fd);
-        if (isActionError(result)) { alert(result.error); return; }
+        if (isActionError(result)) { toast.error(result.error); return; }
         buzz([40, 50, 80]); setStep("done"); router.refresh();
-      } catch { /* stay on review */ }
+      } catch {
+        // A lost signal or an unexpected server response must not look like a
+        // successful tap. Keep every entered value on the review screen and
+        // give the driver one clear recovery instruction.
+        toast.error("Diesel record was not saved", "Check the signal, then tap Save again.");
+      }
     });
   }
 
@@ -277,9 +311,12 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
         for (const f of oldPhotos) fd.append("oldPhotos", await compressImage(f));
         for (const f of newPhotos) fd.append("newPhotos", await compressImage(f));
         const result = await saveServicePhotos(fd);
-        if (isActionError(result)) { alert(result.error); return; }
+        if (isActionError(result)) { toast.error(result.error); return; }
         buzz([40, 50, 80]); setStep("done"); router.refresh();
-      } catch { setStep("rnew"); }
+      } catch {
+        setStep("rnew");
+        toast.error("Photos were not saved", "Check the signal and try again.");
+      }
     });
   }
 
@@ -288,18 +325,18 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
   // ---- NUMPAD overlay (to fix OCR value) ----
   if (numpad) {
     const target = numpad;
-    const val = target === "odo" ? odoValue : target === "rate" ? rate : litres;
-    const setVal = target === "odo" ? setOdoValue : target === "rate" ? setRate : setLitres;
-    const isRate = target === "rate";
+    const val = target === "odo" ? odoValue : target === "amount" ? amount : litres;
+    const setVal = target === "odo" ? setOdoValue : target === "amount" ? setAmount : setLitres;
+    const isAmount = target === "amount";
     const press = (d: string) => setVal((q) => {
       if (d === "." && q.includes(".")) return q;
       return q.length < 7 ? q + d : q;
     });
-    const keys = isRate
+    const keys = isAmount
       ? ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "back"]
       : ["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "back"];
-    const title = target === "odo" ? "मीटर नंबर" : isRate ? "रेट ₹/लीटर" : "कितने लीटर?";
-    const unit = target === "odo" ? "मीटर" : isRate ? "₹/लीटर" : "लीटर";
+    const title = target === "odo" ? "मीटर नंबर" : isAmount ? "कुल रकम ₹" : "कितने लीटर?";
+    const unit = target === "odo" ? "मीटर" : isAmount ? "रुपये" : "लीटर";
     return (
       <div className="flex min-h-screen flex-col bg-slate-50">
         <header className="flex items-center gap-3 bg-white px-3 py-3 shadow-sm">
@@ -333,13 +370,13 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
       <div className="min-h-screen bg-slate-50">
         <header className="flex flex-wrap items-center justify-between gap-3 bg-ink-900 px-4 py-4 text-white">
           <div className="flex items-center gap-2"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500"><Truck className="h-6 w-6" /></div><p className="text-base font-bold">{driverName.split(" ")[0]}</p></div>
-          <a href="/api/auth/logout" className="rounded-xl bg-white/10 p-3"><LogOut className="h-6 w-6" /></a>
+          <button type="button" onClick={() => { void fetch("/api/auth/logout", { method: "POST" }).then(() => router.push("/login")); }} className="rounded-xl bg-white/10 p-3" aria-label="Sign out"><LogOut className="h-6 w-6" /></button>
         </header>
         <div className="p-5">
-          <button onClick={() => { setMode("fuel"); setStep("vehicle"); }} className="flex w-full flex-col items-center gap-3 rounded-3xl bg-gradient-to-br from-brand-500 to-brand-700 py-10 text-white shadow-xl shadow-brand-500/30 active:scale-[0.98]">
+          <button onClick={() => { setMode("fuel"); setStep("vehicle"); }} className="flex w-full flex-col items-center gap-3 rounded-3xl bg-linear-to-br from-brand-500 to-brand-700 py-10 text-white shadow-xl shadow-brand-500/30 active:scale-[0.98]">
             <Fuel className="h-16 w-16" /><span className="text-3xl font-extrabold">डीज़ल भरें</span><span className="text-base opacity-90">+ Add Diesel</span>
           </button>
-          <button onClick={() => { setMode("repair"); setStep("vehicle"); }} className="mt-4 flex w-full flex-col items-center gap-3 rounded-3xl bg-gradient-to-br from-amber-500 to-orange-600 py-10 text-white shadow-xl shadow-amber-500/30 active:scale-[0.98]">
+          <button onClick={() => { setMode("repair"); setStep("vehicle"); }} className="mt-4 flex w-full flex-col items-center gap-3 rounded-3xl bg-linear-to-br from-amber-500 to-orange-600 py-10 text-white shadow-xl shadow-amber-500/30 active:scale-[0.98]">
             <Wrench className="h-16 w-16" /><span className="text-3xl font-extrabold">मरम्मत फोटो</span><span className="text-base opacity-90">+ Repair Part Photos</span>
           </button>
           <div className="mt-4 flex flex-wrap justify-center gap-2">
@@ -383,28 +420,39 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
     );
   }
 
-  // ---- FUEL PHOTO (odo / pump) with OCR ----
-  if (step === "odo" || step === "pump") {
+  // ---- OPTIONAL FUEL EVIDENCE (before dashboard / pump / after dashboard) ----
+  if (step === "odo" || step === "pump" || step === "after") {
     const isOdo = step === "odo";
-    const file = isOdo ? odo : pump;
+    const isPump = step === "pump";
+    const file = isOdo ? odo : isPump ? pump : afterOdo;
     const value = isOdo ? odoValue : litres;
     const conf = isOdo ? odoConf : pumpConf;
-    const uiAction = isOdo ? odoAction : pumpAction;
+    const uiAction = isOdo ? odoAction : isPump ? pumpAction : null;
     const preview = file ? URL.createObjectURL(file) : null;
     const isRetakeRequired = uiAction === "RETAKE_REQUIRED";
+    const nextStep: Step = isOdo ? "pump" : isPump ? "after" : "review";
+    const backStep: Step = isOdo ? "vehicle" : isPump ? "odo" : "pump";
+    const title = isOdo ? "पहले डैशबोर्ड का फोटो" : isPump ? "पंप मशीन का फोटो" : "बाद में डैशबोर्ड का फोटो";
+    const englishTitle = isOdo ? "Dashboard before fuelling" : isPump ? "Fuel-pump display" : "Dashboard after fuelling";
+    const captureKind = isOdo ? "odo" : isPump ? "pump" : "after";
 
     return (
       <div className="flex min-h-screen flex-col bg-slate-50">
-        <StepHeader back={() => setStep(isOdo ? "vehicle" : "odo")} hindi={isOdo ? "मीटर का फोटो" : "पंप मशीन का फोटो"} eng={isOdo ? "Photo of odometer" : "Photo of fuel pump meter"} step={step} />
+        <StepHeader back={() => setStep(backStep)} hindi={title} eng={englishTitle} step={step} />
 
-        <input ref={camRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) capture(isOdo ? "odo" : "pump", f); e.currentTarget.value = ""; }} />
+        <input ref={camRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) capture(captureKind, f); e.currentTarget.value = ""; }} />
         <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6">
+          <p className="rounded-xl bg-amber-50 px-3 py-2 text-center text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
+            {isOdo ? "① Before" : isPump ? "② Pump" : "③ After"} · फोटो वैकल्पिक है · Photo optional for verification
+          </p>
           <button onClick={() => camRef.current?.click()} className="flex aspect-square w-full max-w-xs flex-col items-center justify-center gap-3 overflow-hidden rounded-3xl border-4 border-dashed border-brand-300 bg-white active:bg-brand-50">
             {preview ? <img src={preview} alt="" className="h-full w-full object-cover" /> : <><Camera className="h-24 w-24 text-brand-400" /><span className="text-xl font-bold text-brand-600">फोटो खींचें</span></>}
           </button>
           {file && (
             <div className="w-full max-w-xs rounded-2xl bg-white p-4 text-center shadow-sm">
-              {ocrBusy ? (
+              {!isPump && !isOdo ? (
+                <p className="text-sm font-semibold text-emerald-700">फोटो जुड़ गया · Photo attached for verification</p>
+              ) : ocrBusy ? (
                 <p className="flex items-center justify-center gap-2 text-slate-500"><Loader2 className="h-5 w-5 animate-spin" /> पढ़ रहे हैं…</p>
               ) : (
                 <>
@@ -446,8 +494,8 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
           )}
         </div>
         <div className="p-4">
-          <button disabled={!file || ocrBusy} onClick={() => setStep(isOdo ? "pump" : "review")} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-5 text-2xl font-extrabold text-white shadow-lg active:scale-[0.98] disabled:opacity-40">
-            आगे <ArrowLeft className="h-7 w-7 rotate-180" />
+          <button disabled={ocrBusy} onClick={() => setStep(nextStep)} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-5 text-2xl font-extrabold text-white shadow-lg active:scale-[0.98] disabled:opacity-40">
+            {file ? "आगे · Next" : "फोटो छोड़ें · Skip photo"} <ArrowLeft className="h-7 w-7 rotate-180" />
           </button>
         </div>
       </div>
@@ -459,7 +507,7 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
   if (step === "review") {
     return (
       <div className="flex min-h-screen flex-col bg-slate-50">
-        <StepHeader back={() => setStep("pump")} hindi="जांच लें" eng="Check & send" step={step} />
+        <StepHeader back={() => setStep("after")} hindi="जांच लें" eng="Check & send" step={step} />
 
         <div className="flex flex-1 flex-col gap-4 p-5">
           <button onClick={() => setNumpad("litres")} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-5 shadow-sm active:bg-slate-50">
@@ -470,22 +518,27 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
             <div className="flex items-center gap-3"><Truck className="h-8 w-8 text-brand-600" /><span className="text-lg font-bold text-slate-600">मीटर</span></div>
             <div className="flex items-center gap-2"><span className="text-4xl font-extrabold text-ink-900">{odoValue || "0"}</span><Pencil className="h-5 w-5 text-brand-500" /></div>
           </button>
-          <button onClick={() => setNumpad("rate")} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-5 shadow-sm active:bg-slate-50">
-            <div className="flex items-center gap-3"><span className="flex h-8 w-8 items-center justify-center text-2xl font-extrabold text-brand-600">₹</span><span className="text-lg font-bold text-slate-600">रेट / लीटर</span></div>
-            <div className="flex items-center gap-2"><span className="text-4xl font-extrabold text-ink-900">{rate || "0"}</span><Pencil className="h-5 w-5 text-brand-500" /></div>
+          <button onClick={() => setNumpad("amount")} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-5 shadow-sm active:bg-slate-50">
+            <div className="flex items-center gap-3"><span className="flex h-8 w-8 items-center justify-center text-2xl font-extrabold text-brand-600">₹</span><span className="text-lg font-bold text-slate-600">कुल रकम</span></div>
+            <div className="flex items-center gap-2"><span className="text-4xl font-extrabold text-ink-900">{amount || "0"}</span><Pencil className="h-5 w-5 text-brand-500" /></div>
           </button>
           <div className="rounded-2xl bg-brand-50 p-4 text-center">
             <p className="text-sm text-slate-500">कुल · Total</p>
-            <p className="text-2xl font-extrabold text-brand-700">₹ {Math.round((Number(litres) || 0) * (Number(rate) || 0)).toLocaleString("en-IN")}</p>
+            <p className="text-2xl font-extrabold text-brand-700">₹ {(Number(amount) || 0).toLocaleString("en-IN")}</p>
+            {Number(litres) > 0 && Number(amount) > 0 && <p className="mt-1 text-xs font-medium text-brand-700">₹ {(Number(amount) / Number(litres)).toFixed(2)} / litre</p>}
           </div>
-          <div className="flex gap-2">
-            {odo && <img src={URL.createObjectURL(odo)} alt="" className="h-20 w-20 rounded-xl object-cover ring-1 ring-slate-200" />}
-            {pump && <img src={URL.createObjectURL(pump)} alt="" className="h-20 w-20 rounded-xl object-cover ring-1 ring-slate-200" />}
+          <div className="grid grid-cols-4 gap-2">
+            {[{ label: "Before", file: odo }, { label: "Pump", file: pump }, { label: "After", file: afterOdo }].map((photo) => (
+              <div key={photo.label} className="min-w-0 text-center">
+                {photo.file ? <img src={URL.createObjectURL(photo.file)} alt={photo.label} className="h-20 w-full rounded-xl object-cover ring-1 ring-slate-200" /> : <div className="flex h-20 items-center justify-center rounded-xl bg-slate-100 px-1 text-[10px] font-semibold text-slate-400">No photo</div>}
+                <p className="mt-1 text-[10px] font-semibold text-slate-500">{photo.label}</p>
+              </div>
+            ))}
             <button onClick={() => speak(`आपने ${litres || 0} लीटर डीज़ल भरा`)} className="flex h-20 w-20 flex-col items-center justify-center rounded-xl bg-brand-50 text-brand-600"><Volume2 className="h-7 w-7" /><span className="text-[10px]">सुनें</span></button>
           </div>
         </div>
         <div className="p-4">
-          <button disabled={pending || !litres || Number(litres) <= 0} onClick={finishFuel} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-5 text-2xl font-extrabold text-white shadow-lg active:scale-[0.98] disabled:opacity-40">
+          <button disabled={pending || !litres || Number(litres) <= 0 || !amount || Number(amount) <= 0} onClick={finishFuel} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-5 text-2xl font-extrabold text-white shadow-lg active:scale-[0.98] disabled:opacity-40">
             {pending ? <Loader2 className="h-7 w-7 animate-spin" /> : <Check className="h-7 w-7" />} भेजें · Save
           </button>
         </div>

@@ -1419,6 +1419,9 @@ model FuelTransaction {
   geofenceOk        Boolean      @default(true)
   odometerPhoto     String?
   pumpPhoto         String?
+  /// Optional dashboard image taken immediately after the pump stops. Together
+  /// with the other optional captures, it supports later verification.
+  afterOdometerPhoto String?
   lat               Float?
   lng               Float?
   date              DateTime     @default(now())

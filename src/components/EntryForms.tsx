@@ -206,7 +206,7 @@ function Modal({ triggerLabel, triggerIcon, triggerClass, title, action, success
         {triggerIcon}{triggerLabel}
       </button>
       {open && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={() => setOpen(false)}>
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={() => setOpen(false)}>
           <div className="max-h-[90vh] w-full max-w-2xl overflow-x-auto overflow-y-auto rounded-3xl bg-white shadow-2xl animate-fade-up ring-1 ring-black/5" onClick={(e) => e.stopPropagation()}>
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white/95 px-6 py-4 backdrop-blur-sm">
               <h3 className="text-base font-bold text-ink-900">{title}</h3>

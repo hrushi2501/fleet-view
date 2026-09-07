@@ -147,7 +147,7 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
         { label: "Ownership", value: data.ownershipType },
         { label: "Year", value: data.yearMfg ? String(data.yearMfg) : null, numeric: true },
         { label: "Tank capacity", value: data.fuelCapacity > 0 ? `${num(data.fuelCapacity)} L` : null, numeric: true },
-        { label: "Operator", value: data.driver?.name ?? null },
+        { label: "Operator", value: data.driver?.name ?? "No Driver Assigned" },
         { label: "Site", value: data.project ? `${data.project.code} — ${data.project.name}` : null },
         { label: "Acquisition cost", value: data.acquisitionCost > 0 ? inr(data.acquisitionCost) : null, numeric: true },
       ]
@@ -180,7 +180,7 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
       // A neutral scrim. The old one was a brand-to-violet gradient blur, which
       // tinted the card's own whites and made two views of the same vehicle
       // look like two different products.
-      className="fixed inset-0 z-[2000] flex items-start justify-center overflow-x-auto overflow-y-auto bg-slate-900/55 p-4 backdrop-blur-sm sm:p-8"
+      className="fixed inset-0 z-2000 flex items-start justify-center overflow-x-auto overflow-y-auto bg-slate-900/55 p-4 backdrop-blur-sm sm:p-8"
       onClick={onClose}
     >
       <div
@@ -190,7 +190,7 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
         <button
           onClick={onClose}
           aria-label="Close"
-          className="absolute right-4 top-4 z-[5] rounded-full bg-white/90 p-2 text-slate-700 shadow-sm ring-1 ring-black/5 transition-colors hover:bg-white"
+          className="absolute right-4 top-4 z-5 rounded-full bg-white/90 p-2 text-slate-700 shadow-sm ring-1 ring-black/5 transition-colors hover:bg-white"
         >
           <X className="h-5 w-5" />
         </button>
@@ -366,7 +366,7 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
 
                   {data.segments && data.segments.length > 0 && (
                     <div className="mt-3 overflow-x-auto">
-                      <table className="w-full min-w-[680px] text-left text-[12px]">
+                      <table className="w-full min-w-170 text-left text-[12px]">
                         <thead className="text-[11px] uppercase tracking-wider text-slate-500">
                           <tr>
                             <th className="py-1.5 pr-3"><Txt text="Window" /></th>

@@ -15,7 +15,19 @@ import { assetScope, requirePage } from "@/lib/access";
 export async function Register() {
   const access = await requirePage("fleet.view");
   const [assets, projects] = await Promise.all([
-    db.asset.findMany({ where: assetScope(access), include: { project: true }, orderBy: { code: "asc" } }),
+    db.asset.findMany({
+      where: assetScope(access),
+      include: {
+        project: true,
+        driver: true,
+        tripSessions: {
+          where: { status: "ACTIVE" },
+          take: 1,
+          include: { driver: true },
+        },
+      },
+      orderBy: { code: "asc" },
+    }),
     db.project.findMany({ orderBy: { code: "asc" } }),
   ]);
   const projOpts = projects.map((p) => ({ id: p.id, label: `${p.code} — ${p.name}` }));
@@ -49,20 +61,25 @@ export async function Register() {
 
   const connectedCount = assets.filter(isConnected).length;
 
-  const rows = ordered.map((a) => ({
-    id: a.id,
-    code: a.code,
-    name: a.name,
-    assetClass: a.assetClass,
-    ownershipType: a.ownershipType,
-    status: a.status,
-    healthScore: a.healthScore,
-    utilization: a.utilization,
-    meterValue: a.meterValue,
-    primaryMeter: a.primaryMeter,
-    registrationNo: a.registrationNo,
-    project: a.project?.code ?? "—",
-  }));
+  const rows = ordered.map((a) => {
+    const liveSession = a.tripSessions?.[0];
+    const driverName = liveSession?.driver?.name ?? a.driver?.name ?? null;
+    return {
+      id: a.id,
+      code: a.code,
+      name: a.name,
+      assetClass: a.assetClass,
+      ownershipType: a.ownershipType,
+      status: a.status,
+      healthScore: a.healthScore,
+      utilization: a.utilization,
+      meterValue: a.meterValue,
+      primaryMeter: a.primaryMeter,
+      registrationNo: a.registrationNo,
+      project: a.project?.code ?? "—",
+      driverName,
+    };
+  });
 
   const active = assets.filter((a) => a.status === "Active").length;
   const maint = assets.filter((a) => a.status === "Under-Maintenance" || a.status === "Breakdown").length;

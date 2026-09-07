@@ -1,11 +1,15 @@
 "use server";
 
+import { businessTransaction } from "@/lib/business-transaction";
+import { completeDuty } from "@/lib/trip-service";
 import { db } from "@/lib/db";
+import { formNumber } from "@/lib/input-validation";
+import { assertGlobalAccess, assertFormAccess, assertRecordAccess, recordScope } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import crypto from "crypto";
 import { getSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
-import { decideGaugeReading, sensorGaugeDecision, makeQrToken, staleSessions, reconstructPath, detectFuelEvents, PROVIDERS, type GaugeExtraction, type SessionLite, type ReadingLite } from "@/lib/telematics";
+import { decideGaugeReading, sensorGaugeDecision, makeQrToken, staleSessions, detectFuelEvents, PROVIDERS, type GaugeExtraction, type SessionLite, type ReadingLite } from "@/lib/telematics";
 import { requireAction, ActionError, safe } from "@/lib/guard";
 import { getDieselRate } from "@/lib/settings";
 import { fuelSensorState } from "@/lib/fuel-sensor";
@@ -13,7 +17,7 @@ import { uploadPrivateFile } from "@/lib/private-upload";
 import { assetScope } from "@/lib/access";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
-const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
+const n = formNumber;
 
 function refresh() {
   revalidatePath("/tracking");
@@ -28,6 +32,7 @@ function refresh() {
  *  a sticker already on a windscreen must keep working. */
 async function issueQrTokens__impl() {
   const access = await requireAction("fleet.edit");
+  assertGlobalAccess(access);
   const assets = await db.asset.findMany({ where: { qrToken: null, ...assetScope(access) }, select: { id: true } });
   for (const a of assets) {
     let token = makeQrToken(crypto.randomFillSync(new Uint8Array(10)));
@@ -45,7 +50,8 @@ async function issueQrTokens__impl() {
 /* --------------------------- telematics providers --------------------------- */
 
 async function seedProviders__impl() {
-  await requireAction("admin.settings");
+  const scopeAccess = await requireAction("admin.settings");
+  assertGlobalAccess(scopeAccess);
   for (const p of PROVIDERS) {
     await db.telematicsProvider.upsert({
       where: { code: p.code },
@@ -58,7 +64,9 @@ async function seedProviders__impl() {
 }
 
 async function saveAssetTelematics__impl(assetId: string, fd: FormData) {
-  await requireAction("admin.settings");
+  const scopeAccess = await requireAction("admin.settings");
+  await assertFormAccess(scopeAccess, fd);
+  await assertRecordAccess(scopeAccess, "asset", assetId);
   await db.asset.update({
     where: { id: assetId },
     data: {
@@ -79,7 +87,8 @@ async function saveAssetTelematics__impl(assetId: string, fd: FormData) {
  * reading, is held PENDING for a human rather than written into the ledger.
  */
 async function saveGaugeReading__impl(fd: FormData) {
-  await requireAction("fuel.receipt");
+  const scopeAccess = await requireAction("fuel.receipt");
+  await assertFormAccess(scopeAccess, fd);
   const assetId = s(fd, "assetId");
   if (!assetId) throw new ActionError("Vehicle is required");
 
@@ -170,7 +179,9 @@ async function saveGaugeReading__impl(fd: FormData) {
 
 /** Human verdict on a held reading. A correction is recorded as the truth. */
 async function verifyGaugeReading__impl(id: string, fd: FormData) {
-  await requireAction("fuel.approve");
+  const scopeAccess = await requireAction("fuel.approve");
+  await assertFormAccess(scopeAccess, fd);
+  await assertRecordAccess(scopeAccess, "fuelLevelReading", id);
   const session = await getSession();
   const verdict = s(fd, "verdict"); // VERIFIED | CORRECTED | REJECTED
   const corrected = s(fd, "correctedPct") ? n(fd, "correctedPct") : null;
@@ -211,41 +222,38 @@ async function verifyGaugeReading__impl(id: string, fd: FormData) {
 
 /** Force-release a session — the supervisor override for a forgotten checkout. */
 async function releaseSession__impl(id: string) {
-  await requireAction("fuel.receipt");
-  const auth = await getSession();
-  const sess = await db.tripSession.findUnique({ where: { id } });
-  if (!sess || sess.status !== "ACTIVE") return;
-
-  const readings = await db.telemetryReading.findMany({ where: { sessionId: id }, orderBy: { recordedAt: "asc" } });
-  const path = reconstructPath(readings.map((r): ReadingLite => ({
-    id: r.id, recordedAt: r.recordedAt, lat: r.lat, lng: r.lng, speedKph: r.speedKph,
-    odometerKm: r.odometerKm, fuelLevelPct: r.fuelLevelPct, ignitionOn: r.ignitionOn, source: r.source,
-  })));
-
-  await db.tripSession.update({
-    where: { id },
-    data: { status: "COMPLETED", endedAt: new Date(), endedBy: "ADMIN", distanceKm: path.distanceKm },
+  const access = await requireAction("fleet.edit");
+  await businessTransaction(access.session, async tx => {
+    await assertRecordAccess(access, "tripSession", id, tx);
+    await completeDuty(tx, id, access.session, { endedBy: "ADMIN" });
   });
-  await audit({ action: "UPDATE", module: "OPERATIONS", entity: "TripSession", entityId: id, summary: `Session force-released by ${auth?.name ?? "admin"}` });
   refresh();
 }
 
-/** Close sessions a driver forgot to end. Safe to run on a schedule. */
+/** Mark stale duties abandoned without clearing a newer driver's claim. */
 async function closeStaleSessions__impl() {
-  await requireAction("fuel.receipt");
-  const open = await db.tripSession.findMany({ where: { status: "ACTIVE" } });
-  const stale = staleSessions(open.map((x): SessionLite => ({ id: x.id, assetId: x.assetId, driverId: x.driverId, startedAt: x.startedAt, endedAt: x.endedAt, status: x.status })));
-  for (const x of stale) {
-    await db.tripSession.update({ where: { id: x.id }, data: { status: "ABANDONED", endedAt: new Date(), endedBy: "AUTO" } });
-  }
-  if (stale.length) await audit({ action: "UPDATE", module: "OPERATIONS", summary: `Closed ${stale.length} stale trip session(s)` });
+  const access = await requireAction("fleet.edit");
+  const closed = await businessTransaction(access.session, async tx => {
+    const open = await tx.tripSession.findMany({ where: { status: "ACTIVE", ...recordScope("tripSession", access) } });
+    const stale = staleSessions(open.map((x): SessionLite => ({ id: x.id, assetId: x.assetId, driverId: x.driverId, startedAt: x.startedAt, endedAt: x.endedAt, status: x.status })));
+    let count = 0;
+    for (const row of stale) {
+      const result = await tx.tripSession.updateMany({ where: { id: row.id, status: "ACTIVE" }, data: { status: "ABANDONED", endedAt: new Date(), endedBy: "AUTO" } });
+      if (!result.count) continue;
+      count++;
+      const another = await tx.tripSession.count({ where: { assetId: row.assetId, status: "ACTIVE" } });
+      if (!another) await tx.asset.updateMany({ where: { id: row.assetId, driverId: row.driverId }, data: { driverId: null } });
+    }
+    return count;
+  });
   refresh();
-  return { ok: true as const, closed: stale.length };
+  return { ok: true as const, closed };
 }
 
 /** Scan the telemetry stream for fuel events worth investigating. */
 async function scanFuelEvents__impl(assetId: string) {
-  await requireAction("fuel.reconcile");
+  const scopeAccess = await requireAction("fuel.reconcile");
+  await assertRecordAccess(scopeAccess, "asset", assetId);
   const asset = await db.asset.findUnique({ where: { id: assetId } });
   if (!asset) throw new ActionError("Vehicle not found");
   const since = new Date(); since.setDate(since.getDate() - 30);

@@ -23,7 +23,7 @@ const SOURCE_LABEL: Record<string, string> = {
   ISSUE: "Fuel issue",
   RECEIPT: "Short delivery",
   TANK_RECON: "Tank reconciliation",
-  ASSET_EFFICIENCY: "Asset efficiency",
+  ASSET_EFFICIENCY: "Vehicle fuel signal",
 };
 
 /**

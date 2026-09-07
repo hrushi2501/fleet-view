@@ -15,7 +15,9 @@ export function redirect(url) {
   throw e;
 }
 export function notFound() {
-  throw new Error("NEXT_NOT_FOUND");
+  const error = new Error("NEXT_HTTP_ERROR_FALLBACK;404");
+  error.digest = "NEXT_HTTP_ERROR_FALLBACK;404";
+  throw error;
 }
 export function usePathname() { return "/"; }
 export function useRouter() { return { push() {}, replace() {}, refresh() {} }; }

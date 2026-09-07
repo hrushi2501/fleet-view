@@ -134,7 +134,7 @@ export default async function MyServicePage({
       </section>
 
       <Link
-        href="/my/vehicle"
+        href="/my/report"
         className="flex min-h-[56px] w-full items-center justify-center rounded-2xl bg-white text-lg font-bold text-brand-700 ring-1 ring-brand-200 active:scale-[0.99] active:bg-brand-50"
       >
         Report a problem

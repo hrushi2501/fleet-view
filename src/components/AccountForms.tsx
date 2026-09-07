@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, KeyRound, CheckCircle2 } from "lucide-react";
 import { changeOwnPassword, adminResetUserPassword } from "@/app/(app)/entry-actions";
 import { isActionError } from "@/lib/action-result";
+import { useToast } from "@/components/Toast";
 
 const inp = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
 
@@ -50,12 +51,19 @@ export function ChangePasswordForm() {
 export function ResetPwButton({ userId, name }: { userId: string; name: string }) {
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
   function go() {
     const pw = window.prompt(`Set a new password for ${name} (12+ characters; include a letter, number, and symbol):`);
     if (!pw) return;
     start(async () => {
-      try { const result = await adminResetUserPassword(userId, pw); if (isActionError(result)) { alert(result.error); return; } router.refresh(); alert("Password updated."); }
-      catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
+      try {
+        const result = await adminResetUserPassword(userId, pw);
+        if (isActionError(result)) { toast.error(result.error); return; }
+        router.refresh();
+        toast.success("Password updated.");
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Failed to reset password.");
+      }
     });
   }
   return (
