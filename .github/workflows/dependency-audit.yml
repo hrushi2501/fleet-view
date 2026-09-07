@@ -37,10 +37,12 @@ jobs:
       # every PR/push: lint, types, all hermetic tests, deployment assertions,
       # and a production compilation.
       - run: npm run verify
-      # This is the actual Vercel build command. These values are deliberately
-      # non-production placeholders: validation needs their shape, while the
-      # build must never receive a deployable database URL or signing secret.
-      - run: npm run vercel-build
+      # CI has deliberately non-routable database credentials. It validates
+      # the Vercel environment contract, while Vercel itself runs
+      # `vercel-build` with its real, read-only runtime database connection.
+      # Never run `db:check` here: a fake URL must not turn an offline quality
+      # gate into a network-dependent failure.
+      - run: npm run deploy:check
         env:
           VERCEL: "1"
           VERCEL_ENV: production

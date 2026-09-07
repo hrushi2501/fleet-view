@@ -18,4 +18,6 @@ test("pull requests and protected branches run the full code-quality gate", () =
   assert.match(workflow, /pull_request:/);
   assert.match(workflow, /branches: \[main, master\]/);
   assert.match(workflow, /- run: npm run verify/);
+  assert.match(workflow, /- run: npm run deploy:check/);
+  assert.doesNotMatch(workflow, /npm run vercel-build/);
 });
