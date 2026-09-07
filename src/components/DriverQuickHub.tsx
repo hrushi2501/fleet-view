@@ -28,9 +28,32 @@ interface DriverQuickHubProps {
     primaryMeter: string;
     fuelLevelPct: number | null;
     fuelCapacity: number;
+    /** A recently reporting cab tracker is more accurate and costs the driver no data. */
+    hasHardwareGps: boolean;
   };
   expiredDocsCount?: number;
   overdueServiceCount?: number;
+}
+
+const TRIP_DRAFT_KEY = "fleetview:driver:trip-draft:v1";
+type TripDraft = { assetId: string; submissionId: string; tonnage: string; distanceKm: string; endMeter: string; savedAt: number };
+
+function loadTripDraft(assetId: string): TripDraft | null {
+  try {
+    const raw = window.localStorage.getItem(TRIP_DRAFT_KEY);
+    if (!raw) return null;
+    const draft = JSON.parse(raw) as Partial<TripDraft>;
+    if (draft.assetId !== assetId || typeof draft.submissionId !== "string" || Date.now() - Number(draft.savedAt) > 7 * 24 * 60 * 60 * 1000) return null;
+    return draft as TripDraft;
+  } catch { return null; }
+}
+
+function saveTripDraft(draft: TripDraft) {
+  try { window.localStorage.setItem(TRIP_DRAFT_KEY, JSON.stringify(draft)); } catch { /* private mode/storage quota: keep the visible form instead */ }
+}
+
+function clearTripDraft() {
+  try { window.localStorage.removeItem(TRIP_DRAFT_KEY); } catch { /* ignore */ }
 }
 
 /**
@@ -59,9 +82,25 @@ export function DriverQuickHub({
     endMeter: "",
   });
 
+  useEffect(() => {
+    const draft = loadTripDraft(vehicle.id);
+    if (!draft) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate a locally persisted, explicitly unsent draft.
+    setSubmissionId(draft.submissionId);
+    setTripForm({ tonnage: draft.tonnage, distanceKm: draft.distanceKm, endMeter: draft.endMeter });
+  }, [vehicle.id]);
+
+  useEffect(() => {
+    if (!tripForm.tonnage && !tripForm.distanceKm && !tripForm.endMeter) return;
+    saveTripDraft({ assetId: vehicle.id, submissionId, ...tripForm, savedAt: Date.now() });
+  }, [submissionId, tripForm, vehicle.id]);
+
   // Periodic background telemetry ping from driver device while shift is active
   useEffect(() => {
     if (typeof window === "undefined" || !("geolocation" in navigator)) return;
+    // A recent hardwired tracker is the source of record. Do not make a
+    // driver's low-end phone spend battery and data duplicating it every minute.
+    if (vehicle.hasHardwareGps) return;
 
     let cancelled = false;
 
@@ -102,7 +141,7 @@ export function DriverQuickHub({
       cancelled = true;
       clearInterval(interval);
     };
-  }, []);
+  }, [vehicle.hasHardwareGps]);
 
   const [pending, startTransition] = useTransition();
   const toast = useToast();
@@ -110,6 +149,11 @@ export function DriverQuickHub({
 
   const handleTripSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      saveTripDraft({ assetId: vehicle.id, submissionId, ...tripForm, savedAt: Date.now() });
+      toast.error("Trip saved on this phone", "Go online, check Recent trips, then tap Save once only if it is not listed.");
+      return;
+    }
     const fd = new FormData();
     fd.set("assetId", vehicle.id);
     fd.set("submissionId", submissionId);
@@ -120,13 +164,22 @@ export function DriverQuickHub({
     startTransition(async () => {
       try {
         const result = await logDriverTrip(fd);
-        if (isActionError(result)) { toast.error(result.error); return; }
+        if (isActionError(result)) {
+          saveTripDraft({ assetId: vehicle.id, submissionId, ...tripForm, savedAt: Date.now() });
+          toast.error("Trip not saved", `${result.error} Your entered details are kept on this phone.`);
+          return;
+        }
+        clearTripDraft();
         setSubmissionId(newSubmissionId());
         toast.success(`Trip recorded: ${tripForm.tonnage} tonnes, ${tripForm.distanceKm} km.`);
         setTripModalOpen(false);
         router.refresh();
-      } catch (err: unknown) {
-        toast.error("Trip Log Failed", err instanceof Error ? err.message : "Could not record trip");
+      } catch (_err: unknown) {
+        // Never retry a business mutation automatically after a transport
+        // failure: the server may have completed it just before the signal was
+        // lost. Preserve the values and idempotency key for an explicit retry.
+        saveTripDraft({ assetId: vehicle.id, submissionId, ...tripForm, savedAt: Date.now() });
+        toast.error("Trip saved on this phone", "Check Recent trips after signal returns. If it is not listed, open this form and tap Save once.");
       }
     });
   };
@@ -140,7 +193,7 @@ export function DriverQuickHub({
             <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-300" />
             <span className="text-xs font-bold uppercase tracking-wider text-emerald-100">ड्यूटी चालू / Duty active</span>
           </div>
-          <DriverTripEndScanner vehicleCode={vehicle.code} sessionId={sessionId} />
+          <DriverTripEndScanner vehicleCode={vehicle.code} registrationNo={vehicle.registrationNo} sessionId={sessionId} />
         </div>
 
         <div className="mt-3 flex items-baseline justify-between">
@@ -191,7 +244,14 @@ export function DriverQuickHub({
         {/* ACTION 2: Log Trip */}
         <button
           type="button"
-          onClick={() => setTripModalOpen(true)}
+          onClick={() => {
+            const draft = loadTripDraft(vehicle.id);
+            if (draft) {
+              setSubmissionId(draft.submissionId);
+              setTripForm({ tonnage: draft.tonnage, distanceKm: draft.distanceKm, endMeter: draft.endMeter });
+            }
+            setTripModalOpen(true);
+          }}
           className="flex min-h-32 flex-col items-center justify-center rounded-3xl border border-brand-200 bg-brand-50/80 p-4 text-center active:bg-brand-100/70 shadow-xs"
         >
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-md shadow-brand-600/30">

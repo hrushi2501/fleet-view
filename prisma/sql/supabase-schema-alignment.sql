@@ -22,25 +22,30 @@ begin
   end loop;
 end $$;
 
--- 2. Revoke all direct permissions from public PostgREST roles (anon & authenticated)
+-- 2. Revoke all direct permissions from public/PostgREST roles and install the
+-- exact restrictive deny-all policy contract verified by verify-rls.sql.
+-- Keep these names and clauses in sync with enable-rls.sql: this script is a
+-- superset for an operator who also wants its indexes/runtime-role grants.
 do $$
 declare r record;
 begin
   for r in select tablename from pg_tables where schemaname = 'public'
   loop
-    execute format('revoke all on public.%I from anon, authenticated', r.tablename);
-    -- Explicit deny-all policies for defense in depth
+    execute format('revoke all on public.%I from public, anon, authenticated', r.tablename);
+    -- Remove legacy names before converging on the canonical contract.
     execute format('drop policy if exists "deny_anon_direct_access" on public.%I', r.tablename);
-    execute format('create policy "deny_anon_direct_access" on public.%I for all to anon using (false)', r.tablename);
     execute format('drop policy if exists "deny_authenticated_direct_access" on public.%I', r.tablename);
-    execute format('create policy "deny_authenticated_direct_access" on public.%I for all to authenticated using (false)', r.tablename);
+    execute format('drop policy if exists "deny_anon_access" on public.%I', r.tablename);
+    execute format('create policy "deny_anon_access" on public.%I as restrictive for all to anon using (false) with check (false)', r.tablename);
+    execute format('drop policy if exists "deny_authenticated_access" on public.%I', r.tablename);
+    execute format('create policy "deny_authenticated_access" on public.%I as restrictive for all to authenticated using (false) with check (false)', r.tablename);
   end loop;
 end $$;
 
 -- 3. Revoke all default privileges on future objects from public roles
-alter default privileges in schema public revoke all on tables from anon, authenticated;
-alter default privileges in schema public revoke all on sequences from anon, authenticated;
-alter default privileges in schema public revoke all on functions from anon, authenticated;
+alter default privileges in schema public revoke all on tables from public, anon, authenticated;
+alter default privileges in schema public revoke all on sequences from public, anon, authenticated;
+alter default privileges in schema public revoke all on functions from public, anon, authenticated;
 
 -- 4. Ensure application runtime role (fleetview_app) has full operational privileges
 grant usage on schema public to fleetview_app;

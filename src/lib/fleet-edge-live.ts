@@ -26,7 +26,9 @@
  */
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { createHash } from "node:crypto";
 import { startOfBusinessDay } from "@/lib/business-time";
+import { serverCache } from "@/lib/cache";
 import {
   analyseUsage, type AnalyticsReading, type Confidence, type Norm,
 } from "@/lib/fleet-analytics";
@@ -395,12 +397,36 @@ function engineHoursToday(samples: TodaySample[]): number | null {
 
 export type LiveFleetScope = Prisma.AssetWhereInput | undefined;
 
-const LIVE_FLEET_CACHE_MS = 5_000;
-const liveFleetCache = new Map<string, { expiresAt: number; value: LiveFleet }>();
+/** A short TTL protects the polling read model without presenting old locations as live. */
+export const LIVE_FLEET_CACHE_SECONDS = 5;
 const liveFleetInFlight = new Map<string, Promise<LiveFleet>>();
 
-function scopeCacheKey(scope: LiveFleetScope): string {
-  return JSON.stringify(scope ?? {});
+/**
+ * Prisma where clauses are objects, so plain JSON.stringify is not a safe
+ * distributed-cache key: equivalent clauses assembled in a different property
+ * order would miss, while an accidental omission could share one user's scope
+ * with another.  Canonicalise every supported JSON value before hashing it.
+ */
+function stableScopeJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (value instanceof Date) return JSON.stringify(value.toISOString());
+  if (Array.isArray(value)) return `[${value.map(stableScopeJson).join(",")}]`;
+  const object = value as Record<string, unknown>;
+  return `{${Object.keys(object).sort().map((key) => `${JSON.stringify(key)}:${stableScopeJson(object[key])}`).join(",")}}`;
+}
+
+export function liveFleetCacheKey(scope: LiveFleetScope): string {
+  const digest = createHash("sha256").update(stableScopeJson(scope ?? {})).digest("hex");
+  return `fleet:live:${digest}`;
+}
+
+/**
+ * Called by writes that change a vehicle's map representation.  Redis failures
+ * deliberately stay non-fatal — the five-second TTL still bounds staleness.
+ */
+export async function invalidateLiveFleetCache(): Promise<void> {
+  liveFleetInFlight.clear();
+  await serverCache.invalidatePrefix("fleet:live:");
 }
 
 /**
@@ -428,19 +454,12 @@ type LatestReadingRow = {
 };
 
 export async function getLiveFleet(scope: LiveFleetScope = undefined): Promise<LiveFleet> {
-  const key = scopeCacheKey(scope);
-  const cached = liveFleetCache.get(key);
-  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const key = liveFleetCacheKey(scope);
 
   const existing = liveFleetInFlight.get(key);
   if (existing) return existing;
 
-  const pending = buildLiveFleet(scope)
-    .then((value) => {
-      if (liveFleetCache.size >= 32) liveFleetCache.clear();
-      liveFleetCache.set(key, { value, expiresAt: Date.now() + LIVE_FLEET_CACHE_MS });
-      return value;
-    })
+  const pending = serverCache.wrap(key, () => buildLiveFleet(scope), LIVE_FLEET_CACHE_SECONDS)
     .finally(() => liveFleetInFlight.delete(key));
   liveFleetInFlight.set(key, pending);
   return pending;

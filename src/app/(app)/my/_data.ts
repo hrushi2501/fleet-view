@@ -55,6 +55,7 @@ export type MyVehicle = {
   lng: number;
   speed: number;
   lastSeen: Date;
+  deviceId: string | null;
   serviceDueDate: Date | null;
   lastServiceDate: Date | null;
   projectId: string | null;
@@ -148,7 +149,7 @@ export async function myBasics(access: Access): Promise<MyBasics> {
           id: true, code: true, registrationNo: true, name: true, assetClass: true,
           category: true, primaryMeter: true, meterValue: true, fuelCapacity: true,
           fuelLevelPct: true, fuelLevelAt: true, status: true, lat: true, lng: true,
-          speed: true, lastSeen: true, serviceDueDate: true, lastServiceDate: true,
+          speed: true, lastSeen: true, deviceId: true, serviceDueDate: true, lastServiceDate: true,
           projectId: true, project: { select: { name: true } },
         },
       },

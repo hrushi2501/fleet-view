@@ -5,6 +5,21 @@ import { reconstructPath, validateOdometerAtCheckout } from "./telematics";
 
 export type DutyEnd = { odometer?: number | null; lat?: number | null; lng?: number | null; notes?: string; endedBy: "DRIVER" | "AUTO" | "ADMIN" };
 
+/**
+ * Damaged-sticker recovery proof. It is intentionally only a plate/code suffix
+ * comparison; the route supplies the asset from the caller's already-active
+ * duty session, never from a client-selected vehicle id.
+ */
+export function matchesActiveVehicleConfirmation(
+  confirmation: string,
+  registrationNo: string | null,
+  assetCode: string,
+): boolean {
+  const entered = confirmation.replace(/[^a-z0-9]/gi, "").toUpperCase();
+  const assigned = (registrationNo ?? assetCode).replace(/[^a-z0-9]/gi, "").toUpperCase();
+  return entered.length === 4 && assigned.endsWith(entered);
+}
+
 /** Called inside a serializable business transaction by every duty-ending path. */
 export async function completeDuty(tx: Transaction, sessionId: string, actor: Actor, end: DutyEnd) {
   const active = await tx.tripSession.findUnique({ where: { id: sessionId }, include: { asset: true } });

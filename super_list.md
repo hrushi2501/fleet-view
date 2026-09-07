@@ -375,8 +375,8 @@ erDiagram
 | `/api/fuel/anomalies` | `GET` | Fetches active fuel anomaly queue and unacknowledged theft alerts. |
 | `/api/fuel/sync` | `POST` | Triggers on-demand synchronization of fuel records and reconciliation calculations. |
 | `/api/fuel` | `GET`, `POST` | Core fuel transaction management and bulk ledger retrieval. |
-| `/api/assets` | `GET`, `POST` | Asset register querying, searching, filtering, and creation. |
-| `/api/assets/[id]` | `GET`, `PUT`, `DELETE` | Specific asset profile, specifications, active telemetry, and document attachments. |
+| `/api/assets` | `GET` | Read-only asset register querying, searching and filtering for approved external consumers. Asset creation and changes are performed by authenticated Server Actions in `src/app/(app)/entry-actions.ts`. |
+| `/api/assets/[id]` | `GET` | Read-only asset profile, specifications, active telemetry and document attachments. Authenticated Server Actions are the mutation authority. |
 | `/api/auth/logout` | `POST` | Clears authenticated session cookies and records logout audit event. |
 | `/api/ocr` | `POST` | Computer vision endpoint extracting gauge levels and odometer values from uploaded photos. |
 | `/api/session/scan` | `POST` | Processes QR code scan from driver mobile and validates cabin binding. |

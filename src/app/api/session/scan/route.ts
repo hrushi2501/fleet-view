@@ -16,6 +16,7 @@ import { assetCompliance, DOC_LABEL, type DocLite } from "@/lib/compliance";
 import { eligibility, safetyScore, type DriverLite, type CompetencyLite, type ViolationLite } from "@/lib/drivers";
 import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 import { requireSameOrigin } from "@/lib/request-security";
+import { invalidateLiveFleetCache } from "@/lib/fleet-edge-live";
 
 export const dynamic = "force-dynamic";
 
@@ -176,6 +177,8 @@ async function handlePost(req: Request) {
     competencies.map((c): CompetencyLite => ({ assetClass: c.assetClass, level: c.level, expiresOn: c.expiresOn })),
     score
   );
+
+  await invalidateLiveFleetCache();
 
   return NextResponse.json({
     ok: true,

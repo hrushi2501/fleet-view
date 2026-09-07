@@ -8,6 +8,7 @@ const workflow = await readFile(new URL("../.github/workflows/dependency-audit.y
 test("quality commands keep the required checks in one predictable order", () => {
   assert.equal(pkg.scripts.test, "node --import ./scripts/test-setup.mjs --test 'src/**/*.test.ts'");
   assert.equal(pkg.scripts["test:all"], "npm test && npm run test:deploy");
+  assert.match(pkg.scripts["test:deploy"], /rls-policy-contract\.test\.mjs/);
   assert.equal(pkg.scripts.check, "npm run lint && tsc --noEmit && npm run test:all");
   assert.equal(pkg.scripts.verify, "npm run check && npm run build");
   assert.equal(pkg.scripts["verify:integration"], "npm run verify && npm run test:integration");

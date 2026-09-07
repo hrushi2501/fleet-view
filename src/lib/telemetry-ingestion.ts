@@ -24,6 +24,15 @@ export interface ITelemetryIngestionAdapter {
   fetchStream(assetId?: string): Promise<TelemetryReading[]>;
 }
 
+/**
+ * Generated telemetry is useful for demonstrating a screen, but it is never
+ * evidence.  Keep this decision next to the adapter contract so callers do
+ * not accidentally turn demo readings into real investigations.
+ */
+export function canPersistTelemetryFindings(adapter: Pick<ITelemetryIngestionAdapter, "simulated">): boolean {
+  return !adapter.simulated;
+}
+
 export class DummyDataGenerator implements ITelemetryIngestionAdapter {
   readonly simulated = true;
 

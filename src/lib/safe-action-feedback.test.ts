@@ -25,6 +25,7 @@ const audited: Array<{ file: string; calls: string[] }> = [
   { file: "src/components/AdminWeighForms.tsx", calls: ["saveRole", "assignRole", "linkUserToDriver", "saveTicket"] },
   { file: "src/components/MaintenanceKanban.tsx", calls: ["updateWorkOrderStatus"] },
   { file: "src/components/DriverFuelWizard.tsx", calls: ["saveFuel", "saveServicePhotos"] },
+  { file: "src/components/EntryForms.tsx", calls: ["deleteAsset", "deleteDriver", "deleteUser", "saveFuel", "updateFuel", "deleteFuel", "updateWorkOrderStatus", "saveCompliance", "deleteProject"] },
   { file: "src/components/AttendanceBatchMatrix.tsx", calls: ["batchSaveAttendance"] },
 ];
 

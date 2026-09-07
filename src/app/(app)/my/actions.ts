@@ -28,12 +28,12 @@ import { driverAccidentNotification, driverProblemNotification } from "@/lib/not
 // problems a driver can pick from lives with the rest of the driver app's data.
 import { PROBLEM_KINDS } from "./_data";
 
-export async function reportProblem(fd: FormData) {
+async function reportProblem__impl(fd: FormData) {
   const access = await requirePage("my.report");
 
   // No person record means no vehicle of their own, so there is nothing this
   // action could legitimately be reporting against.
-  if (!access.driverId) redirect("/my");
+  if (!access.driverId) throw new ActionError("A linked driver account is required to report a vehicle problem.");
 
   const assetId = String(fd.get("assetId") ?? "").trim();
   const kind = String(fd.get("kind") ?? "").trim();
@@ -42,10 +42,10 @@ export async function reportProblem(fd: FormData) {
   const returnToReport = fd.get("returnTo") === "report";
 
   const chosen = PROBLEM_KINDS.find((p) => p.value === kind);
-  if (!assetId || !chosen) redirect("/my/vehicle?error=1");
+  if (!assetId || !chosen) throw new ActionError("Choose the vehicle and the problem before sending the report.");
 
   // The claim in the form body, checked against what this session may see.
-  if (!(await canSeeAsset(access, assetId))) redirect("/my");
+  if (!(await canSeeAsset(access, assetId))) throw new ActionError("You can report a problem only for your assigned vehicle.");
 
   const [driver, asset] = await Promise.all([
     db.driver.findUnique({
@@ -54,7 +54,7 @@ export async function reportProblem(fd: FormData) {
     }),
     db.asset.findUnique({ where: { id: assetId }, select: { id: true, code: true, projectId: true } }),
   ]);
-  if (!driver || !asset) redirect("/my");
+  if (!driver || !asset) throw new ActionError("Your driver or vehicle record is no longer available. Reload and try again.");
 
   // Voice evidence is optional, but when it is supplied it travels through
   // the same private, signature-verified Blob path as regulated documents.
@@ -168,6 +168,7 @@ export async function reportProblem(fd: FormData) {
 
   redirect(returnToReport ? "/my/report?reported=1" : "/my/service?reported=1");
 }
+export const reportProblem = safe(reportProblem__impl);
 
 async function logDriverTrip__impl(fd: FormData) {
   const access = await requirePage("my.trips");

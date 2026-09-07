@@ -2,16 +2,18 @@ import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getAccess } from "@/lib/access";
-import { completeDuty } from "@/lib/trip-service";
+import { completeDuty, matchesActiveVehicleConfirmation } from "@/lib/trip-service";
 import { businessTransaction } from "@/lib/business-transaction";
 import { finiteNumber } from "@/lib/input-validation";
+import { ActionError } from "@/lib/action-error";
+import { invalidateLiveFleetCache } from "@/lib/fleet-edge-live";
 import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 import { requireSameOrigin } from "@/lib/request-security";
 
 export const dynamic = "force-dynamic";
 
 /**
- * End a trip session. POST { token, lat?, lng?, odometer?, notes? }
+ * End a trip session. POST { token?, confirmVehicle?, lat?, lng?, odometer?, notes? }
  *
  * Distance comes from the recorded path where positions exist, and falls back to
  * the odometer difference where they do not — a vehicle with no GPS still
@@ -36,7 +38,9 @@ async function handlePost(req: Request) {
   let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch { return NextResponse.json({ error: "A cabin QR code is required to end the trip." }, { status: 400 }); }
   const token = String(body.token ?? "").trim();
-  if (!token || token.length > 48) return NextResponse.json({ error: "Scan or enter the cabin QR code to end this trip." }, { status: 400 });
+  const confirmation = String(body.confirmVehicle ?? "").replace(/[^a-z0-9]/gi, "").toUpperCase();
+  if (token.length > 48) return NextResponse.json({ error: "The cabin code is not valid." }, { status: 400 });
+  if (!token && confirmation.length < 4) return NextResponse.json({ error: "Scan the cabin QR code, or confirm the last 4 characters of the assigned vehicle number." }, { status: 400 });
 
 
   const account = await db.user.findUnique({ where: { id: access.session.id }, include: { driverRef: true } });
@@ -48,14 +52,24 @@ async function handlePost(req: Request) {
   }
 
   const result = await businessTransaction(access.session, async tx => {
+    const requestedSessionId = body.sessionId == null ? null : String(body.sessionId);
+    if (requestedSessionId && requestedSessionId.length > 64) throw new ActionError("Invalid duty session.");
     const active = await tx.tripSession.findFirst({
       where: { driverId: person.id, userId: access.session.id,
-        ...(body.sessionId ? { id: String(body.sessionId) } : { status: "ACTIVE" }),
-        asset: { qrToken: token },
+        ...(requestedSessionId ? { id: requestedSessionId, status: "ACTIVE" } : { status: "ACTIVE" }),
       },
       orderBy: { startedAt: "desc" },
+      include: { asset: { select: { qrToken: true, registrationNo: true, code: true } } },
     });
     if (!active) return null;
+    if (token && active.asset.qrToken !== token) return null;
+    if (!token) {
+      // The fallback is not a general checkout override: it is bound to the
+      // signed-in driver and their active session, then checks a plate suffix.
+      if (!matchesActiveVehicleConfirmation(confirmation, active.asset.registrationNo, active.asset.code)) {
+        throw new ActionError("The vehicle confirmation does not match your active duty.");
+      }
+    }
     const optional = (key: string, min: number, max?: number) => body[key] == null || body[key] === "" ? null : finiteNumber(body[key], key, { min, max });
     return completeDuty(tx, active.id, access.session, {
       odometer: optional("odometer", 0), lat: optional("lat", -90, 90), lng: optional("lng", -180, 180),
@@ -63,6 +77,7 @@ async function handlePost(req: Request) {
     });
   });
   if (!result) return NextResponse.json({ error: "No matching duty was found. Check the cabin code and reload." }, { status: 404 });
+  await invalidateLiveFleetCache();
   return NextResponse.json({ ok: true, ...result });
 }
 

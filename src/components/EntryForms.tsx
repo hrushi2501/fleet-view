@@ -6,6 +6,7 @@ import { X, Plus, Pencil, Trash2, Loader2, Camera, Calculator, RotateCcw } from 
 import { cn, ASSET_CLASS_LABEL, inr } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { isActionError } from "@/lib/action-result";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   invalidateAllQueries,
@@ -326,9 +327,15 @@ export function DeleteButton({ kind, id, label }: { kind: "asset" | "driver" | "
   const queryClient = useQueryClient();
 
   async function handleDelete() {
-    if (kind === "asset") await deleteAsset(id);
-    else if (kind === "driver") await deleteDriver(id);
-    else await deleteUser(id);
+    const result = kind === "asset"
+      ? await deleteAsset(id)
+      : kind === "driver"
+        ? await deleteDriver(id)
+        : await deleteUser(id);
+    if (isActionError(result)) {
+      toast.error("Delete failed", result.error);
+      return;
+    }
     
     toast.success(kind === "asset" ? `✓ ${label} decommissioned; history retained` : `✓ ${label} deleted successfully`);
     await invalidateAllQueries(queryClient);
@@ -508,7 +515,12 @@ export function FuelEntry({ assets, projects, defaultRate = 92.5 }: { assets: Op
       try {
         if (odo) fd.set("odometerPhoto", await compressImage(odo));
         if (pump) fd.set("pumpPhoto", await compressImage(pump));
-        await saveFuel(fd);
+        const result = await saveFuel(fd);
+        if (isActionError(result)) {
+          setErr(result.error);
+          toast.error("Fuel entry failed", result.error);
+          return;
+        }
         setOpen(false); setOdo(null); setPump(null);
         toast.success(`✓ Diesel issue of ${qty} L recorded successfully`, `Total: ${inr(totalAmount)}`);
         await invalidateFuelQueries(queryClient);
@@ -616,7 +628,12 @@ export function FuelEdit({ txn }: { txn: { id: string; label: string; quantity: 
     setErr("");
     start(async () => {
       try {
-        await updateFuel(txn.id, fd);
+        const result = await updateFuel(txn.id, fd);
+        if (isActionError(result)) {
+          setErr(result.error);
+          toast.error("Update failed", result.error);
+          return;
+        }
         setOpen(false);
         toast.success("✓ Fuel entry updated");
         await invalidateFuelQueries(queryClient);
@@ -630,7 +647,12 @@ export function FuelEdit({ txn }: { txn: { id: string; label: string; quantity: 
   }
 
   async function remove() {
-    await deleteFuel(txn.id);
+    const result = await deleteFuel(txn.id);
+    if (isActionError(result)) {
+      setErr(result.error);
+      toast.error("Delete failed", result.error);
+      return;
+    }
     setOpen(false);
     toast.success("✓ Fuel entry deleted");
     await invalidateFuelQueries(queryClient);
@@ -741,7 +763,12 @@ export function WorkOrderStatus({ id, status }: { id: string; status: string }) 
       onChange={(e) => {
         const newStatus = e.target.value;
         start(async () => {
-          await updateWorkOrderStatus(id, newStatus);
+          const result = await updateWorkOrderStatus(id, newStatus);
+          if (isActionError(result)) {
+            toast.error("Status not changed", result.error);
+            router.refresh();
+            return;
+          }
           toast.success(`✓ Status changed to ${newStatus}`);
           await invalidateAllQueries(queryClient);
           router.refresh();
@@ -819,7 +846,12 @@ export function DocumentRenewModal({
 
     start(async () => {
       try {
-        await saveCompliance(fd);
+        const result = await saveCompliance(fd);
+        if (isActionError(result)) {
+          setErr(result.error);
+          toast.error("Renewal failed", result.error);
+          return;
+        }
         setOpen(false);
         toast.success(`✓ ${doc.docType} for ${doc.assetCode} renewed until ${expiryDate}`);
         await invalidateComplianceQueries(queryClient, doc.assetId);
@@ -1062,7 +1094,11 @@ export function ProjectDeleteButton({ id, code }: { id: string; code: string }) 
   const queryClient = useQueryClient();
 
   async function handleDelete() {
-    await deleteProject(id);
+    const result = await deleteProject(id);
+    if (isActionError(result)) {
+      toast.error("Delete failed", result.error);
+      return;
+    }
     toast.success(`✓ Project ${code} deleted successfully`);
     await invalidateAllQueries(queryClient);
     router.refresh();

@@ -1,7 +1,7 @@
 import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { requireApi } from "@/lib/access";
-import { createTelemetryAdapter } from "@/lib/telemetry-ingestion";
+import { canPersistTelemetryFindings, createTelemetryAdapter } from "@/lib/telemetry-ingestion";
 import { AiFraudDetectionService } from "@/lib/ai-fraud";
 import { reserveRateLimit } from "@/lib/request-rate-limit";
 import { requireSameOrigin } from "@/lib/request-security";
@@ -34,16 +34,26 @@ async function handlePOST(req: Request) {
   }
 
   try {
-    // AUTO: the live Fleet Edge feed once it is configured, the generator until
-    // then. `simulated` is returned so the UI can label fabricated results —
-    // this scan writes fraud cases, and an invented case costs a real driver.
+    // AUTO uses generated readings until Fleet Edge is configured. Generated
+    // readings may be shown as a clearly-labelled preview, but must never
+    // create FraudCase or Alert rows against an actual person or vehicle.
     const adapter = createTelemetryAdapter('AUTO');
     const stream = await adapter.fetchStream();
+
+    if (!canPersistTelemetryFindings(adapter)) {
+      return NextResponse.json({
+        ok: true,
+        processed: stream.length,
+        simulated: true,
+        persisted: 0,
+        message: "Demo telemetry was analysed as a preview only. No fraud cases or alerts were created.",
+      });
+    }
 
     const aiService = new AiFraudDetectionService();
     await aiService.processTelemetry(stream);
 
-    return NextResponse.json({ ok: true, processed: stream.length, simulated: adapter.simulated });
+    return NextResponse.json({ ok: true, processed: stream.length, simulated: false, persisted: true });
   } catch (error) {
     console.error("[API] /insight/ai-scan error:", error);
     throw error;

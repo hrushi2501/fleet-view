@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { AlertTriangle, CircleStop, Loader2, Mic, Phone, Radio, Siren, Upload, X } from "lucide-react";
 import { reportProblem } from "@/app/(app)/my/actions";
 import type { DriverEmergencyContact } from "@/app/(app)/my/_data";
+import { isActionError, type ActionResult } from "@/lib/action-result";
 
 type ReportKind = "ACCIDENT" | "ENGINE" | "BRAKE" | "TYRE" | "FUEL" | "ELECTRIC" | "HINDRANCE" | "OTHER";
 
@@ -48,12 +49,22 @@ export function DriverReportForm({
   vehicleCode,
   contacts,
   missingCompanyContacts,
+  returnToReport = true,
 }: {
   assetId: string;
   vehicleCode: string;
   contacts: DriverEmergencyContact[];
   missingCompanyContacts: string[];
+  /** Keep the legacy vehicle-page post-submit destination when embedded there. */
+  returnToReport?: boolean;
 }) {
+  const [submitResult, formAction] = useActionState(
+    async (_previous: ActionResult, formData: FormData): Promise<ActionResult> => {
+      const result = await reportProblem(formData);
+      return isActionError(result) ? result : undefined;
+    },
+    undefined,
+  );
   const [kind, setKind] = useState<ReportKind>("ACCIDENT");
   const [recording, setRecording] = useState<File | null>(null);
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
@@ -152,9 +163,9 @@ export function DriverReportForm({
   const accident = kind === "ACCIDENT";
 
   return (
-    <form action={reportProblem} className="space-y-4" aria-label="Driver report form">
+    <form action={formAction} className="space-y-4" aria-label="Driver report form">
       <input type="hidden" name="assetId" value={assetId} />
-      <input type="hidden" name="returnTo" value="report" />
+      {returnToReport && <input type="hidden" name="returnTo" value="report" />}
 
       <section className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
         <p className="text-sm font-medium text-slate-500">Vehicle</p>
@@ -216,6 +227,11 @@ export function DriverReportForm({
       </section>
 
       <label className="block rounded-2xl bg-white p-4 ring-1 ring-slate-200"><span className="text-base font-bold text-ink-900">थोड़ा लिखना है? / Add a note</span><textarea name="note" rows={3} maxLength={500} placeholder="Optional — where are you, what happened?" className="mt-2 w-full rounded-xl bg-slate-50 p-3 text-base text-ink-900 outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-brand-500" /></label>
+      {isActionError(submitResult) && (
+        <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 ring-1 ring-rose-200">
+          {submitResult.error}
+        </p>
+      )}
       <SubmitReport />
     </form>
   );

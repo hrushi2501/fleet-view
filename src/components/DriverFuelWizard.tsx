@@ -5,11 +5,9 @@ import { useRouter } from "next/navigation";
 import { saveFuel, saveServicePhotos } from "@/app/(app)/entry-actions";
 import { isActionError } from "@/lib/action-result";
 import { useToast } from "@/components/Toast";
-import { PushButton } from "@/components/PushButton";
-import { Truck, Camera, Check, ArrowLeft, Delete, Volume2, Fuel, LogOut, Loader2, CircleCheck, Wrench, X, Pencil, Sparkles } from "lucide-react";
+import { Truck, Camera, Check, ArrowLeft, Delete, Volume2, Fuel, Loader2, CircleCheck, X, Pencil, Sparkles } from "lucide-react";
 
 type Vehicle = { id: string; code: string; regNo: string | null; name: string };
-type Recent = { id: string; code: string; regNo: string | null; qty: number; date: string; odo: string | null; pump: string | null };
 
 async function compressImage(file: File): Promise<File> {
   if (!file.type.startsWith("image/")) return file;
@@ -125,8 +123,22 @@ function speak(text: string) {
   try { const u = new SpeechSynthesisUtterance(text); u.lang = "hi-IN"; u.rate = 0.92; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } catch { /* ignore */ }
 }
 
-type Step = "home" | "vehicle" | "odo" | "pump" | "after" | "review" | "rold" | "rnew" | "done";
+type Step = "vehicle" | "odo" | "pump" | "after" | "review" | "rold" | "rnew" | "done";
 type Mode = "fuel" | "repair";
+const FUEL_DRAFT_KEY = "fleetview:driver:fuel-draft:v1";
+type FuelDraft = { vehicleId: string; odoValue: string; litres: string; amount: string; savedAt: number };
+
+function loadFuelDraft(vehicles: Vehicle[]): FuelDraft | null {
+  try {
+    const raw = window.localStorage.getItem(FUEL_DRAFT_KEY);
+    if (!raw) return null;
+    const draft = JSON.parse(raw) as Partial<FuelDraft>;
+    if (!draft.vehicleId || !vehicles.some((v) => v.id === draft.vehicleId) || Date.now() - Number(draft.savedAt) > 7 * 24 * 60 * 60 * 1000) return null;
+    return draft as FuelDraft;
+  } catch { return null; }
+}
+function saveFuelDraft(draft: FuelDraft) { try { window.localStorage.setItem(FUEL_DRAFT_KEY, JSON.stringify(draft)); } catch { /* visible form remains available */ } }
+function clearFuelDraft() { try { window.localStorage.removeItem(FUEL_DRAFT_KEY); } catch { /* ignore */ } }
 
 const PROMPT: Record<string, string> = {
   vehicle: "अपनी गाड़ी चुनें",
@@ -149,18 +161,19 @@ function StepHeader({ back, hindi, eng, step }: { back: () => void; hindi: strin
   );
 }
 
-export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectId, dieselRate = 92.5 }: {
-  vehicles: Vehicle[]; driverName: string; recent: Recent[]; defaultProjectId: string | null; dieselRate?: number;
+export function DriverFuelWizard({ vehicles, defaultProjectId, dieselRate = 92.5 }: {
+  vehicles: Vehicle[]; defaultProjectId: string | null; dieselRate?: number;
 }) {
 
-  const [step, setStep] = useState<Step>("home");
+  const [step, setStep] = useState<Step>(vehicles.length === 1 ? "review" : "vehicle");
   const [mode, setMode] = useState<Mode>("fuel");
-  const [vehicle, setVehicle] = useState<Vehicle | null>(null);
+  const [vehicle, setVehicle] = useState<Vehicle | null>(vehicles.length === 1 ? vehicles[0] : null);
   const [odo, setOdo] = useState<File | null>(null);
   const [pump, setPump] = useState<File | null>(null);
   const [afterOdo, setAfterOdo] = useState<File | null>(null);
   const [odoValue, setOdoValue] = useState("");
   const [litres, setLitres] = useState("");
+  const [rate, setRate] = useState(String(dieselRate));
   const [amount, setAmount] = useState("");
   const [odoConf, setOdoConf] = useState<number | null>(null);
   const [pumpConf, setPumpConf] = useState<number | null>(null);
@@ -178,6 +191,11 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
   const repairRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { if (PROMPT[step]) speak(PROMPT[step]); }, [step]);
+  useEffect(() => {
+    const qty = Number(litres), price = Number(rate);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- amount is a derived submission field used by the existing server action.
+    if (Number.isFinite(qty) && qty > 0 && Number.isFinite(price) && price > 0) setAmount(String(Math.round(qty * price * 100) / 100));
+  }, [litres, rate]);
 
   // Android hardware back button → go to previous wizard step (don't exit app)
   const stepRef = useRef(step);
@@ -188,28 +206,32 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
     numpadRef.current = numpad;
   }, [step, numpad]);
 
-  // Android home-screen quick actions (?action=fuel | repair)
+  // The driver app hands this screen the claimed vehicle. Skip a redundant
+  // picker; a saved draft is restored for review, never submitted automatically.
   useEffect(() => {
     const a = new URLSearchParams(window.location.search).get("action");
     if (a === "fuel") {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setMode("fuel");
-      setStep("vehicle");
+      const draft = loadFuelDraft(vehicles);
+      if (draft) {
+        setVehicle(vehicles.find((v) => v.id === draft.vehicleId) ?? null);
+        setOdoValue(draft.odoValue); setLitres(draft.litres); setAmount(draft.amount);
+      }
+      setStep(vehicles.length === 1 ? "review" : "vehicle");
     } else if (a === "repair") {
        
       setMode("repair");
       setStep("vehicle");
     }
-  }, []);
+  }, [vehicles]);
   useEffect(() => {
     function onPop() {
       if (numpadRef.current) { setNumpad(null); window.history.pushState(null, ""); return; }
       const s = stepRef.current;
-      if (s === "home") return; // let it exit the app
       if (s === "vehicle" || s === "done") {
-        setVehicle(null); setOdo(null); setPump(null); setAfterOdo(null); setOdoValue(""); setLitres(""); setAmount("");
-        setOdoConf(null); setPumpConf(null); setOdoAction(null); setPumpAction(null);
-        setOldPhotos([]); setNewPhotos([]); setStep("home");
+        router.push("/my");
+        return;
       }
       else if (s === "odo") setStep("vehicle");
       else if (s === "pump") setStep("odo");
@@ -221,13 +243,13 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
     }
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, []);
-  useEffect(() => { if (step !== "home" || numpad) window.history.pushState(null, ""); }, [step, numpad]);
+  }, [router]);
+  useEffect(() => { if (numpad) window.history.pushState(null, ""); }, [numpad]);
 
   function reset() {
     setVehicle(null); setOdo(null); setPump(null); setAfterOdo(null); setOdoValue(""); setLitres(""); setAmount("");
     setOdoConf(null); setPumpConf(null); setOdoAction(null); setPumpAction(null); setCaptureReasons([]);
-    setOldPhotos([]); setNewPhotos([]); setNumpad(null); setMode("fuel"); setStep("home");
+    setOldPhotos([]); setNewPhotos([]); setNumpad(null); setMode("fuel"); router.push("/my");
   }
 
   async function capture(which: "odo" | "pump" | "after", file: File) {
@@ -256,7 +278,10 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
     } else {
       const r = await ocrPumpEx(file);
       if (r.litres) setLitres(r.litres);
-      if (r.amount) setAmount(r.amount);
+      if (r.amount) {
+        setAmount(r.amount);
+        if (r.litres && Number(r.litres) > 0) setRate(String(Math.round((Number(r.amount) / Number(r.litres)) * 100) / 100));
+      }
       else if (r.litres) {
         const detectedRate = Number(r.rate) > 0 ? Number(r.rate) : dieselRate;
         setAmount(String(Math.round(Number(r.litres) * detectedRate * 100) / 100));
@@ -276,6 +301,12 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
 
   function finishFuel() {
     if (!vehicle || !litres || Number(litres) <= 0 || !amount || Number(amount) <= 0) return;
+    const persistDraft = () => saveFuelDraft({ vehicleId: vehicle.id, odoValue, litres, amount, savedAt: Date.now() });
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      persistDraft();
+      toast.error("Fuel details saved on this phone", "Go online, check recent fuel, then tap Save once only if it is not listed.");
+      return;
+    }
     const fd = new FormData();
     fd.set("type", "ISSUE");
     fd.set("assetId", vehicle.id);
@@ -291,13 +322,18 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
         if (pump) fd.set("pumpPhoto", await compressFuelEvidence(pump));
         if (afterOdo) fd.set("afterOdometerPhoto", await compressFuelEvidence(afterOdo));
         const result = await saveFuel(fd);
-        if (isActionError(result)) { toast.error(result.error); return; }
-        buzz([40, 50, 80]); setStep("done"); router.refresh();
+        if (isActionError(result)) {
+          persistDraft();
+          toast.error("Fuel not saved", `${result.error} Your entered details are kept on this phone.`);
+          return;
+        }
+        clearFuelDraft(); buzz([40, 50, 80]); setStep("done"); router.refresh();
       } catch {
         // A lost signal or an unexpected server response must not look like a
         // successful tap. Keep every entered value on the review screen and
         // give the driver one clear recovery instruction.
-        toast.error("Diesel record was not saved", "Check the signal, then tap Save again.");
+        persistDraft();
+        toast.error("Fuel details saved on this phone", "Photos are not stored by the browser. Check recent fuel after signal returns; if missing, reattach any photos and tap Save once.");
       }
     });
   }
@@ -364,44 +400,6 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
     );
   }
 
-  // ---- HOME ----
-  if (step === "home") {
-    return (
-      <div className="min-h-screen bg-slate-50">
-        <header className="flex flex-wrap items-center justify-between gap-3 bg-ink-900 px-4 py-4 text-white">
-          <div className="flex items-center gap-2"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500"><Truck className="h-6 w-6" /></div><p className="text-base font-bold">{driverName.split(" ")[0]}</p></div>
-          <button type="button" onClick={() => { void fetch("/api/auth/logout", { method: "POST" }).then(() => router.push("/login")); }} className="rounded-xl bg-white/10 p-3" aria-label="Sign out"><LogOut className="h-6 w-6" /></button>
-        </header>
-        <div className="p-5">
-          <button onClick={() => { setMode("fuel"); setStep("vehicle"); }} className="flex w-full flex-col items-center gap-3 rounded-3xl bg-linear-to-br from-brand-500 to-brand-700 py-10 text-white shadow-xl shadow-brand-500/30 active:scale-[0.98]">
-            <Fuel className="h-16 w-16" /><span className="text-3xl font-extrabold">डीज़ल भरें</span><span className="text-base opacity-90">+ Add Diesel</span>
-          </button>
-          <button onClick={() => { setMode("repair"); setStep("vehicle"); }} className="mt-4 flex w-full flex-col items-center gap-3 rounded-3xl bg-linear-to-br from-amber-500 to-orange-600 py-10 text-white shadow-xl shadow-amber-500/30 active:scale-[0.98]">
-            <Wrench className="h-16 w-16" /><span className="text-3xl font-extrabold">मरम्मत फोटो</span><span className="text-base opacity-90">+ Repair Part Photos</span>
-          </button>
-          <div className="mt-4 flex flex-wrap justify-center gap-2">
-            <PushButton label="🔔 अलर्ट चालू करें" className="inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-3 text-base font-bold text-brand-700 shadow-sm ring-1 ring-slate-200" />
-            <a href="/install" className="inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-3 text-base font-bold text-emerald-700 shadow-sm ring-1 ring-slate-200">📲 ऐप इंस्टॉल</a>
-          </div>
-          {recent.length > 0 && (
-            <div className="mt-6">
-              <p className="mb-3 text-sm font-semibold text-slate-500">पिछली एंट्री · Recent</p>
-              <div className="space-y-2">
-                {recent.slice(0, 6).map((r) => (
-                  <div key={r.id} className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-sm">
-                    <div className="rounded-lg bg-yellow-300 px-2 py-1 font-mono text-sm font-bold text-black">{r.regNo ?? r.code}</div>
-                    <div className="flex flex-1 items-center gap-1.5">{r.odo && <img src={r.odo} alt="" className="h-9 w-9 rounded object-cover" />}{r.pump && <img src={r.pump} alt="" className="h-9 w-9 rounded object-cover" />}</div>
-                    <p className="text-lg font-extrabold text-ink-900">{r.qty}<span className="text-xs font-medium text-slate-400"> L</span></p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
   // ---- VEHICLE ----
   if (step === "vehicle") {
     return (
@@ -410,7 +408,7 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
 
         <div className="grid grid-cols-2 gap-3 p-4">
           {vehicles.map((v) => (
-            <button key={v.id} onClick={() => { setVehicle(v); setStep(mode === "fuel" ? "odo" : "rold"); }} className="flex flex-col items-center gap-2 rounded-2xl bg-white p-4 shadow-sm active:scale-95 active:bg-brand-50">
+            <button key={v.id} onClick={() => { setVehicle(v); setStep(mode === "fuel" ? "review" : "rold"); }} className="flex flex-col items-center gap-2 rounded-2xl bg-white p-4 shadow-sm active:scale-95 active:bg-brand-50">
               <Truck className="h-9 w-9 text-brand-600" />
               <div className="rounded-lg border-2 border-black bg-yellow-300 px-2 py-1 text-center font-mono text-base font-extrabold leading-tight text-black">{v.regNo ?? v.code}</div>
             </button>
@@ -507,35 +505,20 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
   if (step === "review") {
     return (
       <div className="flex min-h-screen flex-col bg-slate-50">
-        <StepHeader back={() => setStep("after")} hindi="जांच लें" eng="Check & send" step={step} />
+        <StepHeader back={reset} hindi="डीज़ल भरें" eng="Quick fuel entry" step={step} />
 
         <div className="flex flex-1 flex-col gap-4 p-5">
-          <button onClick={() => setNumpad("litres")} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-5 shadow-sm active:bg-slate-50">
-            <div className="flex items-center gap-3"><Fuel className="h-8 w-8 text-brand-600" /><span className="text-lg font-bold text-slate-600">डीज़ल</span></div>
-            <div className="flex items-center gap-2"><span className="text-4xl font-extrabold text-ink-900">{litres || "0"}</span><span className="text-lg text-slate-400">L</span><Pencil className="h-5 w-5 text-brand-500" /></div>
-          </button>
-          <button onClick={() => setNumpad("odo")} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-5 shadow-sm active:bg-slate-50">
-            <div className="flex items-center gap-3"><Truck className="h-8 w-8 text-brand-600" /><span className="text-lg font-bold text-slate-600">मीटर</span></div>
-            <div className="flex items-center gap-2"><span className="text-4xl font-extrabold text-ink-900">{odoValue || "0"}</span><Pencil className="h-5 w-5 text-brand-500" /></div>
-          </button>
-          <button onClick={() => setNumpad("amount")} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-5 shadow-sm active:bg-slate-50">
-            <div className="flex items-center gap-3"><span className="flex h-8 w-8 items-center justify-center text-2xl font-extrabold text-brand-600">₹</span><span className="text-lg font-bold text-slate-600">कुल रकम</span></div>
-            <div className="flex items-center gap-2"><span className="text-4xl font-extrabold text-ink-900">{amount || "0"}</span><Pencil className="h-5 w-5 text-brand-500" /></div>
-          </button>
+          <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <div className="mb-4 flex items-center gap-3"><div className="rounded-2xl bg-amber-100 p-3 text-amber-700"><Fuel className="h-6 w-6" /></div><div><p className="font-extrabold text-ink-900">{vehicle?.regNo ?? vehicle?.code}</p><p className="text-xs text-slate-500">Claimed vehicle · linked to your duty</p></div></div>
+            <div className="grid grid-cols-2 gap-3"><label className="text-xs font-bold text-slate-600">Litres<input type="number" min="0.01" max="10000" step="0.01" inputMode="decimal" value={litres} onChange={(event) => setLitres(event.target.value)} placeholder="0" className="mt-1.5 min-h-13 w-full rounded-xl border border-slate-200 px-3 text-lg font-extrabold text-ink-900 outline-none focus:border-brand-500" /></label><label className="text-xs font-bold text-slate-600">Rate / litre ₹<input type="number" min="0.01" max="10000" step="0.01" inputMode="decimal" value={rate} onChange={(event) => setRate(event.target.value)} className="mt-1.5 min-h-13 w-full rounded-xl border border-slate-200 px-3 text-lg font-extrabold text-ink-900 outline-none focus:border-brand-500" /></label></div>
+            <label className="mt-3 block text-xs font-bold text-slate-600">Dashboard meter <span className="font-normal text-slate-400">(optional)</span><input type="number" min="0" max="10000000" inputMode="decimal" value={odoValue} onChange={(event) => setOdoValue(event.target.value)} placeholder="Enter reading" className="mt-1.5 min-h-13 w-full rounded-xl border border-slate-200 px-3 text-lg font-extrabold text-ink-900 outline-none focus:border-brand-500" /></label>
+          </div>
           <div className="rounded-2xl bg-brand-50 p-4 text-center">
             <p className="text-sm text-slate-500">कुल · Total</p>
             <p className="text-2xl font-extrabold text-brand-700">₹ {(Number(amount) || 0).toLocaleString("en-IN")}</p>
             {Number(litres) > 0 && Number(amount) > 0 && <p className="mt-1 text-xs font-medium text-brand-700">₹ {(Number(amount) / Number(litres)).toFixed(2)} / litre</p>}
           </div>
-          <div className="grid grid-cols-4 gap-2">
-            {[{ label: "Before", file: odo }, { label: "Pump", file: pump }, { label: "After", file: afterOdo }].map((photo) => (
-              <div key={photo.label} className="min-w-0 text-center">
-                {photo.file ? <img src={URL.createObjectURL(photo.file)} alt={photo.label} className="h-20 w-full rounded-xl object-cover ring-1 ring-slate-200" /> : <div className="flex h-20 items-center justify-center rounded-xl bg-slate-100 px-1 text-[10px] font-semibold text-slate-400">No photo</div>}
-                <p className="mt-1 text-[10px] font-semibold text-slate-500">{photo.label}</p>
-              </div>
-            ))}
-            <button onClick={() => speak(`आपने ${litres || 0} लीटर डीज़ल भरा`)} className="flex h-20 w-20 flex-col items-center justify-center rounded-xl bg-brand-50 text-brand-600"><Volume2 className="h-7 w-7" /><span className="text-[10px]">सुनें</span></button>
-          </div>
+          <details className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200"><summary className="cursor-pointer text-sm font-bold text-slate-700">Add verification photos <span className="font-normal text-slate-400">(optional)</span></summary><p className="mt-2 text-xs text-slate-500">Photos help verify fuel use but do not stop a valid fuel entry.</p><div className="mt-3 grid grid-cols-3 gap-2">{([ ["Before dashboard", odo, "odo"], ["Pump", pump, "pump"], ["After dashboard", afterOdo, "after"] ] as const).map(([label, file, kind]) => <label key={kind} className="block cursor-pointer text-center"><input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(event) => { const photo = event.target.files?.[0]; if (photo) void capture(kind, photo); event.currentTarget.value = ""; }} /><span className="flex h-20 items-center justify-center overflow-hidden rounded-xl bg-slate-100 px-1 text-[10px] font-semibold text-slate-500 ring-1 ring-slate-200">{file ? <img src={URL.createObjectURL(file)} alt={label} className="h-full w-full object-cover" /> : label}</span></label>)}</div></details>
         </div>
         <div className="p-4">
           <button disabled={pending || !litres || Number(litres) <= 0 || !amount || Number(amount) <= 0} onClick={finishFuel} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-5 text-2xl font-extrabold text-white shadow-lg active:scale-[0.98] disabled:opacity-40">

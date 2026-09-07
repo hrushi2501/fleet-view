@@ -14,6 +14,7 @@ import { uploadPrivateFile } from "@/lib/private-upload";
 import { canSeeAsset } from "@/lib/access";
 import { driverFuelFillNotification } from "@/lib/notification-events";
 import { driverFuelDetails } from "@/lib/driver-refuelling";
+import { invalidateLiveFleetCache } from "@/lib/fleet-edge-live";
 
 async function uploadPhoto(file: FormDataEntryValue | null, prefix: string): Promise<string | null> {
   if (!file || typeof file === "string") return null;
@@ -105,6 +106,7 @@ async function saveAsset__impl(id: string | null, fd: FormData) {
   else await db.asset.create({ data });
   revalidatePath("/fleet");
   revalidatePath("/");
+  await invalidateLiveFleetCache();
 }
 
 async function deleteAsset__impl(id: string) {
@@ -155,6 +157,7 @@ async function deleteAsset__impl(id: string) {
   });
   revalidatePath("/fleet");
   revalidatePath("/");
+  await invalidateLiveFleetCache();
 }
 
 /* ----------------------------- DRIVERS ----------------------------- */
@@ -446,6 +449,7 @@ async function saveFuel__impl(fd: FormData) {
   revalidatePath("/");
   revalidatePath("/reports");
   revalidatePath("/reports/notifications");
+  await invalidateLiveFleetCache();
 }
 
 
@@ -506,6 +510,7 @@ async function updateFuel__impl(id: string, fd: FormData) {
   await db.fuelTransaction.update({ where: { id }, data });
   revalidatePath("/fuel");
   revalidatePath("/");
+  await invalidateLiveFleetCache();
 }
 
 async function deleteFuel__impl(id: string) {
@@ -514,6 +519,7 @@ async function deleteFuel__impl(id: string) {
   await db.fuelTransaction.delete({ where: { id } });
   revalidatePath("/fuel");
   revalidatePath("/");
+  await invalidateLiveFleetCache();
 }
 
 /* ----------------------------- WORK ORDER ----------------------------- */
@@ -563,6 +569,7 @@ async function updateWorkOrderStatus__impl(id: string, status: string) {
   revalidatePath("/fleet");
   revalidatePath("/costs");
   revalidatePath("/");
+  await invalidateLiveFleetCache();
 }
 
 /* ----------------------------- COMPLIANCE ----------------------------- */

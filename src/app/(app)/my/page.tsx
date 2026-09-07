@@ -85,13 +85,16 @@ export default async function MyWorkPage() {
             primaryMeter: vehicle.primaryMeter,
             fuelLevelPct: vehicle.fuelLevelPct,
             fuelCapacity: vehicle.fuelCapacity,
+            // Fall back to the phone when a configured tracker has stopped
+            // reporting. A device id alone is not evidence that GPS is alive.
+            hasHardwareGps: Boolean(vehicle.deviceId && now.getTime() - vehicle.lastSeen.getTime() <= 30 * 60 * 1000),
           }}
           expiredDocsCount={expired.length}
           overdueServiceCount={overdue.length}
         />
       )}
 
-      {vehicle && state && (
+      {vehicle && state && !shift.hasActiveTrip && (
         <>
           <Hero
             tone={state.tone}
@@ -102,7 +105,7 @@ export default async function MyWorkPage() {
         </>
       )}
 
-      <Fact label="Duty" value={shift.label} sub={shift.detail} tone={shift.tone} />
+      {!shift.hasActiveTrip && <Fact label="Duty" value={shift.label} sub={shift.detail} tone={shift.tone} />}
 
       {/* Anything below this line is a reason to talk to the supervisor before
           moving the vehicle, so it sits above the navigation, not under it. */}

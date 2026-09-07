@@ -2,20 +2,9 @@
  * "Fuel" — what has gone into this driver's vehicle, and the way to record the
  * next fill.
  *
- * ─────────────────────────────────────────────────────────────────────────────
- * WHY THE EXISTING WIZARD IS REUSED RATHER THAN REBUILT
- *
- * `DriverFuelWizard` is already the capture flow this business runs on: camera,
- * odometer and pump OCR with a confirm step when the reading is not clean, a
- * number pad for correcting it, spoken prompts, and offline-tolerant submission.
- * Rewriting any of that for a prettier list page would mean two flows to keep
- * correct and one of them getting less testing.
- *
- * What it is not is a page — it is a full-screen takeover with its own header.
- * So it is opened deliberately, from the button below, via `?action=fuel`, which
- * is the same entry point the Android home-screen shortcut already uses. The
- * driver taps once and lands on the vehicle step; the list stays a list.
- * ─────────────────────────────────────────────────────────────────────────────
+ * The active duty already identifies the vehicle. The capture screen therefore
+ * opens directly to a compact entry card; evidence remains optional and lives
+ * behind a disclosure rather than forcing a photo-by-photo wizard.
  */
 import Link from "next/link";
 import { requirePage } from "@/lib/access";
@@ -51,24 +40,12 @@ export default async function MyFuelPage({
     myShift(driver.id, access.session.id),
   ]);
 
-  // The wizard picks a vehicle from the list it is handed, so handing it only
-  // this driver's machine is both the scoping and the whole vehicle step.
   if (action === "fuel" && vehicle && shift.hasActiveTrip) {
     const dieselRate = await getDieselRate();
     return (
       <div className="-mx-4 -my-6 lg:-mx-8">
         <DriverFuelWizard
           vehicles={[{ id: vehicle.id, code: vehicle.code, regNo: vehicle.registrationNo, name: vehicle.name }]}
-          driverName={driver.name}
-          recent={fills.slice(0, 6).map((f) => ({
-            id: f.id,
-            code: vehicle.code,
-            regNo: vehicle.registrationNo,
-            qty: Math.round(f.litres),
-            date: f.date.toISOString(),
-            odo: null,
-            pump: null,
-          }))}
           defaultProjectId={vehicle.projectId}
           dieselRate={dieselRate}
         />
