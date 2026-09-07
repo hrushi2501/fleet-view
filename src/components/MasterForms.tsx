@@ -36,7 +36,7 @@ function Sel({ label, name, options, defaultValue, required, hint }: { label: st
 function Modal({ open, onClose, title, subtitle, children }: { open: boolean; onClose: () => void; title: string; subtitle?: string; children: ReactNode }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-x-auto overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
       <div className="my-8 w-full max-w-2xl rounded-2xl bg-white shadow-xl ring-1 ring-slate-200">
         <div className="flex items-start justify-between border-b border-slate-100 p-5">
           <div>
@@ -81,7 +81,7 @@ export function ReadingForm({ assets }: { assets: Opt[] }) {
   return (
     <>
       <Trigger onClick={() => { setWarn(null); setOpen(true); }}><Plus className="h-4 w-4" /> Record Reading</Trigger>
-      <Modal open={open} onClose={() => setOpen(false)} title="Record Meter Reading" subtitle="A rollback or impossible jump is saved and flagged, not refused — refusing outright just teaches people to fudge the number.">
+      <Modal open={open} onClose={() => setOpen(false)} title="Record Meter Reading" subtitle="A wrong or impossible meter reading is saved and flagged, not blocked — blocking it only makes people enter fake numbers.">
         <form
           action={(fd) => start(async () => {
             const r = await saveReading(fd);
@@ -97,7 +97,7 @@ export function ReadingForm({ assets }: { assets: Opt[] }) {
               <p className="text-xs text-amber-800">{warn} <span className="block mt-1 text-amber-700">Saved and flagged for review.</span></p>
             </div>
           )}
-          <Sel label="Asset" name="assetId" required options={assets.map((a) => ({ value: a.id, label: a.label }))} />
+          <Sel label="Machine" name="assetId" required options={assets.map((a) => ({ value: a.id, label: a.label }))} />
           <Sel label="Meter" name="meterType" required options={[{ value: "ODOMETER", label: "Odometer (km)" }, { value: "HOURS", label: "Hour-meter (engine hours)" }]} hint="A backhoe has both — record each separately." />
           <Inp label="Reading" name="value" type="number" step="0.1" required />
           <Inp label="Date" name="date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
@@ -125,7 +125,7 @@ export function AssetMasterForm({ asset }: { asset: { id: string; code: string; 
   return (
     <>
       <button onClick={() => setOpen(true)} className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">Complete</button>
-      <Modal open={open} onClose={() => setOpen(false)} title={`Master Data — ${asset.code}`} subtitle="Fields the original asset form never captured. Every downstream number is only as good as this record.">
+      <Modal open={open} onClose={() => setOpen(false)} title={`Master Data — ${asset.code}`} subtitle="Extra details the first form did not ask for. Other numbers depend on these.">
         <form action={(fd) => start(async () => { const result = await saveAssetMaster(asset.id, fd); if (isActionError(result)) { toast.error("Master data not saved", result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
           <Inp label="Chassis Number" name="chassisNo" defaultValue={asset.chassisNo ?? ""} hint="The identity that survives a re-registration" />
           <Inp label="Engine Number" name="engineNo" defaultValue={asset.engineNo ?? ""} />
@@ -147,9 +147,9 @@ export function LifecycleForm({ assets }: { assets: Opt[] }) {
   return (
     <>
       <Trigger onClick={() => setOpen(true)} tone="ghost"><Plus className="h-4 w-4" /> Lifecycle Event</Trigger>
-      <Modal open={open} onClose={() => setOpen(false)} title="Record Lifecycle Event" subtitle="Commissioning, transfers and disposal — the asset's own history. Decommissioning also updates its status.">
+      <Modal open={open} onClose={() => setOpen(false)} title="Record Lifecycle Event" subtitle="When this machine started, where it moved, and when it was retired">
         <form action={(fd) => start(async () => { const result = await saveLifecycleEvent(fd); if (isActionError(result)) { toast.error("Event not saved", result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
-          <Sel label="Asset" name="assetId" required options={assets.map((a) => ({ value: a.id, label: a.label }))} />
+          <Sel label="Machine" name="assetId" required options={assets.map((a) => ({ value: a.id, label: a.label }))} />
           <Sel label="Event" name="kind" required options={[
             { value: "COMMISSIONED", label: "Commissioned" }, { value: "TRANSFERRED", label: "Transferred" },
             { value: "STATUS_CHANGE", label: "Status change" }, { value: "OFF_HIRED", label: "Off-hired" },
@@ -210,7 +210,7 @@ export function PersonDocForm({ drivers }: { drivers: Opt[] }) {
   return (
     <>
       <Trigger onClick={() => setOpen(true)} tone="ghost"><Plus className="h-4 w-4" /> Add Document</Trigger>
-      <Modal open={open} onClose={() => setOpen(false)} title="Add Personal Document" subtitle="Licence, Aadhaar and medical fitness are expected for everyone — missing ones are reported.">
+      <Modal open={open} onClose={() => setOpen(false)} title="Add Personal Document" subtitle="Everyone needs a licence, Aadhaar and medical fitness. Missing ones are shown here.">
         <form action={(fd) => start(async () => { const result = await savePersonDoc(fd); if (isActionError(result)) { toast.error("Document not saved", result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
           <Sel label="Person" name="driverId" required options={drivers.map((d) => ({ value: d.id, label: d.label }))} />
           <Sel label="Document" name="docType" required options={Object.entries(PERSON_DOC_LABEL).map(([value, label]) => ({ value, label }))} />

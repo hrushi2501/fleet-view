@@ -7,6 +7,7 @@ import { Boxes, Gauge, TriangleAlert, Timer, Layers } from "lucide-react";
 import Link from "next/link";
 import { ProductionContainer } from "@/components/ProductionContainer";
 import { projectIdScope, requirePage } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -112,7 +113,7 @@ export default async function SiteWorkPage() {
           </div>
         </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         <StatCard label="Tonnage Moved" value={`${num(totalTonnage)} t`} sub="last 90 days" accent="brand" icon={<Boxes className="h-5 w-5" />} />
         <StatCard label="Volume Moved" value={`${num(totalM3)} m³`} sub="earthwork / BCM" accent="violet" icon={<Layers className="h-5 w-5" />} />
         <StatCard label="Trips" value={num(totalTrips)} sub={`${num(worked)} worked hrs`} accent="emerald" icon={<Gauge className="h-5 w-5" />} />
@@ -135,22 +136,22 @@ export default async function SiteWorkPage() {
       {rows.length > 0 && (
         <Card className="p-0">
           <div className="p-5 pb-3">
-            <SectionTitle title="Productivity by Machine" subtitle="Each class judged on its own unit — trips for tippers, m³/hr for excavators" />
+            <SectionTitle title="Productivity by Machine" subtitle="Each machine type is measured its own way — trips for tippers, m³/hr for excavators" />
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-5 py-3 font-medium">Machine</th>
-                  <th className="px-5 py-3 font-medium">Class</th>
-                  <th className="px-5 py-3 text-right font-medium">Output</th>
-                  <th className="px-5 py-3 text-right font-medium">Target</th>
-                  <th className="px-5 py-3 text-right font-medium">Worked</th>
-                  <th className="px-5 py-3 text-right font-medium">Idle</th>
-                  <th className="px-5 py-3 text-right font-medium">Diesel</th>
-                  <th className="px-5 py-3 text-right font-medium">L / unit</th>
-                  <th className="px-5 py-3 text-right font-medium">₹ / unit</th>
-                  <th className="px-5 py-3 font-medium">Flags</th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Machine" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Class" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Output" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Target" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Worked" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Idle" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Diesel" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="L / unit" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="₹ / unit" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Flags" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -246,16 +247,16 @@ export default async function SiteWorkPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Date</th>
-                <th className="px-5 py-3 font-medium">Machine</th>
-                <th className="px-5 py-3 font-medium">Shift</th>
-                <th className="px-5 py-3 font-medium">Material</th>
-                <th className="px-5 py-3 text-right font-medium">Trips</th>
-                <th className="px-5 py-3 text-right font-medium">Tonnes</th>
-                <th className="px-5 py-3 text-right font-medium">m³</th>
-                <th className="px-5 py-3 text-right font-medium">Worked</th>
-                <th className="px-5 py-3 text-right font-medium">Idle</th>
-                <th className="px-5 py-3 font-medium">Source</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Date" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Machine" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Shift" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Material" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Trips" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Tonnes" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="m³" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Worked" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Idle" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Source" /></th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>

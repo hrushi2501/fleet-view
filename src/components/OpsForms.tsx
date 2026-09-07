@@ -43,7 +43,7 @@ function Sel({ label, name, options, defaultValue, required, hint }: { label: st
 function Modal({ open, onClose, title, subtitle, children }: { open: boolean; onClose: () => void; title: string; subtitle?: string; children: ReactNode }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-60 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-60 flex items-start justify-center overflow-x-auto overflow-y-auto bg-slate-900/50 p-4 backdrop-blur-sm">
       <div className="my-8 w-full max-w-2xl rounded-3xl bg-white shadow-2xl ring-1 ring-black/5 animate-fade-up">
         <div className="flex items-start justify-between border-b border-slate-100 p-5">
           <div>
@@ -144,7 +144,7 @@ export function SiteForm({ projects, site }: { projects: Opt[]; site?: { id: str
       <Trigger onClick={() => { setErr(""); setOpen(true); }} tone={site ? "ghost" : "brand"}>
         {!site && <Plus className="h-4 w-4" />}{site ? "Edit" : "Add Site"}
       </Trigger>
-      <Modal open={open} onClose={() => setOpen(false)} title={site ? "Edit Site" : "Add Site"} subtitle="The geofence radius is what makes “was the machine actually there?” answerable.">
+      <Modal open={open} onClose={() => setOpen(false)} title={site ? "Edit Site" : "Add Site"} subtitle="This distance is how we check whether the machine was really at the site.">
         <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
           <Sel label="Project" name="projectId" required defaultValue={site?.projectId} options={projects.map((p) => ({ value: p.id, label: p.label }))} />
           <Sel label="Type" name="type" required defaultValue={site?.type} options={SITE_TYPES.map((t) => ({ value: t, label: SITE_TYPE_LABEL[t] }))} />
@@ -394,7 +394,7 @@ export function MobStatusForm({ order }: { order: { id: string; status: string; 
   return (
     <>
       <button onClick={() => { setErr(""); setOpen(true); }} className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">Update</button>
-      <Modal open={open} onClose={() => setOpen(false)} title="Update Mobilisation" subtitle="Marking In Transit sets the machine's status; Arrived moves it onto the destination project.">
+      <Modal open={open} onClose={() => setOpen(false)} title="Update Mobilisation" subtitle="In Transit means the machine is on the way. Arrived moves it to the new site.">
         <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
           <Sel label="Status" name="status" required defaultValue={order.status} options={[
             { value: "REQUESTED", label: "Requested" }, { value: "APPROVED", label: "Approved" },

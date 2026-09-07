@@ -368,7 +368,7 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
   if (step === "home") {
     return (
       <div className="min-h-screen bg-slate-50">
-        <header className="flex items-center justify-between bg-ink-900 px-4 py-4 text-white">
+        <header className="flex flex-wrap items-center justify-between gap-3 bg-ink-900 px-4 py-4 text-white">
           <div className="flex items-center gap-2"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500"><Truck className="h-6 w-6" /></div><p className="text-base font-bold">{driverName.split(" ")[0]}</p></div>
           <button type="button" onClick={() => { void fetch("/api/auth/logout", { method: "POST" }).then(() => router.push("/login")); }} className="rounded-xl bg-white/10 p-3" aria-label="Sign out"><LogOut className="h-6 w-6" /></button>
         </header>
@@ -510,15 +510,15 @@ export function DriverFuelWizard({ vehicles, driverName, recent, defaultProjectI
         <StepHeader back={() => setStep("after")} hindi="जांच लें" eng="Check & send" step={step} />
 
         <div className="flex flex-1 flex-col gap-4 p-5">
-          <button onClick={() => setNumpad("litres")} className="flex items-center justify-between rounded-2xl bg-white p-5 shadow-sm active:bg-slate-50">
+          <button onClick={() => setNumpad("litres")} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-5 shadow-sm active:bg-slate-50">
             <div className="flex items-center gap-3"><Fuel className="h-8 w-8 text-brand-600" /><span className="text-lg font-bold text-slate-600">डीज़ल</span></div>
             <div className="flex items-center gap-2"><span className="text-4xl font-extrabold text-ink-900">{litres || "0"}</span><span className="text-lg text-slate-400">L</span><Pencil className="h-5 w-5 text-brand-500" /></div>
           </button>
-          <button onClick={() => setNumpad("odo")} className="flex items-center justify-between rounded-2xl bg-white p-5 shadow-sm active:bg-slate-50">
+          <button onClick={() => setNumpad("odo")} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-5 shadow-sm active:bg-slate-50">
             <div className="flex items-center gap-3"><Truck className="h-8 w-8 text-brand-600" /><span className="text-lg font-bold text-slate-600">मीटर</span></div>
             <div className="flex items-center gap-2"><span className="text-4xl font-extrabold text-ink-900">{odoValue || "0"}</span><Pencil className="h-5 w-5 text-brand-500" /></div>
           </button>
-          <button onClick={() => setNumpad("amount")} className="flex items-center justify-between rounded-2xl bg-white p-5 shadow-sm active:bg-slate-50">
+          <button onClick={() => setNumpad("amount")} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-5 shadow-sm active:bg-slate-50">
             <div className="flex items-center gap-3"><span className="flex h-8 w-8 items-center justify-center text-2xl font-extrabold text-brand-600">₹</span><span className="text-lg font-bold text-slate-600">कुल रकम</span></div>
             <div className="flex items-center gap-2"><span className="text-4xl font-extrabold text-ink-900">{amount || "0"}</span><Pencil className="h-5 w-5 text-brand-500" /></div>
           </button>

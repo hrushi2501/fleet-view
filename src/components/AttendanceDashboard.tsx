@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import { Card, StatCard, Badge } from "@/components/ui";
+import { Txt } from "@/components/Txt";
 import {
   CheckCircle2,
   XCircle,
@@ -316,17 +317,17 @@ export function AttendanceDashboard({ view }: { view: AttendanceView }) {
             <table className="w-full text-left text-sm text-slate-600">
               <thead className="border-b border-slate-100 bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-5 py-3.5 font-semibold">Driver</th>
-                  <th className="px-5 py-3.5 font-semibold">Date</th>
-                  <th className="px-5 py-3.5 font-semibold">Vehicle</th>
-                  <th className="px-5 py-3.5 font-semibold">Project</th>
-                  <th className="px-5 py-3.5 font-semibold">Shift</th>
-                  <th className="px-5 py-3.5 font-semibold">Check In</th>
-                  <th className="px-5 py-3.5 font-semibold">Check Out</th>
-                  <th className="px-5 py-3.5 font-semibold">Working Hrs</th>
-                  <th className="px-5 py-3.5 font-semibold">Status</th>
-                  <th className="px-5 py-3.5 font-semibold">Marked By</th>
-                  <th className="px-5 py-3.5 text-right font-semibold">Actions</th>
+                  <th className="px-5 py-3.5 font-semibold"><Txt text="Driver" /></th>
+                  <th className="px-5 py-3.5 font-semibold"><Txt text="Date" /></th>
+                  <th className="px-5 py-3.5 font-semibold"><Txt text="Vehicle" /></th>
+                  <th className="px-5 py-3.5 font-semibold"><Txt text="Project" /></th>
+                  <th className="px-5 py-3.5 font-semibold"><Txt text="Shift" /></th>
+                  <th className="px-5 py-3.5 font-semibold"><Txt text="Check In" /></th>
+                  <th className="px-5 py-3.5 font-semibold"><Txt text="Check Out" /></th>
+                  <th className="px-5 py-3.5 font-semibold"><Txt text="Working Hrs" /></th>
+                  <th className="px-5 py-3.5 font-semibold"><Txt text="Status" /></th>
+                  <th className="px-5 py-3.5 font-semibold"><Txt text="Marked By" /></th>
+                  <th className="px-5 py-3.5 text-right font-semibold"><Txt text="Actions" /></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">

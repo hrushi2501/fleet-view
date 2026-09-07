@@ -11,6 +11,7 @@ import { inr, num, fmtDate, timeAgo, STATUS_COLOR, ASSET_CLASS_LABEL } from "@/l
 import { Wrench, TriangleAlert, Clock, BadgeCheck, Brain, CalendarClock, Activity, IndianRupee, Users, LayoutGrid, ListFilter, AlertCircle, Volume2 } from "lucide-react";
 import Link from "next/link";
 import { requirePage, assetScope } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -162,8 +163,8 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Maintenance Management</h1>
-          <p className="text-sm text-slate-500">Preventive &amp; breakdown maintenance, work orders, downtime &amp; warranty</p>
+          <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Maintenance Management" /></h1>
+          <p className="text-sm text-slate-500"><Txt text="Preventive &amp; breakdown maintenance, work orders, downtime &amp; warranty" /></p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <PreOpChecklistForm assets={assetOpts} />
@@ -199,7 +200,7 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
 
       {tab === "workorders" && (
         <>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
             <StatCard label="Open Work Orders" value={num(openJobs.length)} sub={`${wos.length} total`} accent="brand" icon={<Wrench className="h-5 w-5" />} />
             <StatCard label="Active Breakdowns" value={num(breakdowns.length)} sub="Needs urgent attention" accent="rose" icon={<TriangleAlert className="h-5 w-5" />} />
             <StatCard label="Avg MTTR" value={`${avgMttr.toFixed(1)} h`} sub="Mean time to repair" accent="amber" icon={<Clock className="h-5 w-5" />} />
@@ -222,16 +223,16 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
 
             return (
               <Card>
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
                   <div className="flex items-center gap-2">
                     <AlertCircle className="h-5 w-5 text-amber-600" />
-                    <SectionTitle title="Failure Reason & RCA Intelligence" subtitle="Categorized component failure frequency to drive corrective action" />
+                    <SectionTitle title="Failure Reason & RCA Intelligence" subtitle="Which parts break most often, so they can be fixed first" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {topFailures.slice(0, 4).map((tf) => (
                     <div key={tf.code} className="rounded-xl border border-slate-100 bg-slate-50/50 p-3">
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
                         <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{tf.category}</span>
                         <span className="text-xs font-bold text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full">{tf.count} incidents</span>
                       </div>
@@ -272,9 +273,9 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
               </Card>
               <Card className="lg:col-span-2">
                 <SectionTitle title="Open &amp; In-Progress Work Orders" subtitle="Prioritized queue" />
-                <div className="max-h-75 space-y-2 overflow-y-auto mt-4">
+                <div className="max-h-75 space-y-2 overflow-x-auto overflow-y-auto mt-4">
                   {openJobs.slice(0, 12).map((w) => (
-                    <div key={w.id} className="flex items-center justify-between rounded-lg border border-slate-100 p-2.5 hover:bg-slate-50/50">
+                    <div key={w.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 p-2.5 hover:bg-slate-50/50">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <Badge color={PRIORITY_COLOR[w.priority]}>{w.priority}</Badge>
@@ -301,11 +302,11 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500 border-b border-slate-100">
                   <tr>
-                    <th className="px-5 py-3 font-medium">Technician</th>
-                    <th className="px-5 py-3 text-center font-medium">Active Jobs</th>
-                    <th className="px-5 py-3 text-right font-medium">Est. Downtime</th>
-                    <th className="px-5 py-3 text-right font-medium">Active Cost</th>
-                    <th className="px-5 py-3 font-medium">Current Assignments</th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Technician" /></th>
+                    <th className="px-5 py-3 text-center font-medium"><Txt text="Active Jobs" /></th>
+                    <th className="px-5 py-3 text-right font-medium"><Txt text="Est. Downtime" /></th>
+                    <th className="px-5 py-3 text-right font-medium"><Txt text="Active Cost" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Current Assignments" /></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -343,16 +344,16 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
             <Card className="p-0">
               <div className="flex items-center gap-2 p-5 pb-3">
                 <Brain className="h-5 w-5 text-violet-600" />
-                <SectionTitle title="Predictive — Breakdown Risk" subtitle="Vehicles most likely to break down next, by age, overdue service, history &amp; health" />
+                <SectionTitle title="Predictive — Breakdown Risk" subtitle="Vehicles most likely to break down next — by age, missed services and past repairs" />
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                     <tr>
-                      <th className="px-5 py-3 font-medium">Vehicle</th>
-                      <th className="px-5 py-3 font-medium">Class</th>
-                      <th className="px-5 py-3 font-medium">Risk</th>
-                      <th className="px-5 py-3 font-medium">Why</th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Vehicle" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Class" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Risk" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Why" /></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -378,16 +379,16 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500 border-b border-slate-100">
                   <tr>
-                    <th className="px-5 py-3 font-medium">WO No.</th>
-                    <th className="px-5 py-3 font-medium">Asset</th>
-                    <th className="px-5 py-3 font-medium">Type</th>
-                    <th className="px-5 py-3 font-medium">Description</th>
-                    <th className="px-5 py-3 font-medium">Priority</th>
-                    <th className="px-5 py-3 font-medium">Downtime</th>
-                    <th className="px-5 py-3 font-medium">Cost</th>
-                    <th className="px-5 py-3 font-medium">Status</th>
-                    <th className="px-5 py-3 font-medium">Evidence</th>
-                    <th className="px-5 py-3 font-medium">Reported</th>
+                    <th className="px-5 py-3 font-medium"><Txt text="WO No." /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Asset" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Type" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Description" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Priority" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Downtime" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Cost" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Status" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Evidence" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Reported" /></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -436,7 +437,7 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
 
       {tab === "preventive" && (
         <>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             <StatCard label="Overdue" value={num(overdue.length)} sub="past interval" accent="rose" icon={<TriangleAlert className="h-5 w-5" />} />
             <StatCard label="Due Now" value={num(dueNow.length)} sub={`${num(upcoming.length)} coming up`} accent="amber" icon={<CalendarClock className="h-5 w-5" />} />
             <StatCard label="Forecast Spend" value={inr(forecastCost, { compact: true })} sub="overdue + due tasks" accent="brand" icon={<IndianRupee className="h-5 w-5" />} />
@@ -465,13 +466,13 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500 border-b border-slate-100">
                     <tr>
-                      <th className="px-5 py-3 font-medium">Machine</th>
-                      <th className="px-5 py-3 font-medium">Task</th>
-                      <th className="px-5 py-3 font-medium">Interval</th>
-                      <th className="px-5 py-3 font-medium">Progress</th>
-                      <th className="px-5 py-3 font-medium">Remaining</th>
-                      <th className="px-5 py-3 text-right font-medium">Est. Cost</th>
-                      <th className="px-5 py-3 font-medium">Status</th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Machine" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Task" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Interval" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Progress" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Remaining" /></th>
+                      <th className="px-5 py-3 text-right font-medium"><Txt text="Est. Cost" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Status" /></th>
                       <th className="px-5 py-3"></th>
                     </tr>
                   </thead>
@@ -522,18 +523,18 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
           <Card className="p-0">
             <div className="flex items-center gap-2 p-5 pb-3 border-b border-slate-100">
               <CalendarClock className="h-5 w-5 text-brand-600" />
-              <SectionTitle title="30-Day PM Forecast Planner" subtitle="Service intervals predicted to trip in the next 30 days based on run-rates" />
+              <SectionTitle title="30-Day PM Forecast Planner" subtitle="Services likely to fall due in the next 30 days, based on how much each machine runs" />
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500 border-b border-slate-100">
                   <tr>
-                    <th className="px-5 py-3 font-medium">Machine</th>
-                    <th className="px-5 py-3 font-medium">Task</th>
-                    <th className="px-5 py-3 text-center font-medium">Est. Days Remaining</th>
-                    <th className="px-5 py-3 font-medium">Predicted Due Date</th>
-                    <th className="px-5 py-3 text-right font-medium">Est. Cost</th>
-                    <th className="px-5 py-3 text-right font-medium">Actions</th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Machine" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Task" /></th>
+                    <th className="px-5 py-3 text-center font-medium"><Txt text="Est. Days Remaining" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Predicted Due Date" /></th>
+                    <th className="px-5 py-3 text-right font-medium"><Txt text="Est. Cost" /></th>
+                    <th className="px-5 py-3 text-right font-medium"><Txt text="Actions" /></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -599,12 +600,12 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
                         <table className="w-full text-sm">
                           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                             <tr>
-                              <th className="px-4 py-2 font-medium">Kind</th>
-                              <th className="px-4 py-2 font-medium">Description</th>
-                              <th className="px-4 py-2 font-medium">Part No.</th>
-                              <th className="px-4 py-2 text-right font-medium">Qty</th>
-                              <th className="px-4 py-2 text-right font-medium">Rate</th>
-                              <th className="px-4 py-2 text-right font-medium">Amount</th>
+                              <th className="px-4 py-2 font-medium"><Txt text="Kind" /></th>
+                              <th className="px-4 py-2 font-medium"><Txt text="Description" /></th>
+                              <th className="px-4 py-2 font-medium"><Txt text="Part No." /></th>
+                              <th className="px-4 py-2 text-right font-medium"><Txt text="Qty" /></th>
+                              <th className="px-4 py-2 text-right font-medium"><Txt text="Rate" /></th>
+                              <th className="px-4 py-2 text-right font-medium"><Txt text="Amount" /></th>
                               <th className="px-4 py-2"></th>
                             </tr>
                           </thead>

@@ -2,6 +2,7 @@ import { requirePage } from "@/lib/access";
 import { PageTabs, resolveTab, type Tab } from "@/components/PageTabs";
 import { Tanks } from "./_sections/Tanks";
 import { Reconciliation } from "./_sections/Reconciliation";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -31,8 +32,8 @@ export default async function TanksPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink-900">Site Tanks</h1>
-        <p className="text-sm text-slate-500">Har site ke tank mein kitna diesel hai, aur hisaab milta hai ya nahi</p>
+        <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Site Tanks" /></h1>
+        <p className="text-sm text-slate-500"><Txt text="Har site ke tank mein kitna diesel hai, aur hisaab milta hai ya nahi" /></p>
       </div>
 
       <PageTabs tabs={tabs} active={tab} basePath="/fuel/tanks" />

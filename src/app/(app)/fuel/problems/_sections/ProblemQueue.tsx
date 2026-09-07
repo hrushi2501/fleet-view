@@ -73,7 +73,7 @@ export async function ProblemQueue() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         <StatCard label="Open Cases" value={num(open.length)} sub={`${num(anomalies.length)} total`} accent="rose" icon={<ShieldAlert className="h-5 w-5" />} />
         <StatCard label="Litres Unexplained" value={`${num(litresOpen)} L`} sub="open cases only" accent="amber" icon={<Search className="h-5 w-5" />} />
         <StatCard label="Value at Risk" value={inr(atRisk, { compact: true })} sub="open cases only" accent="rose" icon={<IndianRupee className="h-5 w-5" />} />
@@ -82,7 +82,7 @@ export async function ProblemQueue() {
 
       <Card className="p-0">
         <div className="p-5 pb-3">
-          <SectionTitle title="Cases" subtitle="Biggest first — open cases before settled ones" />
+          <SectionTitle title="Cases" subtitle="Biggest first — open cases before closed ones" />
         </div>
         <div className="divide-y divide-slate-100">
           {anomalies.map((a) => {

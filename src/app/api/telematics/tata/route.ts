@@ -344,32 +344,66 @@ async function handlePOST(req: Request) {
   let duplicates = 0;
   const unmatched: string[] = [];
 
+  // One lookup per vehicle per request, not one per reading. A body carrying
+  // several samples for the same truck resolved it again for each of them.
+  const resolved = new Map<string, Awaited<ReturnType<typeof resolveAsset>>>();
+
   for (const ping of pings) {
-    const asset = await resolveAsset(ping);
+    const idKey = [
+      ping.identifiers?.registrationNo, ping.identifiers?.chassisNo,
+      ping.identifiers?.imei, ping.externalDeviceId,
+    ].map((v) => key(v)).filter(Boolean).join("|");
+
+    let asset = resolved.get(idKey);
+    if (asset === undefined) {
+      asset = await resolveAsset(ping);
+      resolved.set(idKey, asset);
+    }
     if (!asset) {
       unmatched.push(ping.identifiers?.registrationNo ?? ping.externalDeviceId ?? "unknown");
       continue;
     }
 
-    // Same instant, same vehicle, same source — already held, whether it
-    // arrived by push, by the pull cron, or by a retry of this very call.
-    const already = await db.telemetryReading.findFirst({
-      where: { assetId: asset.id, recordedAt: ping.timestamp, source: SOURCE },
-      select: { id: true },
-    });
+    // ───────────────────────────────────────────────────────────────────────
+    // Three independent reads, issued together rather than one after another.
+    //
+    // They were sequential, which cost three round trips to the pooler in
+    // Mumbai for every reading — on a feed arriving once a minute per vehicle
+    // that is latency this system adds on top of Tata's, and the whole point of
+    // push is that the number on screen is current.
+    //
+    // Nothing here depends on anything else here: the duplicate check reads a
+    // different row from the previous-sample lookup, and the open session is
+    // unrelated to both. The duplicate check is also not the real guard against
+    // a concurrent write — the unique index is, and the create below still
+    // catches it — so racing these three loses nothing.
+    // ───────────────────────────────────────────────────────────────────────
+    const [already, previous, session] = await Promise.all([
+      db.telemetryReading.findFirst({
+        where: { assetId: asset.id, recordedAt: ping.timestamp, source: SOURCE },
+        select: { id: true },
+      }),
+      db.telemetryReading.findFirst({
+        where: { assetId: asset.id, recordedAt: { lt: ping.timestamp } },
+        orderBy: { recordedAt: "desc" },
+        select: {
+          recordedAt: true, lat: true, lng: true, speedKph: true, odometerKm: true,
+          fuelLevelL: true, fuelLevelPct: true, ignitionOn: true, engineHours: true,
+        },
+      }),
+      // Attribute the sample to whoever is checked in, so a fuel drop has an
+      // accountable driver and not just a vehicle.
+      db.tripSession.findFirst({
+        where: { assetId: asset.id, status: "ACTIVE" },
+        orderBy: { startedAt: "desc" },
+        select: { id: true },
+      }),
+    ]);
+
     if (already) {
       duplicates++;
       continue;
     }
-
-    const previous = await db.telemetryReading.findFirst({
-      where: { assetId: asset.id, recordedAt: { lt: ping.timestamp } },
-      orderBy: { recordedAt: "desc" },
-      select: {
-        recordedAt: true, lat: true, lng: true, speedKph: true, odometerKm: true,
-        fuelLevelL: true, fuelLevelPct: true, ignitionOn: true, engineHours: true,
-      },
-    });
 
     // The same validator the pull and the device route use, so a number
     // refused on one path cannot enter through another.
@@ -383,12 +417,6 @@ async function handlePOST(req: Request) {
       continue;
     }
     const r = result.reading;
-
-    const session = await db.tripSession.findFirst({
-      where: { assetId: asset.id, status: "ACTIVE" },
-      orderBy: { startedAt: "desc" },
-      select: { id: true },
-    });
 
     let created: { id: string };
     try {

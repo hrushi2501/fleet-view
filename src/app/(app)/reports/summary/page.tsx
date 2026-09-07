@@ -10,6 +10,7 @@ import { inr, num } from "@/lib/utils";
 import { ArrowLeft, Download, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import Link from "next/link";
 import { requirePage, assetScope } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -154,7 +155,7 @@ export default async function ManagementSummaryPage() {
       </Link>
 
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink-900">Management Summary</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Management Summary" /></h1>
         <p className="text-sm text-slate-500">
           Every module on one page, last 12 months. A dash means the figure cannot be computed yet — not that it is zero.
         </p>
@@ -200,9 +201,9 @@ export default async function ManagementSummaryPage() {
 
       <Card className="p-0">
         <div className="p-5 pb-3">
-          <SectionTitle title="Export" subtitle="CSV with proper escaping — commas and quotes inside vendor names won't corrupt the file" />
+          <SectionTitle title="Export" subtitle="Downloads as a CSV file that opens correctly in Excel" />
         </div>
-        <div className="grid gap-2 p-5 pt-0 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-2 p-5 pt-0 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3">
           {REPORT_CATALOGUE.map((r) => (
             <a
               key={r.key}

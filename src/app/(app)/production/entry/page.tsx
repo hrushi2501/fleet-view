@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { requirePage, projectIdScope } from "@/lib/access";
 import { ASSET_CLASS_LABEL } from "@/lib/utils";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +49,7 @@ export default async function ProductionEntryPage() {
         >
           <ArrowLeft className="h-3.5 w-3.5" /> Back to Production Overview
         </Link>
-        <h1 className="text-2xl font-bold tracking-tight text-ink-900">Production &amp; Output Entry</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Production &amp; Output Entry" /></h1>
         <p className="text-sm text-slate-500">
           Record site daily excavation, haulage trips, aggregate output, machine hours and fuel consumption.
         </p>

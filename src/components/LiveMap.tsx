@@ -73,7 +73,7 @@ export function LiveMap({ markers }: { markers: Marker[] }) {
         </div>
       </div>
 
-      <div className="card max-h-150 overflow-y-auto p-0">
+      <div className="card max-h-150 overflow-x-auto overflow-y-auto p-0">
         <div className="sticky top-0 z-10 border-b border-slate-100 bg-white px-4 py-3">
           <p className="font-semibold text-ink-900">Asset List</p>
           <p className="text-xs text-slate-400">{shown.length} shown · click to view & locate</p>

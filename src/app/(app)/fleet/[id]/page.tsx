@@ -20,6 +20,7 @@ import { Panel, PanelTitle, DetailList, AttentionItem, Chip, type Row } from "@/
 import { analyseUsage, type AnalyticsReading } from "@/lib/fleet-analytics";
 import { specCards, estimatedRangeKm } from "@/lib/vehicle-spec";
 import { depreciation } from "@/lib/costing";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -467,7 +468,7 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
           this system has only been receiving it since August — presenting a
           30-day figure as "overall", the way a provider dashboard does, would
           be a wrong number wearing a confident label. */}
-      <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3.5 md:grid-cols-4 lg:grid-cols-4">
         <Panel>
           <p className="text-[11px] font-medium uppercase tracking-wide text-[#8b93a5]">
             {asset.primaryMeter === "SMU" ? "Engine hours" : "Odometer"}
@@ -642,9 +643,9 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
               </div>
             </div>
           ) : (
-            <div className="h-42.5 space-y-2 overflow-y-auto pr-1">
+            <div className="h-42.5 space-y-2 overflow-x-auto overflow-y-auto pr-1">
               {asset.workOrders.map((w) => (
-                <div key={w.id} className="flex items-center justify-between gap-3 border-b border-[#edf0f4] pb-2 last:border-0">
+                <div key={w.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-[#edf0f4] pb-2 last:border-0">
                   <div className="min-w-0">
                     <p className="truncate text-[13px] font-semibold text-[#17233b]">{w.woNo} · {w.type}</p>
                     <p className="truncate text-xs text-[#667085]">{w.description}</p>
@@ -772,11 +773,11 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
             <table className="w-full min-w-xl text-sm">
               <thead>
                 <tr className="border-b border-slate-100 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                  <th className="pb-2">Document</th>
-                  <th className="pb-2">Number</th>
-                  <th className="pb-2">Issued</th>
-                  <th className="pb-2">Expires</th>
-                  <th className="pb-2 text-right">Status</th>
+                  <th className="pb-2"><Txt text="Document" /></th>
+                  <th className="pb-2"><Txt text="Number" /></th>
+                  <th className="pb-2"><Txt text="Issued" /></th>
+                  <th className="pb-2"><Txt text="Expires" /></th>
+                  <th className="pb-2 text-right"><Txt text="Status" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -823,12 +824,12 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
               <table className="w-full min-w-136 text-sm">
                 <thead>
                   <tr className="border-b border-slate-100 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                    <th className="pb-2">Date</th>
-                    <th className="pb-2 text-right">Issued</th>
-                    <th className="pb-2 text-right">Sensor rise</th>
-                    <th className="pb-2 text-right">Variance</th>
-                    <th className="pb-2 text-right">Amount</th>
-                    <th className="pb-2 text-right">Flag</th>
+                    <th className="pb-2"><Txt text="Date" /></th>
+                    <th className="pb-2 text-right"><Txt text="Issued" /></th>
+                    <th className="pb-2 text-right"><Txt text="Sensor rise" /></th>
+                    <th className="pb-2 text-right"><Txt text="Variance" /></th>
+                    <th className="pb-2 text-right"><Txt text="Amount" /></th>
+                    <th className="pb-2 text-right"><Txt text="Flag" /></th>
                   </tr>
                 </thead>
                 <tbody>

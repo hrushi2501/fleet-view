@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import * as React from "react";
+import { Txt } from "@/components/Txt";
 import { Sparkline } from "@/components/Sparkline";
 import { SERIES, STATUS } from "@/lib/viz";
 
@@ -40,7 +41,7 @@ export function Badge({
         className
       )}
     >
-      {children}
+      {typeof children === "string" ? <Txt text={children} /> : children}
     </span>
   );
 }
@@ -57,8 +58,8 @@ export function SectionTitle({
   return (
     <div className="mb-4 flex items-start justify-between gap-4">
       <div className="min-w-0">
-        <h2 className="text-[15px] font-semibold tracking-tight text-ink-900">{title}</h2>
-        {subtitle && <p className="mt-0.5 text-[13px] leading-snug text-slate-500">{subtitle}</p>}
+        <h2 className="text-[15px] font-semibold tracking-tight text-ink-900"><Txt text={title} /></h2>
+        {subtitle && <p className="mt-0.5 text-[13px] leading-snug text-slate-500"><Txt text={subtitle} /></p>}
       </div>
       {action && <div className="shrink-0">{action}</div>}
     </div>
@@ -124,7 +125,7 @@ export function StatCard({
 
       <div className="relative flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-[13px] font-medium text-slate-500">{label}</p>
+          <p className="truncate text-[13px] font-medium text-slate-500"><Txt text={label} /></p>
           {/* Proportional figures on purpose — tabular digits give every glyph
               the width of a zero, which makes a number like 121 look loose at
               this size. Columns get tabular; standalone values do not. */}
@@ -136,7 +137,7 @@ export function StatCard({
           >
             {value}
           </p>
-          {sub && <p className="mt-1.5 text-xs leading-snug text-slate-400">{sub}</p>}
+          {sub && <p className="mt-1.5 text-xs leading-snug text-slate-400"><Txt text={sub} /></p>}
         </div>
 
         {icon && (
@@ -197,9 +198,9 @@ export function HeroStat({
   return (
     <div className="card flex flex-wrap items-end justify-between gap-6 p-6">
       <div className="min-w-0">
-        <p className="text-[13px] font-medium uppercase tracking-wide text-slate-400">{label}</p>
+        <p className="text-[13px] font-medium uppercase tracking-wide text-slate-400"><Txt text={label} /></p>
         <p className={cn("mt-1.5 text-[3rem] font-bold leading-none tracking-tight", tones[tone])}>{value}</p>
-        {sub && <p className="mt-2 max-w-lg text-sm leading-relaxed text-slate-500">{sub}</p>}
+        {sub && <p className="mt-2 max-w-lg text-sm leading-relaxed text-slate-500"><Txt text={sub} /></p>}
       </div>
       {children && <div className="min-w-45 flex-1">{children}</div>}
       {action}
@@ -362,8 +363,10 @@ export function EmptyState({
           <Icon className="h-6 w-6" />
         </div>
       )}
-      <h3 className="text-base font-bold text-ink-900">{title}</h3>
-      <p className="mt-1 max-w-sm text-xs leading-relaxed text-slate-500">{description}</p>
+      <h3 className="text-base font-bold text-ink-900"><Txt text={title} /></h3>
+      <p className="mt-1 max-w-sm text-xs leading-relaxed text-slate-500">
+        <Txt text={description} />
+      </p>
       {action && <div className="mt-4">{action}</div>}
     </div>
   );

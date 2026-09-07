@@ -5,7 +5,21 @@
   "installCommand": "npm ci",
   "regions": ["bom1"],
   "crons": [
-    { "path": "/api/push/cron", "schedule": "0 3 * * *" },
-    { "path": "/api/telematics/sync", "schedule": "* * * * *" }
+    {
+      "path": "/api/push/cron",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/telematics/sync",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/fuel/theft-scan",
+      "schedule": "0 21 * * *"
+    },
+    {
+      "path": "/api/telemetry/retention",
+      "schedule": "30 21 * * *"
+    }
   ]
 }

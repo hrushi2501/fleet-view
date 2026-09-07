@@ -207,7 +207,7 @@ function Modal({ triggerLabel, triggerIcon, triggerClass, title, action, success
       </button>
       {open && (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={() => setOpen(false)}>
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-2xl animate-fade-up ring-1 ring-black/5" onClick={(e) => e.stopPropagation()}>
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-x-auto overflow-y-auto rounded-3xl bg-white shadow-2xl animate-fade-up ring-1 ring-black/5" onClick={(e) => e.stopPropagation()}>
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white/95 px-6 py-4 backdrop-blur-sm">
               <h3 className="text-base font-bold text-ink-900">{title}</h3>
               <button onClick={() => setOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"><X className="h-5 w-5" /></button>
@@ -256,7 +256,7 @@ export function AssetEntry({ projects, asset }: { projects: Opt[]; asset?: Asset
       action={(fd) => saveAsset(asset?.id ?? null, fd)}
       successMessage={edit ? `✓ Asset ${asset!.code} updated` : "✓ New asset created successfully"}
     >
-      <Inp label="Asset Code" name="code" defaultValue={asset?.code} required placeholder="EXC-012" />
+      <Inp label="Machine Code" name="code" defaultValue={asset?.code} required placeholder="EXC-012" />
       <Inp label="Name / Make-Model" name="name" defaultValue={asset?.name} required placeholder="Caterpillar 320D2" />
       <Sel label="Class" name="assetClass" options={classOpts} defaultValue={asset?.assetClass ?? "DUMPER"} required />
       <Sel label="Status" name="status" options={statusOpts} defaultValue={asset?.status ?? "Active"} />
@@ -280,7 +280,7 @@ export function AssetEntry({ projects, asset }: { projects: Opt[]; asset?: Asset
           <Inp label="Fuel Tank Capacity (L)" name="fuelCapacity" type="number" defaultValue={asset?.fuelCapacity} />
           <Inp label="Acquisition Cost (₹)" name="acquisitionCost" type="number" defaultValue={asset?.acquisitionCost} />
           <Inp label="Health Score (0-100)" name="healthScore" type="number" defaultValue={asset?.healthScore ?? 90} />
-          <Inp label="Utilization (%)" name="utilization" type="number" defaultValue={asset?.utilization ?? 0} />
+          <Inp label="Usage (%)" name="utilization" type="number" defaultValue={asset?.utilization ?? 0} />
           <Inp label="Last Service Date" name="lastServiceDate" type="date" defaultValue={asset?.lastServiceDate?.slice(0, 10)} />
           <Inp label="Next Service Due" name="serviceDueDate" type="date" defaultValue={asset?.serviceDueDate?.slice(0, 10)} />
           <div className="col-span-full">
@@ -530,7 +530,7 @@ export function FuelEntry({ assets, projects, defaultRate = 92.5 }: { assets: Op
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={() => setOpen(false)}>
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-2xl animate-fade-up ring-1 ring-black/5" onClick={(e) => e.stopPropagation()}>
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-x-auto overflow-y-auto rounded-3xl bg-white shadow-2xl animate-fade-up ring-1 ring-black/5" onClick={(e) => e.stopPropagation()}>
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white/95 px-6 py-4 backdrop-blur-sm">
               <h3 className="text-base font-bold text-ink-900">Record Fuel Entry</h3>
               <button onClick={() => setOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
@@ -645,7 +645,7 @@ export function FuelEdit({ txn }: { txn: { id: string; label: string; quantity: 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={() => setOpen(false)}>
           <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl animate-fade-up ring-1 ring-black/5" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
               <h3 className="text-base font-bold text-ink-900">Edit Fuel Entry — {txn.label}</h3>
               <button onClick={() => setOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
             </div>
@@ -712,7 +712,7 @@ export function WorkOrderEntry({ assets }: { assets: Opt[] }) {
       action={saveWorkOrder}
       successMessage="✓ Work order created successfully"
     >
-      <Sel label="Asset" name="assetId" options={assetOpts} required />
+      <Sel label="Machine" name="assetId" options={assetOpts} required />
       <Sel label="Type" name="type" options={["PM", "BREAKDOWN", "REPAIR"].map((v) => ({ value: v, label: v }))} defaultValue="PM" />
       <Sel label="Priority" name="priority" options={["Low", "Medium", "High", "Critical"].map((v) => ({ value: v, label: v }))} defaultValue="Medium" />
       <Sel label="Status" name="status" options={["Open", "In-Progress", "Completed", "Closed"].map((v) => ({ value: v, label: v }))} defaultValue="Open" />
@@ -765,7 +765,7 @@ export function ComplianceEntry({ assets }: { assets: Opt[] }) {
       action={saveCompliance}
       successMessage="✓ Compliance document saved"
     >
-      <Sel label="Asset" name="assetId" options={assetOpts} required />
+      <Sel label="Machine" name="assetId" options={assetOpts} required />
       <Sel label="Document Type" name="docType" options={["RC", "Insurance", "Fitness", "Permit", "PUC", "RoadTax"].map((v) => ({ value: v, label: v }))} defaultValue="Insurance" required />
       <Inp label="Document Number" name="number" required placeholder="INS-123456" />
       <Inp label="Issue Date" name="issueDate" type="date" />
@@ -849,7 +849,7 @@ export function DocumentRenewModal({
             className="w-full max-w-md rounded-3xl bg-white shadow-2xl animate-fade-up ring-1 ring-black/5"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
               <div className="flex items-center gap-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
                   <RotateCcw className="h-4 w-4" />

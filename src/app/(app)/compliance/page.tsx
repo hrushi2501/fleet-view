@@ -6,6 +6,7 @@ import { num, fmtDate, STATUS_COLOR } from "@/lib/utils";
 import { ShieldCheck, ShieldAlert, ShieldX, FileText } from "lucide-react";
 import Link from "next/link";
 import { requirePage, assetScope } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -25,15 +26,15 @@ export default async function CompliancePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-ink-900">Compliance &amp; Documents</h1>
-          <p className="text-sm text-slate-500">RC, Insurance, Fitness, Permits, PUC, Road Tax</p>
+          <h1 className="text-2xl font-bold text-ink-900"><Txt text="Compliance &amp; Documents" /></h1>
+          <p className="text-sm text-slate-500"><Txt text="RC, Insurance, Fitness, Permits, PUC, Road Tax" /></p>
         </div>
         <ComplianceEntry assets={assetOpts} />
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         <StatCard label="Total Documents" value={num(docs.length)} accent="brand" icon={<FileText className="h-5 w-5" />} />
         <StatCard label="Valid" value={num(valid)} sub={`${((valid / (docs.length || 1)) * 100).toFixed(0)}% compliant`} accent="emerald" icon={<ShieldCheck className="h-5 w-5" />} />
         <StatCard label="Expiring (30d)" value={num(expiring)} sub="Needs renewal" accent="amber" icon={<ShieldAlert className="h-5 w-5" />} />
@@ -51,12 +52,12 @@ export default async function CompliancePage() {
             <table className="w-full min-w-[560px] text-sm">
               <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-5 py-3 font-medium">Asset</th>
-                  <th className="px-5 py-3 font-medium">Document</th>
-                  <th className="px-5 py-3 font-medium">Number</th>
-                  <th className="px-5 py-3 font-medium">Expiry</th>
-                  <th className="px-5 py-3 font-medium">Status</th>
-                  <th className="px-5 py-3 text-right font-medium">Action</th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Asset" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Document" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Number" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Expiry" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Status" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Action" /></th>
                 </tr>
               </thead>
               <tbody>

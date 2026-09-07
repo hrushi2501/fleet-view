@@ -8,6 +8,7 @@ import Link from "next/link";
 
 import { supportedQty, type ContractLite, type LogLite } from "@/lib/hire";
 import { requirePage, assetScope } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -215,7 +216,7 @@ export default async function CostsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Total Cost &amp; Profit</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Total Cost &amp; Profit" /></h1>
           <p className="text-sm text-slate-500">
             True cost per km, per engine-hour and per m³ — assembled from fuel, workshop and hire, not hand-keyed
           </p>
@@ -226,7 +227,7 @@ export default async function CostsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         <StatCard label="Total Cost" value={inr(fleetTotal, { compact: true })} sub="last 12 months" accent="brand" icon={<IndianRupee className="h-5 w-5" />} />
         <StatCard label="Cash Cost" value={inr(fleetCash, { compact: true })} sub="excludes depreciation" accent="violet" icon={<Wallet className="h-5 w-5" />} />
         <StatCard label="Depreciation" value={inr(fleetDep, { compact: true })} sub={`${inr(fleetBook, { compact: true })} book value`} accent="amber" icon={<TrendingDown className="h-5 w-5" />} />
@@ -259,12 +260,12 @@ export default async function CostsPage() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-5 py-3 font-medium">Project</th>
-                  <th className="px-5 py-3 text-right font-medium">Revenue</th>
-                  <th className="px-5 py-3 text-right font-medium">Fleet Cost</th>
-                  <th className="px-5 py-3 text-right font-medium">Margin</th>
-                  <th className="px-5 py-3 text-right font-medium">Margin %</th>
-                  <th className="px-5 py-3 font-medium">Budget</th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Project" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Revenue" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Fleet Cost" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Margin" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Margin %" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Budget" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -308,15 +309,15 @@ export default async function CostsPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Asset</th>
-                <th className="px-5 py-3 font-medium">Class</th>
-                <th className="px-5 py-3 text-right font-medium">Total Cost</th>
-                <th className="px-5 py-3 text-right font-medium">₹/km</th>
-                <th className="px-5 py-3 text-right font-medium">₹/hr</th>
-                <th className="px-5 py-3 text-right font-medium">₹/t</th>
-                <th className="px-5 py-3 text-right font-medium">₹/m³</th>
-                <th className="px-5 py-3 text-right font-medium">Book Value</th>
-                <th className="px-5 py-3 font-medium">Verdict</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Asset" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Class" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Total Cost" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="₹/km" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="₹/hr" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="₹/t" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="₹/m³" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Book Value" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Verdict" /></th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
@@ -363,14 +364,14 @@ export default async function CostsPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="p-0">
           <div className="p-5 pb-3"><SectionTitle title="Manual Cost Lines" subtitle="Tyres, insurance, EMI, tolls — fuel, maintenance and hire flow in automatically" /></div>
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-80 overflow-x-auto overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-5 py-2.5 font-medium">Date</th>
-                  <th className="px-5 py-2.5 font-medium">Head</th>
-                  <th className="px-5 py-2.5 font-medium">Asset</th>
-                  <th className="px-5 py-2.5 text-right font-medium">Amount</th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Date" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Head" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Asset" /></th>
+                  <th className="px-5 py-2.5 text-right font-medium"><Txt text="Amount" /></th>
                   <th className="px-5 py-2.5"></th>
                 </tr>
               </thead>
@@ -392,14 +393,14 @@ export default async function CostsPage() {
 
         <Card className="p-0">
           <div className="p-5 pb-3"><SectionTitle title="Project Revenue" subtitle="RA bills and advances" /></div>
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-80 overflow-x-auto overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-5 py-2.5 font-medium">Date</th>
-                  <th className="px-5 py-2.5 font-medium">Project</th>
-                  <th className="px-5 py-2.5 font-medium">Description</th>
-                  <th className="px-5 py-2.5 text-right font-medium">Amount</th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Date" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Project" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Description" /></th>
+                  <th className="px-5 py-2.5 text-right font-medium"><Txt text="Amount" /></th>
                   <th className="px-5 py-2.5"></th>
                 </tr>
               </thead>

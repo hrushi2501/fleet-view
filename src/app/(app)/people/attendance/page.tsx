@@ -3,6 +3,7 @@ import { PageTabs, resolveTab, type Tab } from "@/components/PageTabs";
 import { Register } from "./_sections/Register";
 import { Approvals } from "./_sections/Approvals";
 import { BatchSignOff } from "./_sections/BatchSignOff";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -26,8 +27,8 @@ export default async function AttendancePage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink-900">Attendance</h1>
-        <p className="text-sm text-slate-500">Fast 1-tap shift sign-offs and verified daily register</p>
+        <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Attendance" /></h1>
+        <p className="text-sm text-slate-500"><Txt text="Fast 1-tap shift sign-offs and verified daily register" /></p>
       </div>
 
       <PageTabs tabs={TABS} active={tab} basePath="/people/attendance" />

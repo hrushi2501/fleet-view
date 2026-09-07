@@ -20,6 +20,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, RotateCw, ArrowLeft, Copy, Check } from "lucide-react";
+import { Txt } from "@/components/Txt";
 
 export default function ErrorPage({
   error,
@@ -50,7 +51,7 @@ export default function ErrorPage({
           <AlertTriangle className="h-7 w-7 text-amber-600" />
         </div>
 
-        <h1 className="mt-5 text-xl font-bold text-ink-900">We couldn&apos;t load this page</h1>
+        <h1 className="mt-5 text-xl font-bold text-ink-900"><Txt text="This screen could not load" /></h1>
         <p className="mt-2 text-sm text-slate-500">
           Please try refreshing. If your session has ended, sign in again.
           If this continues, copy the reference code below and share it with the technical team.

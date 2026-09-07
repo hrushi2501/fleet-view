@@ -355,7 +355,7 @@ export default async function InventoryPage({
           <div className="p-5 pb-3">
             <SectionTitle
               title="Stock Movement Ledger"
-              subtitle="Audited log of goods receipts, work order issues, transfers, and count reconciliations"
+              subtitle="Every part received, issued, moved or counted — with who did it"
             />
           </div>
 

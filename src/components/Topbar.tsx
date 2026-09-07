@@ -9,6 +9,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { QuickActionMenu } from "@/components/QuickActionMenu";
 import type { QuickAction } from "@/lib/quick-actions";
 import type { NotificationFeed, NotificationItem } from "@/lib/notification-types";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 /**
  * The header adapts to who is looking at it and provides global search.
@@ -114,6 +115,15 @@ export function Topbar({
           )}
         </div>
         <div className="flex items-center gap-3">
+          {/* Reachable from every screen, and on a phone too: somebody who
+              cannot read the English is exactly the person who must not have to
+              navigate through English menus to find this. */}
+          <div className="hidden sm:block">
+            <LanguageSwitcher />
+          </div>
+          <div className="sm:hidden">
+            <LanguageSwitcher compact />
+          </div>
           {!isDriver && (
             <button
               onClick={() => setSearchOpen(true)}
@@ -208,7 +218,7 @@ function NotificationDrawer({
       aria-label="Notifications"
       className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
     >
-      <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
         <div>
           <p className="text-sm font-bold text-ink-900">Notifications</p>
           <p className="text-[11px] text-slate-500">
@@ -220,7 +230,7 @@ function NotificationDrawer({
         </button>
       </div>
 
-      <div className="max-h-[min(30rem,calc(100vh-8rem))] overflow-y-auto">
+      <div className="max-h-[min(30rem,calc(100vh-8rem))] overflow-x-auto overflow-y-auto">
         {feed.items.map((item) => {
           const Icon = CATEGORY_ICON[item.category as keyof typeof CATEGORY_ICON] ?? CircleAlert;
           const content = (
@@ -254,7 +264,7 @@ function NotificationDrawer({
         )}
       </div>
 
-      <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50 px-4 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50 px-4 py-2.5">
         <button onClick={onRefresh} className="text-xs font-semibold text-slate-500 hover:text-brand-600">
           {loading ? "Refreshing…" : "Refresh"}
         </button>

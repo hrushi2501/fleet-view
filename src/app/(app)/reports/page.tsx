@@ -5,6 +5,7 @@ import { BellRing, FileDown, FileText } from "lucide-react";
 import Link from "next/link";
 import { REPORT_CATALOGUE } from "@/lib/reporting";
 import { requirePage, assetScope } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -51,13 +52,13 @@ export default async function ReportsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink-900">Reports</h1>
-        <p className="text-sm text-slate-500">Live performance measures with their targets, plus every report you can pull</p>
+        <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Reports" /></h1>
+        <p className="text-sm text-slate-500"><Txt text="Live performance measures with their targets, plus every report you can pull" /></p>
       </div>
 
       <Card>
         <SectionTitle title="Performance Measures" subtitle="Where each number stands against its target" />
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-3">
           {kpis.map((k) => (
             <div key={k.label} className="rounded-xl border border-slate-100 p-4">
               <p className="text-xs text-slate-500">{k.label}</p>
@@ -80,12 +81,12 @@ export default async function ReportsPage() {
           <span className="flex items-center gap-2 text-sm font-semibold text-ink-900"><BellRing className="h-4 w-4 text-brand-600" /> Notification Log</span>
           <span className="text-xs font-semibold text-brand-700">View master log</span>
         </Link>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3">
           {REPORT_CATALOGUE.map((r) => (
             <a
               key={r.key}
               href={`/api/export/${r.key}`}
-              className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2.5 transition-colors hover:border-brand-200 hover:bg-brand-50/30 text-left"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 px-3 py-2.5 transition-colors hover:border-brand-200 hover:bg-brand-50/30 text-left"
             >
               <div className="flex items-start gap-2">
                 <FileText className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />

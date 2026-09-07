@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from "react";
 import { Card, StatCard, SectionTitle } from "@/components/ui";
 import { DonutChart, LineChart } from "@/components/charts";
+import { Txt } from "@/components/Txt";
 import {
   CheckCircle2,
   Clock,
@@ -242,11 +243,11 @@ export function SupervisorAttendanceApproval({ view }: { view: AttendanceView })
               <table className="w-full text-left text-sm text-slate-600">
                 <thead className="border-b border-slate-100 bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
                   <tr>
-                    <th className="px-5 py-3.5 font-semibold">Driver Details</th>
-                    <th className="px-5 py-3.5 font-semibold">Vehicle & Project</th>
-                    <th className="px-5 py-3.5 font-semibold">Shift & Hours</th>
-                    <th className="px-5 py-3.5 font-semibold">Recorded Evidence</th>
-                    <th className="px-5 py-3.5 font-semibold">Status</th>
+                    <th className="px-5 py-3.5 font-semibold"><Txt text="Driver Details" /></th>
+                    <th className="px-5 py-3.5 font-semibold"><Txt text="Vehicle & Project" /></th>
+                    <th className="px-5 py-3.5 font-semibold"><Txt text="Shift & Hours" /></th>
+                    <th className="px-5 py-3.5 font-semibold"><Txt text="Recorded Evidence" /></th>
+                    <th className="px-5 py-3.5 font-semibold"><Txt text="Status" /></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -355,7 +356,7 @@ export function SupervisorAttendanceApproval({ view }: { view: AttendanceView })
       {viewGpsRecord && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl animate-fade-up">
-            <div className="flex items-center justify-between border-b pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
               <h3 className="font-bold text-ink-900">Check-in Position</h3>
               <button onClick={() => setViewGpsRecord(null)} className="p-1 text-slate-400 hover:text-slate-700">
                 <X className="h-5 w-5" />
@@ -385,18 +386,18 @@ export function SupervisorAttendanceApproval({ view }: { view: AttendanceView })
       {viewHistoryRecord && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl animate-fade-up">
-            <div className="flex items-center justify-between border-b pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
               <h3 className="font-bold text-ink-900">{viewHistoryRecord.driverName} — Recorded Days</h3>
               <button onClick={() => setViewHistoryRecord(null)} className="p-1 text-slate-400 hover:text-slate-700">
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="mt-4 max-h-80 space-y-2 overflow-y-auto">
+            <div className="mt-4 max-h-80 space-y-2 overflow-x-auto overflow-y-auto">
               {historyRows.length === 0 ? (
                 <p className="py-8 text-center text-xs text-slate-400">No records in the last {windowDays} days.</p>
               ) : (
                 historyRows.map((r) => (
-                  <div key={r.id} className="flex items-center justify-between gap-3 border-b py-2.5 text-xs">
+                  <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 border-b py-2.5 text-xs">
                     <span className="text-slate-600">{r.date}</span>
                     <span className="font-semibold text-slate-800">
                       <HoursCell row={r} />

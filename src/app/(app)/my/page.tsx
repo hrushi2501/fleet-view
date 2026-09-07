@@ -64,7 +64,7 @@ export default async function MyWorkPage() {
 
   return (
     <Screen>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <MyHeader href="/my" note={`${driver.name.split(" ")[0]} · ${fmtDate(now)}`} />
       </div>
 

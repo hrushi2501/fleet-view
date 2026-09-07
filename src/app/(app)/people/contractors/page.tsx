@@ -7,6 +7,7 @@ import { inr, num, fmtDate, ASSET_CLASS_LABEL } from "@/lib/utils";
 import { Handshake, TriangleAlert, Gauge, CalendarClock } from "lucide-react";
 import Link from "next/link";
 import { requirePage, assetScope } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -77,7 +78,7 @@ export default async function ContractorsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Contractors &amp; Hired Machines</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Contractors &amp; Hired Machines" /></h1>
           <p className="text-sm text-slate-500">
             Track hired assets, contractor rates, working logs, and equipment utilization
           </p>
@@ -88,7 +89,7 @@ export default async function ContractorsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         <StatCard label="Active Contracts" value={num(active.length)} sub={`${num(contracts.length)} total contracts`} accent="brand" icon={<Handshake className="h-5 w-5" />} />
         <StatCard label="Hired Equipment" value={num(hiredAssets.length)} sub="active on site" accent="violet" icon={<Gauge className="h-5 w-5" />} />
         <StatCard label="Site Work Logs" value={num(totalLogs)} sub="days & hours logged" accent="emerald" icon={<CalendarClock className="h-5 w-5" />} />
@@ -97,7 +98,7 @@ export default async function ContractorsPage() {
 
       {tcoData.length > 0 && (
         <Card className="mb-6">
-          <SectionTitle title="Hire vs Own — Total Cost" subtitle="Average hourly hire rate against what the same machine costs us to own and run" />
+          <SectionTitle title="Hire vs Own — Total Cost" subtitle="Hire rate per hour compared with what the same machine costs us to run" />
           <div className="mt-4">
             <MultiBar data={tcoData} keys={["Hired Cost (₹/hr)", "Owned Cost (₹/hr)"]} xKey="name" />
           </div>
@@ -206,19 +207,19 @@ export default async function ContractorsPage() {
 
               <div className="lg:col-span-3">
                 <SectionTitle title="Recent Day Logs" subtitle="The evidence invoices are verified against" />
-                <div className="mt-2 max-h-72 overflow-y-auto rounded-lg ring-1 ring-slate-100">
+                <div className="mt-2 max-h-72 overflow-x-auto overflow-y-auto rounded-lg ring-1 ring-slate-100">
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                       <tr>
-                        <th className="px-4 py-2.5 font-medium">Date</th>
-                        <th className="px-4 py-2.5 font-medium">Present</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Worked</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Idle</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Breakdown</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Km</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Trips</th>
-                        <th className="px-4 py-2.5 font-medium">Source</th>
-                        <th className="px-4 py-2.5 font-medium">Approval</th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Date" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Present" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="Worked" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="Idle" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="Breakdown" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="Km" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="Trips" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Source" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Approval" /></th>
                         <th className="px-4 py-2.5"></th>
                       </tr>
                     </thead>

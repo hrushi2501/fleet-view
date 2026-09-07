@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ShieldAlert, HandCoins, IndianRupee, Paperclip, History, ExternalLink } from "lucide-react";
 import { requirePage } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -76,7 +77,7 @@ export default async function CaseDetail({ params }: { params: Promise<{ id: str
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         <StatCard label="Risk Score" value={String(c.score)} sub={`${c.severity} severity`} accent={c.score >= 60 ? "rose" : c.score >= 30 ? "amber" : "brand"} icon={<ShieldAlert className="h-5 w-5" />} />
         <StatCard label="Amount at Risk" value={inr(c.amountAtRisk, { compact: true })} accent="rose" icon={<IndianRupee className="h-5 w-5" />} />
         <StatCard label="Recovered" value={inr(c.amountRecovered, { compact: true })} sub={`${c.recoveries.length} entr${c.recoveries.length === 1 ? "y" : "ies"}`} accent="emerald" icon={<HandCoins className="h-5 w-5" />} />
@@ -103,7 +104,7 @@ export default async function CaseDetail({ params }: { params: Promise<{ id: str
           </Card>
 
           <Card className="p-0">
-            <div className="flex items-center justify-between p-5 pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 p-5 pb-3">
               <SectionTitle title="Evidence" subtitle={`${c.evidence.length} item${c.evidence.length === 1 ? "" : "s"} — the pack handed to whoever decides`} action={<Paperclip className="h-4 w-4 text-slate-400" />} />
               <EvidenceForm caseId={c.id} />
             </div>
@@ -134,11 +135,11 @@ export default async function CaseDetail({ params }: { params: Promise<{ id: str
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                     <tr>
-                      <th className="px-5 py-3 font-medium">Date</th>
-                      <th className="px-5 py-3 font-medium">Method</th>
-                      <th className="px-5 py-3 font-medium">Reference</th>
-                      <th className="px-5 py-3 text-right font-medium">Amount</th>
-                      <th className="px-5 py-3 font-medium">By</th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Date" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Method" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Reference" /></th>
+                      <th className="px-5 py-3 text-right font-medium"><Txt text="Amount" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="By" /></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -182,7 +183,7 @@ export default async function CaseDetail({ params }: { params: Promise<{ id: str
             <div className="px-5 pb-4">
               <NoteForm caseId={c.id} />
             </div>
-            <div className="max-h-96 divide-y divide-slate-100 overflow-y-auto">
+            <div className="max-h-96 divide-y divide-slate-100 overflow-x-auto overflow-y-auto">
               {c.actions.map((a) => (
                 <div key={a.id} className="px-5 py-3">
                   <div className="flex items-center gap-2">

@@ -57,14 +57,14 @@ export default async function MyVehiclePage({
 
   return (
     <Screen>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <MyHeader href="/my/vehicle" note={vehicle.registrationNo ?? vehicle.code} />
         {shift.hasActiveTrip
           ? <DriverTripEndScanner vehicleCode={vehicle.code} />
           : <DriverQrScanner triggerVariant="button" />}
       </div>
 
-      {error && <Notice tone="warn" title="Problem save nahi hui — please pick one option and try again." />}
+      {error && <Notice tone="warn" title="Problem save nahi hui — ek option chunkar dobara try karo." />}
 
       <Hero tone={state.tone} label={state.label} hint={state.hint} meta={`Last update ${timeAgo(vehicle.lastSeen)}`} />
 

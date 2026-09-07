@@ -29,6 +29,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Txt } from "@/components/Txt";
 
 export interface FacetOption {
   label: string;
@@ -262,7 +263,16 @@ export function DataTable<TData, TValue>({
                       >
                         {header.isPlaceholder ? null : (
                           <div className="flex items-center gap-1.5">
-                            <span>{flexRender(header.column.columnDef.header, header.getContext())}</span>
+                            <span>
+                              {/* A plain string header is a label a person reads, so it
+                                  translates like any other. Anything richer is a render
+                                  function and is left to draw itself. */}
+                              {typeof header.column.columnDef.header === "string" ? (
+                                <Txt text={header.column.columnDef.header} />
+                              ) : (
+                                flexRender(header.column.columnDef.header, header.getContext())
+                              )}
+                            </span>
                             {canSort && (
                               <span className="text-slate-400">
                                 {sortDirection === "asc" ? (

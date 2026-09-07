@@ -4,6 +4,7 @@ import { num, fmtDate, timeAgo } from "@/lib/utils";
 import { KeyRound, Activity, Users, ArrowLeft, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { requireAdminPage } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -36,13 +37,13 @@ export default async function AuditPage() {
       </Link>
 
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink-900">Audit Log</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Audit Log" /></h1>
         <p className="text-sm text-slate-500">
           Append-only record of who did what. Nothing in the app edits or deletes these rows.
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         <StatCard label="Events Recorded" value={num(total)} sub="all time" accent="brand" icon={<Activity className="h-5 w-5" />} />
         <StatCard label="Sensitive Actions" value={num(sensitive)} sub="deletes, config, exports" accent="amber" icon={<ShieldCheck className="h-5 w-5" />} />
         <StatCard label="Active Users" value={num(actors.length)} sub="last 90 days" accent="violet" icon={<Users className="h-5 w-5" />} />
@@ -55,12 +56,12 @@ export default async function AuditPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">When</th>
-                <th className="px-5 py-3 font-medium">Who</th>
-                <th className="px-5 py-3 font-medium">Action</th>
-                <th className="px-5 py-3 font-medium">Module</th>
-                <th className="px-5 py-3 font-medium">Summary</th>
-                <th className="px-5 py-3 font-medium">Changes</th>
+                <th className="px-5 py-3 font-medium"><Txt text="When" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Who" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Action" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Module" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Summary" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Changes" /></th>
               </tr>
             </thead>
             <tbody>

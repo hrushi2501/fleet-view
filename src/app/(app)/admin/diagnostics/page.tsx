@@ -9,8 +9,10 @@ import { isTataEnabled, missingConfigKeys, TATA_PROVIDER_CODE } from "@/lib/tata
 import { num, fmtDate, timeAgo } from "@/lib/utils";
 import { Activity, Database, PlugZap, TriangleAlert, ShieldCheck, Server } from "lucide-react";
 import { requireAdminPage } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 import { auditSchemaAlignment, auditSupabaseSecurity, auditDatabaseHealth } from "@/lib/db-audit";
 import { RunDatabaseAuditButton } from "@/components/RunDatabaseAuditButton";
+import { serverCache } from "@/lib/cache";
 
 export const dynamic = "force-dynamic";
 
@@ -99,21 +101,38 @@ export default async function DiagnosticsPage() {
 
   const configMissing = missingConfigKeys();
 
+  // "Configured" and "working" are different things, and the cache used to
+  // report the first while meaning neither. Ask it.
+  const cacheReachable = await serverCache.healthy();
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink-900">Advanced Diagnostics</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Advanced Diagnostics" /></h1>
         <p className="text-sm text-slate-500">
           Provider sync state, raw telemetry payloads and data-quality checks. Technical detail lives here so the
           operational screens do not have to carry it.
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         <StatCard label="Readings — 24h" value={num(last24h)} sub={`${num(lastWeek)} in 7 days`} accent="brand" icon={<Activity className="h-5 w-5" />} />
         <StatCard label="Tracked Vehicles" value={`${num(assetsTracked)}/${num(assetsTotal)}`} sub="have a device id" accent="violet" icon={<PlugZap className="h-5 w-5" />} />
         <StatCard label="Silent Over 24h" value={num(silent.length)} sub="tracker fitted, no data" accent={silent.length ? "rose" : "emerald"} icon={<TriangleAlert className="h-5 w-5" />} />
         <StatCard label="Payload Fields" value={num(FLEET_EDGE_KNOWN_FIELDS.length)} sub="in the recorded contract" accent="brand" icon={<Database className="h-5 w-5" />} />
+        <StatCard
+          label="Cache"
+          value={serverCache.type === "redis" ? (cacheReachable ? "Redis" : "Redis — not answering") : "Memory only"}
+          sub={
+            serverCache.type === "redis"
+              ? cacheReachable
+                ? "Shared by every server"
+                : "Falling back — pages still work, just slower"
+              : "Each server keeps its own"
+          }
+          accent={serverCache.type === "redis" ? (cacheReachable ? "emerald" : "rose") : "amber"}
+          icon={<Database className="h-5 w-5" />}
+        />
       </div>
 
       {/* Database & Supabase Schema Uniformity */}
@@ -215,13 +234,13 @@ export default async function DiagnosticsPage() {
           <table className="w-full min-w-180 text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Provider</th>
-                <th className="px-5 py-3 font-medium">Code</th>
-                <th className="px-5 py-3 font-medium">Active</th>
-                <th className="px-5 py-3 font-medium">Interval</th>
-                <th className="px-5 py-3 font-medium">Last sync</th>
-                <th className="px-5 py-3 font-medium">Status</th>
-                <th className="px-5 py-3 font-medium">Last error</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Provider" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Code" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Active" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Interval" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Last sync" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Status" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Last error" /></th>
               </tr>
             </thead>
             <tbody>
@@ -264,7 +283,7 @@ export default async function DiagnosticsPage() {
       <Card>
         <SectionTitle
           title="Payload Schema Drift"
-          subtitle="Newest raw payload compared against the recorded field contract"
+          subtitle="The latest data received, compared with the fields we expect"
         />
         <div className="mt-3 text-sm">
           {!newestRaw && <p className="text-slate-400">No payload with a stored `raw` object in the last 25 readings.</p>}
@@ -293,7 +312,7 @@ export default async function DiagnosticsPage() {
           <SectionTitle title="Readings by Source" subtitle="Where the data is coming from" />
           <div className="mt-3 space-y-2 text-sm">
             {bySource.map((s) => (
-              <div key={s.source} className="flex items-center justify-between">
+              <div key={s.source} className="flex flex-wrap items-center justify-between gap-3">
                 <span className="font-mono text-xs text-slate-600">{s.source}</span>
                 <span className="font-semibold text-ink-900">{num(s._count._all)}</span>
               </div>
@@ -306,7 +325,7 @@ export default async function DiagnosticsPage() {
           <SectionTitle title="Silent Trackers" subtitle="Device fitted, nothing received in 24 hours" />
           <div className="mt-3 space-y-2 text-sm">
             {silent.map((a) => (
-              <div key={a.id} className="flex items-center justify-between">
+              <div key={a.id} className="flex flex-wrap items-center justify-between gap-3">
                 <span className="font-medium text-ink-900">{a.code}<span className="ml-2 text-xs text-slate-400">{a.registrationNo ?? ""}</span></span>
                 <span className="text-xs text-slate-500">last seen {timeAgo(a.lastSeen)}</span>
               </div>

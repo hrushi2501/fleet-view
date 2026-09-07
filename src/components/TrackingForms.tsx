@@ -11,7 +11,7 @@ const inputCls = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 t
 function Modal({ open, onClose, title, subtitle, children }: { open: boolean; onClose: () => void; title: string; subtitle?: string; children: ReactNode }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-x-auto overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
       <div className="my-8 w-full max-w-2xl rounded-2xl bg-white shadow-xl ring-1 ring-slate-200">
         <div className="flex items-start justify-between border-b border-slate-100 p-5">
           <div><h3 className="text-lg font-bold text-ink-900">{title}</h3>{subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}</div>
@@ -96,7 +96,7 @@ export function VerifyGaugeForm({ reading }: { reading: { id: string; levelPct: 
   return (
     <>
       <button onClick={() => setOpen(true)} className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">Review</button>
-      <Modal open={open} onClose={() => setOpen(false)} title={`Verify gauge reading — ${reading.assetCode}`} subtitle="Accept the machine's reading, correct it, or reject the photo. Only a verified figure enters the fuel record.">
+      <Modal open={open} onClose={() => setOpen(false)} title={`Verify gauge reading — ${reading.assetCode}`} subtitle="Accept the reading, fix it, or reject the photo. Only a checked number is saved.">
         <form action={(fd) => start(async () => { await verifyGaugeReading(reading.id, fd); setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-slate-600">Verdict</span>

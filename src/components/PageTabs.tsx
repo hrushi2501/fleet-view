@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Txt } from "@/components/Txt";
 
 /**
  * The tab strip that holds a consolidated module together.
@@ -50,7 +51,7 @@ export function PageTabs({
                 : "text-slate-600 hover:bg-white/60 hover:text-ink-900"
             }`}
           >
-            {t.label}
+            <Txt text={t.label} />
             {t.badge != null && t.badge !== "" && (
               <span
                 className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${

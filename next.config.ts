@@ -27,6 +27,12 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   transpilePackages: ["lucide-react"],
+  // PDFKit reads its font metrics (.afm) from disk at runtime, and ExcelJS
+  // pulls in Node built-ins. Bundling either produces a build that compiles
+  // cleanly and then fails on the first payroll download in production, which
+  // is the worst place to find out. Left external so both resolve from
+  // node_modules with their data files intact.
+  serverExternalPackages: ["pdfkit", "exceljs"],
   // A driver may attach up to three optional refuelling verification images. The
   // wizard compresses each to at most 2 MB (6 MB total); leave room for multipart
   // boundaries while retaining a firm limit against oversized action bodies.

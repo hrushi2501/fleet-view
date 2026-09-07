@@ -6,6 +6,7 @@ import { ROLE_LABEL } from "@/lib/auth";
 import { num, fmtDate } from "@/lib/utils";
 import { Users, Shield, Truck } from "lucide-react";
 import { requireAdminPage } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -27,13 +28,13 @@ export default async function AdminUsersPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Users &amp; Access</h1>
-          <p className="text-sm text-slate-500">Create login accounts — admins get full access, drivers get the fuel-entry portal only</p>
+          <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Users &amp; Access" /></h1>
+          <p className="text-sm text-slate-500"><Txt text="Create login accounts — admins get full access, drivers get the fuel-entry portal only" /></p>
         </div>
         <UserEntry />
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-3">
         <StatCard label="Total Users" value={num(users.length)} accent="brand" icon={<Users className="h-5 w-5" />} />
         <StatCard label="Administrators" value={num(admins)} accent="violet" icon={<Shield className="h-5 w-5" />} />
         <StatCard label="Truck Drivers" value={num(drivers)} accent="emerald" icon={<Truck className="h-5 w-5" />} />
@@ -45,11 +46,11 @@ export default async function AdminUsersPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Name</th>
-                <th className="px-5 py-3 font-medium">Email (login)</th>
-                <th className="px-5 py-3 font-medium">Role</th>
-                <th className="px-5 py-3 font-medium">Created</th>
-                <th className="px-5 py-3 font-medium">Actions</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Name" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Email (login)" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Role" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Created" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Actions" /></th>
               </tr>
             </thead>
             <tbody>

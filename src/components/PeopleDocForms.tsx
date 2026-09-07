@@ -37,7 +37,7 @@ function Sel({ label, name, options, defaultValue, required, hint }: { label: st
 function Modal({ open, onClose, title, subtitle, children }: { open: boolean; onClose: () => void; title: string; subtitle?: string; children: ReactNode }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-x-auto overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
       <div className="my-8 w-full max-w-2xl rounded-2xl bg-white shadow-xl ring-1 ring-slate-200">
         <div className="flex items-start justify-between border-b border-slate-100 p-5">
           <div>
@@ -81,7 +81,7 @@ export function CompetencyForm({ drivers, classes }: { drivers: Opt[]; classes: 
   return (
     <>
       <Trigger onClick={() => setOpen(true)} tone="ghost"><Plus className="h-4 w-4" /> Add Competency</Trigger>
-      <Modal open={open} onClose={() => setOpen(false)} title="Clear an Operator for a Machine Class" subtitle="Assignment refuses machine classes a person has no recorded competency for.">
+      <Modal open={open} onClose={() => setOpen(false)} title="Clear an Operator for a Machine Class" subtitle="A person cannot be given a machine they are not trained for.">
         <form action={(fd) => start(async () => { const result = await saveCompetency(fd); if (isActionError(result)) { toast.error(result.error); return; } setOpen(false); router.refresh(); })} className="grid gap-4 sm:grid-cols-2">
           <Sel label="Person" name="driverId" required options={drivers.map((d) => ({ value: d.id, label: d.label }))} />
           <Sel label="Machine Class" name="assetClass" required options={classes} />

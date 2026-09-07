@@ -182,6 +182,14 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
     return () => clearInterval(t);
   }, []);
 
+  // Whether what is on screen can still be called live.
+  //
+  // Polling pauses for a hidden tab, so this picture can be minutes old while
+  // every row goes on counting upward once a second. Past a few poll
+  // intervals, say so rather than letting the display imply the fleet went
+  // quiet — the vehicles are usually fine and it is the screen that stopped.
+  const stalePicture = now - Date.parse(fleet.generatedAt) > 4 * POLL_MS;
+
   const refresh = useCallback(async () => {
     await refetch();
   }, [refetch]);
@@ -289,10 +297,23 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
 
           <button
             onClick={refresh}
-            className="pointer-events-auto inline-flex items-center gap-1.5 rounded-lg bg-white/90 px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow ring-1 ring-black/10 backdrop-blur transition-colors hover:bg-white"
+            title={
+              stalePicture
+                ? "This screen has not updated recently. Click to refresh now."
+                : "Refresh now"
+            }
+            className={cn(
+              "pointer-events-auto inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold shadow ring-1 ring-black/10 backdrop-blur transition-colors",
+              // Stale has to look different. Reading "4m ago" in the same calm
+              // grey as "8s ago" is how a paused screen gets mistaken for a
+              // vehicle that stopped reporting.
+              stalePicture
+                ? "bg-amber-100/95 text-amber-900 hover:bg-amber-100"
+                : "bg-white/90 text-slate-700 hover:bg-white",
+            )}
           >
             <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
-            {fmtAge(fleet.generatedAt, now)} ago
+            {stalePicture ? `Not updating · ${fmtAge(fleet.generatedAt, now)} old` : `${fmtAge(fleet.generatedAt, now)} ago`}
           </button>
         </div>
 
@@ -384,7 +405,7 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
             vehicles={visible}
           />
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-x-auto overflow-y-auto">
             {visible.length === 0 ? (
               <p className="px-4 py-10 text-center text-sm text-slate-400">
                 No vehicle matches this filter.
@@ -690,7 +711,7 @@ function DetailCard({
         "absolute top-3 z-1000 w-[min(23rem,calc(100%-1.5rem))] overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/10",
         // Sits clear of the vehicle list rather than under it.
         sidebarOpen ? "right-[calc(min(20rem,90vw)+0.75rem)]" : "right-3",
-        "max-h-[calc(100%-1.5rem)] overflow-y-auto",
+        "max-h-[calc(100%-1.5rem)] overflow-x-auto overflow-y-auto",
       )}
     >
       <header className="sticky top-0 z-10 flex items-start gap-2.5 bg-linear-to-r from-violet-100 to-brand-50 px-3.5 py-3">
@@ -865,7 +886,7 @@ function DetailCard({
         <button
           onClick={() => downloadLiveVehicleReport(v)}
           className="rounded-lg border border-slate-200 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-brand-300 hover:text-brand-600"
-          title="Download this vehicle's live, daily, service and assignment details as CSV"
+          title="Download this vehicle's details as CSV"
         >
           <Download className="mr-1 inline h-3.5 w-3.5" /> Download Report
         </button>
@@ -937,7 +958,7 @@ function LevelBar({
 
   return (
     <div>
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="flex items-center gap-1.5 text-[13px] font-semibold text-ink-900">
           <Icon className="h-4 w-4 text-slate-400" />
           {label}

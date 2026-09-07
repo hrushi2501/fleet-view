@@ -5,6 +5,7 @@ import { attendanceSummary, personDocStatus, PERSON_DOC_LABEL, REQUIRED_PERSON_D
 import { num, fmtDate } from "@/lib/utils";
 import { Users, CalendarCheck, FileX2, TriangleAlert, UserCheck } from "lucide-react";
 import { requirePage } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 const STATE_DOT: Record<string, string> = {
   valid: "bg-emerald-500", expiring: "bg-amber-500", expired: "bg-rose-500", missing: "bg-slate-400", "no-expiry": "bg-brand-400",
@@ -80,7 +81,7 @@ export async function PeopleRecords() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         <StatCard label="People" value={num(drivers.length)} sub={`${num(contractors)} contractor-supplied`} accent="brand" icon={<Users className="h-5 w-5" />} />
         <StatCard label="Attendance" value={avgAtt != null ? `${avgAtt.toFixed(0)}%` : "—"} sub={avgAtt != null ? `last 30 days · ${withAtt.length} marked` : "nobody marked in the last 30 days"} accent={avgAtt != null && avgAtt >= 90 ? "emerald" : "amber"} icon={<CalendarCheck className="h-5 w-5" />} />
         <StatCard label="Missing Documents" value={num(totalMissing)} sub="never recorded" accent={totalMissing > 0 ? "rose" : "emerald"} icon={<FileX2 className="h-5 w-5" />} />
@@ -96,11 +97,11 @@ export async function PeopleRecords() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Person</th>
-                <th className="px-5 py-3 font-medium">Employment</th>
-                <th className="px-5 py-3 font-medium">Attendance (30d)</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Person" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Employment" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Attendance (30d)" /></th>
                 {REQUIRED_PERSON_DOCS.map((t) => <th key={t} className="px-3 py-3 text-center font-medium">{PERSON_DOC_LABEL[t]}</th>)}
-                <th className="px-5 py-3 font-medium">Emergency</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Emergency" /></th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
@@ -151,16 +152,16 @@ export async function PeopleRecords() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="p-0">
           <div className="p-5 pb-3"><SectionTitle title="Attendance Log" subtitle="Last 30 days" /></div>
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-80 overflow-x-auto overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-5 py-2.5 font-medium">Date</th>
-                  <th className="px-5 py-2.5 font-medium">Person</th>
-                  <th className="px-5 py-2.5 font-medium">Status</th>
-                  <th className="px-5 py-2.5 font-medium">Shift</th>
-                  <th className="px-5 py-2.5 text-right font-medium">Hours</th>
-                  <th className="px-5 py-2.5 font-medium">Project</th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Date" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Person" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Status" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Shift" /></th>
+                  <th className="px-5 py-2.5 text-right font-medium"><Txt text="Hours" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Project" /></th>
                   <th className="px-5 py-2.5"></th>
                 </tr>
               </thead>
@@ -184,15 +185,15 @@ export async function PeopleRecords() {
 
         <Card className="p-0">
           <div className="p-5 pb-3"><SectionTitle title="Personal Documents" subtitle="Soonest expiry first" /></div>
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-80 overflow-x-auto overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-5 py-2.5 font-medium">Person</th>
-                  <th className="px-5 py-2.5 font-medium">Document</th>
-                  <th className="px-5 py-2.5 font-medium">Number</th>
-                  <th className="px-5 py-2.5 font-medium">Expiry</th>
-                  <th className="px-5 py-2.5 font-medium">Scan</th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Person" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Document" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Number" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Expiry" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Scan" /></th>
                   <th className="px-5 py-2.5"></th>
                 </tr>
               </thead>

@@ -9,6 +9,7 @@ import { ShieldAlert, IndianRupee, Fuel, HandCoins, ArrowRight, Scale, TrendingU
 import Link from "next/link";
 
 import { requirePage, assetScope, projectScope } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 /** Safe DB fetch — returns empty array if the table doesn't exist yet. */
 async function safeFindMany<T>(fn: () => Promise<T[]>): Promise<T[]> {
@@ -98,7 +99,7 @@ export async function FuelInsights() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         <StatCard label="Open Risk Cases" value={num(openCases.length)} sub={`${num(unifiedAnomalies.length)} total cases`} accent="rose" icon={<ShieldAlert className="h-5 w-5" />} />
         <StatCard label="Litres Unaccounted" value={`${num(totalUnaccountedL)} L`} sub="live tank variance" accent="amber" icon={<Fuel className="h-5 w-5" />} />
         <StatCard label="Value at Risk" value={inr(valueAtRisk, { compact: true })} sub={`@ ₹${dieselRate}/L`} accent="rose" icon={<IndianRupee className="h-5 w-5" />} />
@@ -108,7 +109,7 @@ export async function FuelInsights() {
       {/* Quick links to dedicated pages */}
       <div className="grid gap-4 lg:grid-cols-2">
         <Link href="/fuel/problems" className="group">
-          <Card className="flex items-center justify-between transition-all hover:ring-2 hover:ring-brand-200">
+          <Card className="flex flex-wrap items-center justify-between gap-3 transition-all hover:ring-2 hover:ring-brand-200">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
                 <ShieldAlert className="h-5 w-5" />
@@ -122,7 +123,7 @@ export async function FuelInsights() {
           </Card>
         </Link>
         <Link href="/fuel/tanks?tab=stock" className="group">
-          <Card className="flex items-center justify-between transition-all hover:ring-2 hover:ring-brand-200">
+          <Card className="flex flex-wrap items-center justify-between gap-3 transition-all hover:ring-2 hover:ring-brand-200">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
                 <Scale className="h-5 w-5" />
@@ -141,20 +142,20 @@ export async function FuelInsights() {
       {liveRecons.length > 0 && (
         <Card className="p-0">
           <div className="p-5 pb-3">
-            <SectionTitle title="Dynamic Site Tank Reconciliation" subtitle="Cascading scope thresholds (Tank → Project → Global) with dynamic seasonal & capacity scaling" />
+            <SectionTitle title="Site Tank Check" subtitle="Limits set for each tank, then each site, then the whole company" />
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-5 py-3 font-medium">Tank</th>
-                  <th className="px-5 py-3 text-right font-medium">Opening Dip</th>
-                  <th className="px-5 py-3 text-right font-medium">Received</th>
-                  <th className="px-5 py-3 text-right font-medium">Issued</th>
-                  <th className="px-5 py-3 text-right font-medium">Expected</th>
-                  <th className="px-5 py-3 text-right font-medium">Actual Dip</th>
-                  <th className="px-5 py-3 text-right font-medium">Variance</th>
-                  <th className="px-5 py-3 font-medium">Status</th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Tank" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Opening Dip" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Received" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Issued" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Expected" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Actual Dip" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Variance" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Status" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -192,7 +193,7 @@ export async function FuelInsights() {
             <SectionTitle title="Best Mileage" action={<TrendingUp className="h-4 w-4 text-emerald-600" />} />
             <div className="space-y-2">
               {fleet.best.map((r) => (
-                <div key={r.asset.id} className="flex items-center justify-between text-sm">
+                <div key={r.asset.id} className="flex flex-wrap items-center justify-between gap-3 text-sm">
                   <Link href={`/fleet/${r.asset.id}`} className="font-medium text-brand-700 hover:underline">{r.asset.code}</Link>
                   <span className="font-bold text-emerald-600">{r.efficiency!.toFixed(2)} km/L</span>
                 </div>
@@ -201,10 +202,10 @@ export async function FuelInsights() {
             </div>
           </Card>
           <Card>
-            <SectionTitle title="Worst Mileage — investigate" action={<TrendingDown className="h-4 w-4 text-rose-600" />} />
+            <SectionTitle title="Worst Mileage — check these" action={<TrendingDown className="h-4 w-4 text-rose-600" />} />
             <div className="space-y-2">
               {fleet.worst.map((r) => (
-                <div key={r.asset.id} className="flex items-center justify-between text-sm">
+                <div key={r.asset.id} className="flex flex-wrap items-center justify-between gap-3 text-sm">
                   <Link href={`/fleet/${r.asset.id}`} className="font-medium text-brand-700 hover:underline">{r.asset.code}</Link>
                   <span className="font-bold text-rose-600">{r.efficiency!.toFixed(2)} km/L</span>
                 </div>
@@ -218,19 +219,19 @@ export async function FuelInsights() {
       {/* Supplier Scorecard */}
       <Card className="p-0">
         <div className="p-5 pb-3">
-          <SectionTitle title="Supplier Short-Delivery Scorecard" subtitle="Automated gate control analytics: claimed invoiced litres vs actual dipped litres" />
+          <SectionTitle title="Supplier Short-Delivery Scorecard" subtitle="Compare the litres on the bill with the litres actually measured in the tank" />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Supplier</th>
-                <th className="px-5 py-3 text-right font-medium">Deliveries</th>
-                <th className="px-5 py-3 text-right font-medium">Invoiced Litres</th>
-                <th className="px-5 py-3 text-right font-medium">Dipped Litres</th>
-                <th className="px-5 py-3 text-right font-medium">Total Shortfall</th>
-                <th className="px-5 py-3 text-right font-medium">Shortfall %</th>
-                <th className="px-5 py-3 text-right font-medium">Total Spend</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Supplier" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Deliveries" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Invoiced Litres" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Dipped Litres" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Total Shortfall" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Shortfall %" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Total Spend" /></th>
               </tr>
             </thead>
             <tbody>
@@ -261,17 +262,17 @@ export async function FuelInsights() {
       {norms.length > 0 && (
         <Card className="p-0">
           <div className="p-5 pb-3">
-            <SectionTitle title="Expected Fuel Use" subtitle="Normal burn for each type of machine — issues outside the range are flagged as problems" />
+            <SectionTitle title="Expected Fuel Use" subtitle="Normal diesel use for each machine type — anything outside this range is flagged" />
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-5 py-3 font-medium">Asset Class</th>
-                  <th className="px-5 py-3 font-medium">Unit</th>
-                  <th className="px-5 py-3 text-right font-medium">Norm Band</th>
-                  <th className="px-5 py-3 text-right font-medium">Tolerance</th>
-                  <th className="px-5 py-3 font-medium">Updated</th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Asset Class" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Unit" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Norm Band" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Tolerance" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Updated" /></th>
                 </tr>
               </thead>
               <tbody>

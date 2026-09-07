@@ -478,7 +478,7 @@ export function AdjustStockModal({
         open={open}
         onClose={() => setOpen(false)}
         title="Physical Stock Adjustment"
-        subtitle="Reconcile inventory count variances, damages, or stocktake findings"
+        subtitle="Record a count difference, damage, or what a stock check found"
       >
         <form
           action={(fd) =>

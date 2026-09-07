@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { requirePage, assetScope, projectScope } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 // Row types derived from Prisma — keeps callback params fully typed without spreading `any`.
 type DriverRow = Prisma.DriverGetPayload<Record<string, never>>;
@@ -217,7 +218,7 @@ export async function Workforce({ tab }: { tab: string }) {
       {activeTab === "overview" && (
         <>
           {/* Stat cards */}
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
             <StatCard
               label="Total Workforce"
               value={num(drivers.length)}
@@ -289,14 +290,14 @@ export async function Workforce({ tab }: { tab: string }) {
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                   <tr>
-                    <th className="px-5 py-3 font-medium">Name</th>
-                    <th className="px-5 py-3 font-medium">Code</th>
-                    <th className="px-5 py-3 font-medium">Type</th>
-                    <th className="px-5 py-3 font-medium">License Expiry</th>
-                    <th className="px-5 py-3 font-medium">Attendance</th>
-                    <th className="px-5 py-3 font-medium">Safety</th>
-                    <th className="px-5 py-3 font-medium">Performance</th>
-                    <th className="px-5 py-3 font-medium">Actions</th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Name" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Code" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Type" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="License Expiry" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Attendance" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Safety" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Performance" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Actions" /></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -394,7 +395,7 @@ export async function Workforce({ tab }: { tab: string }) {
       {activeTab === "safety" && (
         <>
           {/* Stat cards */}
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             <StatCard
               label="People"
               value={num(drivers.length)}
@@ -482,13 +483,13 @@ export async function Workforce({ tab }: { tab: string }) {
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                   <tr>
-                    <th className="px-5 py-3 font-medium">Person</th>
-                    <th className="px-5 py-3 font-medium">Score</th>
-                    <th className="px-5 py-3 font-medium">Licence</th>
-                    <th className="px-5 py-3 font-medium">Cleared For</th>
-                    <th className="px-5 py-3 text-right font-medium">Violations</th>
-                    <th className="px-5 py-3 text-right font-medium">Penalties</th>
-                    <th className="px-5 py-3 font-medium">Flags</th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Person" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Score" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Licence" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Cleared For" /></th>
+                    <th className="px-5 py-3 text-right font-medium"><Txt text="Violations" /></th>
+                    <th className="px-5 py-3 text-right font-medium"><Txt text="Penalties" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Flags" /></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -588,18 +589,18 @@ export async function Workforce({ tab }: { tab: string }) {
                 subtitle="Dismissed events stop counting toward the score"
               />
             </div>
-            <div className="max-h-96 overflow-y-auto">
+            <div className="max-h-96 overflow-x-auto overflow-y-auto">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                   <tr>
-                    <th className="px-5 py-2.5 font-medium">Date</th>
-                    <th className="px-5 py-2.5 font-medium">Person</th>
-                    <th className="px-5 py-2.5 font-medium">Type</th>
-                    <th className="px-5 py-2.5 font-medium">Severity</th>
-                    <th className="px-5 py-2.5 text-right font-medium">Points</th>
-                    <th className="px-5 py-2.5 font-medium">Machine</th>
-                    <th className="px-5 py-2.5 text-right font-medium">Penalty</th>
-                    <th className="px-5 py-2.5 font-medium">Status</th>
+                    <th className="px-5 py-2.5 font-medium"><Txt text="Date" /></th>
+                    <th className="px-5 py-2.5 font-medium"><Txt text="Person" /></th>
+                    <th className="px-5 py-2.5 font-medium"><Txt text="Type" /></th>
+                    <th className="px-5 py-2.5 font-medium"><Txt text="Severity" /></th>
+                    <th className="px-5 py-2.5 text-right font-medium"><Txt text="Points" /></th>
+                    <th className="px-5 py-2.5 font-medium"><Txt text="Machine" /></th>
+                    <th className="px-5 py-2.5 text-right font-medium"><Txt text="Penalty" /></th>
+                    <th className="px-5 py-2.5 font-medium"><Txt text="Status" /></th>
                     <th className="px-5 py-2.5"></th>
                   </tr>
                 </thead>

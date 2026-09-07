@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { ASSET_CLASS_LABEL, fmtDate, num } from "@/lib/utils";
+import { Txt } from "@/components/Txt";
 
 export interface VehicleProdAsset {
   id: string;
@@ -360,7 +361,7 @@ export function VehicleProductionDetails({
 
       {/* Recent Production Shift Logs Table */}
       <Card className="p-0">
-        <div className="flex items-center justify-between p-5 pb-3 border-b border-slate-100">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-5 pb-3 border-b border-slate-100">
           <SectionTitle
             title="Recent Production Shift Records"
             subtitle={`${filteredLogs.length} shift logs in selected time window`}
@@ -382,14 +383,14 @@ export function VehicleProductionDetails({
             <table className="w-full text-sm text-left">
               <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-5 py-3 font-medium">Date &amp; Shift</th>
-                  <th className="px-5 py-3 font-medium">Material</th>
-                  <th className="px-5 py-3 text-right font-medium">Trips</th>
-                  <th className="px-5 py-3 text-right font-medium">Tonnage</th>
-                  <th className="px-5 py-3 text-right font-medium">Volume (m³)</th>
-                  <th className="px-5 py-3 text-right font-medium">Worked Hrs</th>
-                  <th className="px-5 py-3 text-right font-medium">Idle Hrs</th>
-                  <th className="px-5 py-3 text-right font-medium">Distance (km)</th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Date & Shift" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Material" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Trips" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Tonnage" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Volume (m³)" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Worked Hrs" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Idle Hrs" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Distance (km)" /></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">

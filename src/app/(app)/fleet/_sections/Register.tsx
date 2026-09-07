@@ -101,14 +101,14 @@ export async function Register() {
         <AssetEntry projects={projOpts} />
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         <StatCard label="Total Vehicles" value={num(assets.length)} accent="brand" icon={<Truck className="h-5 w-5" />} />
         {/* The register's own count of what the system can actually see. A
             fleet screen that says "53" while 40 of them have never sent a
             position is answering a different question from the one being
             asked. */}
         <StatCard
-          label="Reporting telemetry"
+          label="Sending live data"
           value={`${num(connectedCount)} of ${num(assets.length)}`}
           sub={connectedCount ? "position, fuel and odometer are live" : "no vehicle has reported in 24 h"}
           accent={connectedCount > 0 ? "emerald" : "amber"}

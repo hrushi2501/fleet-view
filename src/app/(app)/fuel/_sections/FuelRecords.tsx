@@ -7,6 +7,7 @@ import Link from "next/link";
 
 import { requirePage, assetScope } from "@/lib/access";
 import { detectFills } from "@/lib/fuel-fill-reconcile";
+import { Txt } from "@/components/Txt";
 
 /**
  * Every fill, with its time, place and photographs.
@@ -61,7 +62,7 @@ export async function FuelRecords() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         <StatCard
           label="Recent Fuel Spend"
           value={inr(totalSpend, { compact: true })}
@@ -88,12 +89,12 @@ export async function FuelRecords() {
         <Card className="p-0 ring-1 ring-amber-200">
           <div className="p-5 pb-3">
             <SectionTitle
-              title={`${unlogged.length} fill${unlogged.length === 1 ? "" : "s"} the tank saw but nobody logged`}
+              title={`${unlogged.length} fill${unlogged.length === 1 ? "" : "s"} nobody entered`}
               subtitle={
-                "Detected from the fuel sensor over the last 7 days, with no matching entry in Fill History. " +
-                "Usually a receipt not yet entered, or diesel drawn from a site tank — worth confirming while the day is still fresh." +
+                "The fuel sensor saw diesel go in over the last 7 days, but no one entered these fills. " +
+                "Usually the bill just has not been entered yet, or the diesel came from a site tank. Best checked today." +
                 (unreliableSenders.length > 0
-                  ? ` ${unreliableSenders.map((u) => u.assetCode).join(", ")} ${unreliableSenders.length === 1 ? "is" : "are"} excluded: the tank sender contradicts itself, so no fill it appears to show can be believed.`
+                  ? ` Not shown: ${unreliableSenders.map((u) => u.assetCode).join(", ")} — the fuel sensor on ${unreliableSenders.length === 1 ? "this vehicle" : "these vehicles"} is giving wrong readings, so its fills cannot be trusted.`
                   : "")
               }
             />
@@ -102,13 +103,13 @@ export async function FuelRecords() {
             <table className="w-full text-sm">
               <thead className="bg-amber-50/60 text-left text-xs uppercase tracking-wider text-amber-800">
                 <tr>
-                  <th className="px-5 py-3 font-medium">When</th>
-                  <th className="px-5 py-3 font-medium">Vehicle</th>
-                  <th className="px-5 py-3 font-medium">Litres</th>
-                  <th className="px-5 py-3 font-medium">Tank went</th>
-                  <th className="px-5 py-3 font-medium">Approx. value</th>
-                  <th className="px-5 py-3 font-medium">Where</th>
-                  <th className="px-5 py-3 font-medium">Confidence</th>
+                  <th className="px-5 py-3 font-medium"><Txt text="When" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Vehicle" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Litres" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Tank went" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Approx. value" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Where" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Confidence" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -170,22 +171,22 @@ export async function FuelRecords() {
       {/* Timestamped Transaction Audit Feed */}
       <Card className="p-0">
         <div className="p-5 pb-3">
-          <SectionTitle title="Fill History" subtitle="Every fill logged by drivers, with the time, location and photo it was recorded with" />
+          <SectionTitle title="Fill History" subtitle="Every fill entered by drivers, with time, place and photo" />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Timestamp</th>
-                <th className="px-5 py-3 font-medium">Vehicle</th>
-                <th className="px-5 py-3 font-medium">Driver claim</th>
-                <th className="px-5 py-3 font-medium">Litres</th>
-                <th className="px-5 py-3 font-medium">Meter Value</th>
-                <th className="px-5 py-3 font-medium">Rate</th>
-                <th className="px-5 py-3 font-medium">Amount</th>
-                <th className="px-5 py-3 font-medium">GPS Location</th>
-                <th className="px-5 py-3 font-medium">Photos</th>
-                <th className="px-5 py-3 font-medium">Status</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Timestamp" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Vehicle" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Driver claim" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Litres" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Meter Value" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Rate" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Amount" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="GPS Location" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Photos" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Status" /></th>
               </tr>
             </thead>
             <tbody>

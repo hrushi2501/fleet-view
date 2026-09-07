@@ -4,6 +4,7 @@ import { ChangePasswordForm } from "@/components/AccountForms";
 import { FileText, UserCircle } from "lucide-react";
 import Link from "next/link";
 import { requirePage } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -13,8 +14,8 @@ export default async function AccountPage() {
   return (
     <div className="mx-auto max-w-xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink-900">My Account</h1>
-        <p className="text-sm text-slate-500">Manage your login &amp; password</p>
+        <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="My Account" /></h1>
+        <p className="text-sm text-slate-500"><Txt text="Manage your login &amp; password" /></p>
       </div>
 
       <Card>

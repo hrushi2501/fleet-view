@@ -10,6 +10,7 @@ import { Radio, QrCode, Satellite, Smartphone, TriangleAlert, ArrowLeft } from "
 import Link from "next/link";
 import { assetScope, requirePage } from "@/lib/access";
 import { CONFIDENCE_LABEL } from "@/lib/navigation";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +50,7 @@ export default async function TripsPage() {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Trips</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Trips" /></h1>
           <p className="text-sm text-slate-500">
             Who is on which machine right now, and where each vehicle&apos;s data comes from
           </p>
@@ -66,7 +67,7 @@ export default async function TripsPage() {
 
       <TelematicsSyncBanner status={syncStatus} />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         <StatCard label="Active Trips" value={num(active.length)} sub={`${num(sessions.length)} in 30 days`} accent="emerald" icon={<Radio className="h-5 w-5" />} />
         <StatCard label="Forgotten Checkouts" value={num(stale.length)} sub={`open over ${SESSION_STALE_HOURS}h`} accent={stale.length ? "rose" : "emerald"} icon={<TriangleAlert className="h-5 w-5" />} />
         <StatCard label="QR Codes Issued" value={`${num(withQr)}/${num(assets.length)}`} sub="cabin stickers" accent="brand" icon={<QrCode className="h-5 w-5" />} />
@@ -95,21 +96,21 @@ export default async function TripsPage() {
           <div className="p-5 pb-3">
             <SectionTitle
               title="Usage & Efficiency — Last 30 Days"
-              subtitle="Distance and diesel measured between consecutive vehicle readings, not from manual entries"
+              subtitle="Measured from the vehicle's own readings, not from anything typed in"
             />
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[820px] text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-5 py-3 font-medium">Vehicle</th>
-                  <th className="px-5 py-3 font-medium">Distance</th>
-                  <th className="px-5 py-3 font-medium">Diesel burned</th>
-                  <th className="px-5 py-3 font-medium">Efficiency</th>
-                  <th className="px-5 py-3 font-medium">Norm</th>
-                  <th className="px-5 py-3 font-medium">Unaccounted</th>
-                  <th className="px-5 py-3 font-medium">Tank</th>
-                  <th className="px-5 py-3 font-medium">Last reported</th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Vehicle" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Distance" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Diesel burned" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Efficiency" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Norm" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Unaccounted" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Tank" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Last reported" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -163,14 +164,14 @@ export default async function TripsPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Vehicle</th>
-                <th className="px-5 py-3 font-medium">Driver</th>
-                <th className="px-5 py-3 font-medium">Started</th>
-                <th className="px-5 py-3 font-medium">Ended</th>
-                <th className="px-5 py-3 text-right font-medium">Distance</th>
-                <th className="px-5 py-3 font-medium">Tracking</th>
-                <th className="px-5 py-3 text-right font-medium">Points</th>
-                <th className="px-5 py-3 font-medium">Status</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Vehicle" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Driver" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Started" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Ended" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Distance" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Tracking" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Points" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Status" /></th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
@@ -210,17 +211,17 @@ export default async function TripsPage() {
       </Card>
 
       <Card className="p-0">
-        <div className="p-5 pb-3"><SectionTitle title="Vehicle Data Sources" subtitle="Which machines have a tracker, and which fall back to gauge photos" /></div>
+        <div className="p-5 pb-3"><SectionTitle title="Vehicle Data Sources" subtitle="Which machines have a tracker, and which use gauge photos instead" /></div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Vehicle</th>
-                <th className="px-5 py-3 font-medium">QR Code</th>
-                <th className="px-5 py-3 font-medium">GPS Provider</th>
-                <th className="px-5 py-3 font-medium">Device ID</th>
-                <th className="px-5 py-3 font-medium">Fuel Source</th>
-                <th className="px-5 py-3 text-right font-medium">Tank Level</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Vehicle" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="QR Code" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="GPS Provider" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Device ID" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Fuel Source" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Tank Level" /></th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>

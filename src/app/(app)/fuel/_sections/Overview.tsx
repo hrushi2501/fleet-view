@@ -6,12 +6,15 @@ import { FuelEntry, FuelEdit } from "@/components/EntryForms";
 import { analyzeFleet } from "@/lib/fuel";
 import { getDieselRate } from "@/lib/settings";
 import { inr, num, fmtDate, ASSET_CLASS_LABEL, distanceKm } from "@/lib/utils";
-import { Fuel, TriangleAlert, Droplets, Gauge, ShieldAlert, IndianRupee, TrendingUp, TrendingDown, MapPin } from "lucide-react";
+import { Fuel, TriangleAlert, Droplets, Gauge, ShieldAlert, IndianRupee, TrendingUp, TrendingDown, MapPin, CalendarDays } from "lucide-react";
 import Link from "next/link";
 
 import { businessMonth } from "@/lib/business-time";
 import { requirePage, assetScope } from "@/lib/access";
 import { detectFills } from "@/lib/fuel-fill-reconcile";
+import { dailyFillsByVehicle } from "@/lib/fuel-daily-fills";
+import { lastTheftScan } from "@/lib/theft-scan-status";
+import { Txt } from "@/components/Txt";
 
 /**
  * Diesel in, diesel out, and what it bought — the module's front page.
@@ -82,6 +85,16 @@ export async function Overview() {
   // "Theft Alerts 0 · ₹0 at risk" while ₹21.7 K of diesel stood unaccounted one
   // click away, which reads as all-clear.
   const { fills: detectedFills, unreliable: unreliableSenders } = await detectFills(visible, dieselRate, 7);
+
+  // Filling, day by day, across every vehicle rather than only the ones with
+  // paperwork. The per-vehicle table further down is built from
+  // `FuelTransaction` and so is blank for eleven trucks whose sender watched
+  // the diesel go in.
+  const daily = await dailyFillsByVehicle(visible, dieselRate, 14);
+
+  // Whether anything is actually watching for theft, so an empty list of
+  // findings cannot be mistaken for a clean fleet.
+  const scan = await lastTheftScan();
   const unloggedFills = detectedFills.filter((f) => !f.logged);
   const unloggedLitres = unloggedFills.reduce((s, f) => s + f.litresAdded, 0);
   const unloggedValue = unloggedFills.reduce((s, f) => s + f.estimatedValue, 0);
@@ -104,13 +117,13 @@ export async function Overview() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-ink-900">Fuel Use &amp; Mileage</h2>
-          <p className="text-sm text-slate-500">Per-vehicle mileage, cost per km, and fills that look wrong</p>
+          <p className="text-sm text-slate-500"><Txt text="Mileage and cost per km for each vehicle, and fills that look wrong" /></p>
         </div>
         <FuelEntry assets={assetOpts} projects={projOpts} defaultRate={dieselRate} />
       </div>
 
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-6">
         {/* Spend stays logged-only on purpose. A sender measures litres, not
             rupees, so folding an estimated value in here would put an assumed
             price into a financial figure. Saying so keeps it from silently
@@ -177,11 +190,37 @@ export async function Overview() {
         </Card>
       </div>
 
+      {/* Is anything actually watching? */}
+      <Card
+        className={
+          "flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3 text-sm " +
+          (scan.stale ? "border-amber-300 bg-amber-50" : "")
+        }
+      >
+        <ShieldAlert className={"h-4 w-4 " + (scan.stale ? "text-amber-600" : "text-emerald-600")} />
+        {scan.neverRun ? (
+          <span className="font-medium text-amber-900">
+            The nightly fuel-theft check has not run yet. Nothing is watching for theft.
+          </span>
+        ) : scan.stale ? (
+          <span className="font-medium text-amber-900">
+            Last fuel-theft check was {scan.hoursAgo} hours ago — it should run every night. Please tell
+            support, because no one is watching for theft right now.
+          </span>
+        ) : (
+          <span className="text-slate-600">
+            Fuel-theft check last ran <span className="font-medium text-ink-900">{fmtDate(scan.lastRunAt!)}</span>
+            {scan.scanned != null ? ` · ${scan.scanned} vehicles checked` : ""}
+            {scan.raised === 0 ? " · nothing found" : scan.raised != null ? ` · ${scan.raised} raised` : ""}
+          </span>
+        )}
+      </Card>
+
       {/* Theft / Fraud */}
       {fleet.allFlags.length > 0 && (
         <Card className="border-rose-200 p-0">
-          <div className="flex items-center gap-2 p-5 pb-3"><ShieldAlert className="h-5 w-5 text-rose-600" /><SectionTitle title="Fuel Theft &amp; Fraud Detection" subtitle={`${fleet.highFlags.length} high-risk · ${fleet.allFlags.length} total — auto-detected`} /></div>
-          <div className="max-h-96 overflow-y-auto divide-y divide-slate-50">
+          <div className="flex items-center gap-2 p-5 pb-3"><ShieldAlert className="h-5 w-5 text-rose-600" /><SectionTitle title="Fuel Theft Checks" subtitle={`${fleet.highFlags.length} need urgent checking · ${fleet.allFlags.length} found in total`} /></div>
+          <div className="max-h-96 overflow-x-auto overflow-y-auto divide-y divide-slate-50">
             {fleet.allFlags.slice(0, 40).map((f, i) => (
               <div key={i} className="px-5 py-3">
                 <div className="flex items-center gap-2">
@@ -202,13 +241,13 @@ export async function Overview() {
           <SectionTitle title="Best Mileage" action={<TrendingUp className="h-4 w-4 text-emerald-600" />} />
           <div className="space-y-2">
             {fleet.best.map((r) => (
-              <div key={r.asset.id} className="flex items-center justify-between text-sm">
+              <div key={r.asset.id} className="flex flex-wrap items-center justify-between gap-3 text-sm">
                 <Link href={`/fleet/${r.asset.id}`} className="font-medium text-brand-700 hover:underline">{r.asset.code}</Link>
                 <span className="font-bold text-emerald-600">{r.efficiency!.toFixed(2)} km/L</span>
               </div>
             ))}
             {fleet.best.length === 0 && telBest.map((a) => (
-              <div key={a.assetId} className="flex items-center justify-between text-sm">
+              <div key={a.assetId} className="flex flex-wrap items-center justify-between gap-3 text-sm">
                 <Link href={`/fleet/${a.assetId}`} className="font-medium text-brand-700 hover:underline">{a.code}</Link>
                 <span className="font-bold text-emerald-600">{a.usage.avgKmPerL!.toFixed(2)} km/L</span>
               </div>
@@ -217,16 +256,16 @@ export async function Overview() {
           </div>
         </Card>
         <Card>
-          <SectionTitle title="Worst Mileage — investigate" action={<TrendingDown className="h-4 w-4 text-rose-600" />} />
+          <SectionTitle title="Worst Mileage — check these" action={<TrendingDown className="h-4 w-4 text-rose-600" />} />
           <div className="space-y-2">
             {fleet.worst.map((r) => (
-              <div key={r.asset.id} className="flex items-center justify-between text-sm">
+              <div key={r.asset.id} className="flex flex-wrap items-center justify-between gap-3 text-sm">
                 <Link href={`/fleet/${r.asset.id}`} className="font-medium text-brand-700 hover:underline">{r.asset.code}</Link>
                 <span className="font-bold text-rose-600">{r.efficiency!.toFixed(2)} km/L</span>
               </div>
             ))}
             {fleet.worst.length === 0 && telWorst.map((a) => (
-              <div key={a.assetId} className="flex items-center justify-between text-sm">
+              <div key={a.assetId} className="flex flex-wrap items-center justify-between gap-3 text-sm">
                 <div>
                   <Link href={`/fleet/${a.assetId}`} className="font-medium text-brand-700 hover:underline">{a.code}</Link>
                   {a.norm && <span className="ml-2 text-[11px] text-slate-500">norm {a.norm.low}–{a.norm.high}</span>}
@@ -241,23 +280,23 @@ export async function Overview() {
 
       {/* Where fuel was filled */}
       <Card className="p-0">
-        <div className="flex items-center gap-2 p-5 pb-3"><MapPin className="h-5 w-5 text-brand-600" /><SectionTitle title="Where Fuel Was Filled — Recent Fills" subtitle="Location captured from the driver's phone at fill time" /></div>
+        <div className="flex items-center gap-2 p-5 pb-3"><MapPin className="h-5 w-5 text-brand-600" /><SectionTitle title="Where Fuel Was Filled" subtitle="Place taken from the driver's phone when filling" /></div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Date</th>
-                <th className="px-5 py-3 font-medium">Vehicle</th>
-                <th className="px-5 py-3 font-medium">Litres</th>
-                <th className="px-5 py-3 font-medium">Driver / source</th>
-                <th className="px-5 py-3 font-medium">Odometer</th>
-                <th className="px-5 py-3 font-medium">Rate ₹/L</th>
-                <th className="px-5 py-3 font-medium">Amount</th>
-                <th className="px-5 py-3 font-medium">Location</th>
-                <th className="px-5 py-3 font-medium">Distance from vehicle</th>
-                <th className="px-5 py-3 font-medium">Photos</th>
-                <th className="px-5 py-3 font-medium">Status</th>
-                <th className="px-5 py-3 font-medium">Edit</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Date" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Vehicle" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Litres" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Driver / source" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Odometer" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Rate ₹/L" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Amount" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Location" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Distance from vehicle" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Photos" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Status" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Edit" /></th>
               </tr>
             </thead>
             <tbody>
@@ -314,23 +353,121 @@ export async function Overview() {
         </div>
       </Card>
 
+      {/* Filled per day, every vehicle */}
+      <Card className="p-0">
+        <div className="flex items-center gap-2 p-5 pb-3">
+          <CalendarDays className="h-5 w-5 text-brand-600" />
+          <SectionTitle
+            title="Diesel Filled Each Day — All Vehicles"
+            subtitle="Last 14 days — from the fuel sensor and from fills entered by hand"
+          />
+        </div>
+
+        {daily.days.length === 0 ? (
+          <p className="px-5 pb-5 text-sm text-slate-500">No fills recorded in the last 14 days.</p>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-x-8 gap-y-2 border-t border-slate-100 px-5 py-3 text-sm">
+              <span className="text-slate-500">
+                Total <span className="font-semibold text-ink-900">{num(daily.totals.litres)} L</span>
+              </span>
+              <span className="text-slate-500">
+                Across <span className="font-semibold text-ink-900">{daily.totals.vehicles}</span> vehicles
+              </span>
+              <span className="text-slate-500">
+                Logged <span className="font-semibold text-ink-900">{num(daily.totals.loggedLitres)} L</span>
+              </span>
+              <span className="text-slate-500">
+                From sensor only <span className="font-semibold text-ink-900">{num(daily.totals.sensorLitres)} L</span>
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
+                  <tr>
+                    <th className="px-5 py-3 font-medium"><Txt text="Day" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Total" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Which vehicles, and how much" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Approx. Cost" /></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {daily.days.map((d) => (
+                    <tr key={d.day} className="border-t border-slate-100 align-top hover:bg-brand-50/30">
+                      <td className="whitespace-nowrap px-5 py-3 font-medium text-ink-900">
+                        {fmtDate(new Date(`${d.day}T12:00:00+05:30`))}
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3 font-semibold text-ink-900">{num(d.litres)} L</td>
+                      <td className="px-5 py-3">
+                        <div className="flex flex-wrap gap-1.5">
+                          {d.vehicles.map((v) => (
+                            <Link
+                              key={v.assetId}
+                              href={`/fleet/${v.assetId}`}
+                              title={
+                                v.priced
+                                  ? `${v.fills} fill${v.fills > 1 ? "s" : ""} entered, with a bill on record`
+                                  : `${v.fills} fill${v.fills > 1 ? "s" : ""} seen by the fuel sensor — no bill entered yet`
+                              }
+                              className={
+                                "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition hover:brightness-95 " +
+                                (v.priced
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                                  : "border-slate-200 bg-slate-50 text-slate-700")
+                              }
+                            >
+                              <span className="font-semibold">{v.assetCode}</span>
+                              <span className="tabular-nums">{num(v.litres)} L</span>
+                              {v.fills > 1 ? <span className="text-[10px] opacity-70">×{v.fills}</span> : null}
+                            </Link>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3 text-slate-600">{inr(d.value, { compact: true })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="space-y-1 border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
+              <p>
+                <span className="mr-1 inline-block h-2 w-2 rounded-full bg-emerald-400 align-middle" />
+Green means a bill was entered — the litres and the money are both correct.
+                <span className="ml-3 mr-1 inline-block h-2 w-2 rounded-full bg-slate-400 align-middle" />
+                Grey was seen by the fuel sensor only. The litres are correct, but the money is an estimate
+                at {inr(dieselRate)}/L.
+              </p>
+              {daily.excluded.length > 0 ? (
+                <p>
+                  Not shown: {daily.excluded.map((e) => e.assetCode).join(", ")} — the fuel sensor on{" "}
+                  {daily.excluded.length === 1 ? "this vehicle" : "these vehicles"} is giving wrong readings,
+                  so its fills cannot be trusted.
+                </p>
+              ) : null}
+            </div>
+          </>
+        )}
+      </Card>
+
       {/* Per-vehicle analytics */}
       <Card className="p-0">
-        <div className="p-5 pb-3"><SectionTitle title="Per-Vehicle Fuel Analytics" subtitle="Mileage & cost for every asset that has fuel records" /></div>
+        <div className="p-5 pb-3"><SectionTitle title="Fuel Use by Vehicle" subtitle="Mileage and cost for every machine with fuel records" /></div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Vehicle</th>
-                <th className="px-5 py-3 font-medium">Class</th>
-                <th className="px-5 py-3 font-medium">Fills</th>
-                <th className="px-5 py-3 font-medium">Diesel</th>
-                <th className="px-5 py-3 font-medium">Distance / Hours</th>
-                <th className="px-5 py-3 font-medium">Mileage</th>
-                <th className="px-5 py-3 font-medium">Benchmark</th>
-                <th className="px-5 py-3 font-medium">Cost/km</th>
-                <th className="px-5 py-3 font-medium">Last Fill</th>
-                <th className="px-5 py-3 font-medium">Flags</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Vehicle" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Class" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Fills" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Diesel" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Distance / Hours" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Mileage" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Benchmark" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Cost/km" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Last Fill" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Flags" /></th>
               </tr>
             </thead>
             <tbody>

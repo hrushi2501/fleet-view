@@ -39,6 +39,13 @@ export const PERMISSIONS: Permission[] = [
   { code: "people.edit", module: "People", action: "edit", label: "Manage people & competencies" },
   { code: "people.discipline", module: "People", action: "discipline", label: "Record violations & penalties", sensitive: true },
 
+  // Payroll is money paid to named people. Preparing a sheet and signing it off
+  // are separate rights for the same reason hire spend is: whoever can set a
+  // wage should not also be the only person who can approve paying it.
+  { code: "payroll.view", module: "Payroll", action: "view", label: "View payroll", sensitive: true },
+  { code: "payroll.edit", module: "Payroll", action: "edit", label: "Set wages & prepare payroll", sensitive: true },
+  { code: "payroll.approve", module: "Payroll", action: "approve", label: "Finalise payroll for payment", sensitive: true },
+
   { code: "cost.view", module: "Cost", action: "view", label: "View costs & profitability" },
   { code: "cost.edit", module: "Cost", action: "edit", label: "Enter costs & revenue" },
 
@@ -127,6 +134,8 @@ export const DEFAULT_ROLES: { name: string; label: string; description: string; 
       "production.view", "production.edit", "compliance.view", "compliance.edit",
       "people.view", "people.edit", "cost.view", "loss.view", "loss.investigate",
       "weighbridge.view", "weighbridge.edit", "reports.view", "reports.export",
+      // Prepares the sheet; finalising it is Finance's.
+      "payroll.view", "payroll.edit",
     ],
     approvalLimit: 500000, isSystem: true,
   },
@@ -138,6 +147,8 @@ export const DEFAULT_ROLES: { name: string; label: string; description: string; 
       "fleet.view", "fuel.view", "hire.view", "hire.approve", "maintenance.view", "maintenance.approve",
       "production.view", "compliance.view", "people.view", "cost.view", "cost.edit",
       "loss.view", "loss.close", "weighbridge.view", "reports.view", "reports.export",
+      // Finance signs payroll off precisely because it does not prepare it.
+      "payroll.view", "payroll.approve",
     ],
     approvalLimit: 2000000, isSystem: true,
   },

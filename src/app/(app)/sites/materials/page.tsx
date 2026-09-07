@@ -12,6 +12,7 @@ import { inr, num, fmtDate } from "@/lib/utils";
 import { Scale, TriangleAlert, FileQuestion, IndianRupee } from "lucide-react";
 import Link from "next/link";
 import { projectIdScope, requirePage } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -88,7 +89,7 @@ export default async function MaterialsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Material Weighing</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Material Weighing" /></h1>
           <p className="text-sm text-slate-500">
             Kitna maal nikla aur kitna pahuncha — every load weighed out, weighed in, and the gap between the two
           </p>
@@ -96,7 +97,7 @@ export default async function MaterialsPage() {
         <TicketForm assets={assetOpts} drivers={driverOpts} projects={projOpts} dispatchNos={openDispatchNos} />
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         <StatCard label="Material Moved" value={`${num(movedKg / 1000)} t`} sub={`${num(pairs.length)} loads`} accent="brand" icon={<Scale className="h-5 w-5" />} />
         <StatCard label="Short Loads" value={num(shortTrips)} sub={`over ${TRANSIT_LOSS_PCT}% missing`} accent={shortTrips ? "rose" : "emerald"} icon={<TriangleAlert className="h-5 w-5" />} />
         <StatCard label="Receipt Missing" value={num(unmatched)} sub="slip never recorded" accent={unmatched ? "amber" : "emerald"} icon={<FileQuestion className="h-5 w-5" />} />
@@ -126,14 +127,14 @@ export default async function MaterialsPage() {
             <table className="w-full min-w-[720px] text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-5 py-3 font-medium">Material</th>
-                  <th className="px-5 py-3 text-right font-medium">Loads</th>
-                  <th className="px-5 py-3 text-right font-medium">Sent</th>
-                  <th className="px-5 py-3 text-right font-medium">Arrived</th>
-                  <th className="px-5 py-3 text-right font-medium">Short</th>
-                  <th className="px-5 py-3 text-right font-medium">Short %</th>
-                  <th className="px-5 py-3 text-right font-medium">No receipt</th>
-                  <th className="px-5 py-3 text-right font-medium">Value</th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Material" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Loads" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Sent" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Arrived" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Short" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Short %" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="No receipt" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Value" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -199,14 +200,14 @@ export default async function MaterialsPage() {
           <table className="w-full min-w-[900px] text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Date</th>
-                <th className="px-5 py-3 font-medium">Slip</th>
-                <th className="px-5 py-3 font-medium">Vehicle</th>
-                <th className="px-5 py-3 font-medium">Material</th>
-                <th className="px-5 py-3 text-right font-medium">Sent</th>
-                <th className="px-5 py-3 text-right font-medium">Arrived</th>
-                <th className="px-5 py-3 font-medium">Status</th>
-                <th className="px-5 py-3 font-medium">What it says</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Date" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Slip" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Vehicle" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Material" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Sent" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Arrived" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Status" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="What it says" /></th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>

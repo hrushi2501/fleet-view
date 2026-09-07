@@ -25,11 +25,11 @@
  * the screen that finds out.
  */
 import { db } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { startOfBusinessDay } from "@/lib/business-time";
 import {
   analyseUsage, type AnalyticsReading, type Confidence, type Norm,
 } from "@/lib/fleet-analytics";
-import type { Prisma } from "@prisma/client";
 
 /**
  * The five states the console's filter strip counts.
@@ -410,6 +410,23 @@ function scopeCacheKey(scope: LiveFleetScope): string {
  * called, and the scope is part of the key, so this never share data across
  * access scopes.
  */
+/** One row of the DISTINCT ON query above. */
+type LatestReadingRow = {
+  assetId: string;
+  recordedAt: Date;
+  lat: number | null;
+  lng: number | null;
+  speedKph: number | null;
+  headingDeg: number | null;
+  odometerKm: number | null;
+  engineHours: number | null;
+  fuelLevelL: number | null;
+  fuelLevelPct: number | null;
+  ignitionOn: boolean | null;
+  source: string;
+  raw: unknown;
+};
+
 export async function getLiveFleet(scope: LiveFleetScope = undefined): Promise<LiveFleet> {
   const key = scopeCacheKey(scope);
   const cached = liveFleetCache.get(key);
@@ -480,16 +497,39 @@ async function buildLiveFleet(scope: LiveFleetScope): Promise<LiveFleet> {
       // The most recent sample per vehicle, whenever it was — a vehicle that has
       // not reported since yesterday still has a last known position, and saying
       // so is more useful than an empty card.
-      db.telemetryReading.findMany({
-        where: { assetId: { in: assetIds } },
-        orderBy: { recordedAt: "desc" },
-        distinct: ["assetId"],
-        select: {
-          assetId: true, recordedAt: true, lat: true, lng: true, speedKph: true,
-          headingDeg: true, odometerKm: true, engineHours: true, fuelLevelL: true,
-          fuelLevelPct: true, ignitionOn: true, source: true, raw: true,
-        },
-      }),
+      //
+      // ─────────────────────────────────────────────────────────────────────
+      // Written as raw SQL because Prisma's `distinct` is not SQL DISTINCT: it
+      // fetches every matching row and reduces them in memory afterwards. With
+      // no time bound that meant reading every reading ever recorded for all
+      // fifty-three assets — seventy-five thousand rows and climbing by
+      // eighteen thousand a day — pulling the ~1 KB raw payload with each one,
+      // roughly seventy megabytes over the wire, and then discarding all but
+      // fifty-three rows in JavaScript. On every poll of the tracking screen,
+      // for every person watching it. It was the slowest query in the system
+      // at 235 ms average and peaks near seven seconds, and it got worse every
+      // day purely because the table grew.
+      //
+      // A lateral join, not DISTINCT ON. Both express "latest row per vehicle",
+      // but DISTINCT ON has to sort the whole set by (assetId, recordedAt DESC)
+      // and the index runs recordedAt ascending — so it still read all 74,807
+      // rows and spilled twelve megabytes to disk, 1,458 ms. The lateral form
+      // asks the index for one row per vehicle and stops: 53 backward index
+      // seeks, no sort, measured at 0.7 ms on the same data.
+      // ─────────────────────────────────────────────────────────────────────
+      db.$queryRaw<LatestReadingRow[]>`
+        SELECT r.*
+        FROM unnest(${assetIds}::text[]) AS a(id)
+        CROSS JOIN LATERAL (
+          SELECT t."assetId", t."recordedAt", t."lat", t."lng", t."speedKph",
+                 t."headingDeg", t."odometerKm", t."engineHours", t."fuelLevelL",
+                 t."fuelLevelPct", t."ignitionOn", t."source", t."raw"
+          FROM "TelemetryReading" t
+          WHERE t."assetId" = a.id
+          ORDER BY t."recordedAt" DESC
+          LIMIT 1
+        ) r
+      `,
       db.maintenanceSchedule.findMany({
         where: { active: true },
         select: {

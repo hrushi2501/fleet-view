@@ -7,6 +7,7 @@ import { SnoozeModal, AlertActionButtons, RaiseWoFromReminderButton } from "@/co
 import { pmDue, type ScheduleLite } from "@/lib/maintenance";
 import Link from "next/link";
 import { requirePage, assetScope } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -77,8 +78,8 @@ export default async function RemindersPage({ searchParams }: { searchParams: Pr
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900">Service Due &amp; Reminders</h1>
-          <p className="text-sm text-slate-500">Multi-meter preventive service alerts, compliance expiries, and active breakdowns</p>
+          <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Service Due &amp; Reminders" /></h1>
+          <p className="text-sm text-slate-500"><Txt text="Multi-meter preventive service alerts, compliance expiries, and active breakdowns" /></p>
         </div>
         <div className="flex items-center gap-2">
           <PushButton />
@@ -87,7 +88,7 @@ export default async function RemindersPage({ searchParams }: { searchParams: Pr
       </div>
 
       {/* Stat Cards Grid */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         <StatCard label="PM Service Overdue" value={num(pmOverdue.length + overdue.length)} sub="Action required" accent="rose" icon={<TriangleAlert className="h-5 w-5" />} />
         <StatCard label="Service Due Soon" value={num(pmDueSoon.length + dueSoon.length)} sub="Within 15 days / 50 hrs" accent="amber" icon={<CalendarClock className="h-5 w-5" />} />
         <StatCard label="Active Breakdowns" value={num(breakdowns.length)} sub="Open job cards" accent="brand" icon={<Wrench className="h-5 w-5" />} />
@@ -105,7 +106,7 @@ export default async function RemindersPage({ searchParams }: { searchParams: Pr
       {/* ALL REMINDERS & PM SERVICE TAB */}
       {(tab === "all" || tab === "pm") && (
         <Card className="p-0">
-          <div className="flex items-center justify-between p-5 pb-3 border-b border-slate-100">
+          <div className="flex flex-wrap items-center justify-between gap-3 p-5 pb-3 border-b border-slate-100">
             <div className="flex items-center gap-2">
               <CalendarClock className="h-5 w-5 text-brand-600" />
               <SectionTitle title="Preventive Maintenance Reminders" subtitle="Dual-meter tracking (Km, Engine Hours &amp; Calendar Days)" />
@@ -222,7 +223,7 @@ export default async function RemindersPage({ searchParams }: { searchParams: Pr
 
       {/* ACTIVE SYSTEM ALERTS WITH SNOOZE WORKFLOW */}
       <Card className="p-0">
-        <div className="flex items-center justify-between p-5 pb-3 border-b border-slate-100">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-5 pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2">
             <BellRing className="h-5 w-5 text-brand-600" />
             <SectionTitle title="Active System Alerts &amp; Escalations" subtitle="Open alerts with snooze and acknowledgment controls" />

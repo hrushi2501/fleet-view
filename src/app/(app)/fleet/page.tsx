@@ -2,6 +2,7 @@ import { requirePage } from "@/lib/access";
 import { PageTabs, resolveTab, type Tab } from "@/components/PageTabs";
 import { Register } from "./_sections/Register";
 import { VehicleRecords } from "./_sections/VehicleRecords";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -30,8 +31,8 @@ export default async function FleetPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink-900">Fleet</h1>
-        <p className="text-sm text-slate-500">Gaadi aur machine — kaunsi hai, kahan hai, kiske paas hai</p>
+        <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Fleet" /></h1>
+        <p className="text-sm text-slate-500"><Txt text="Gaadi aur machine — kaunsi hai, kahan hai, kiske paas hai" /></p>
       </div>
 
       <PageTabs tabs={TABS} active={tab} basePath="/fleet" />

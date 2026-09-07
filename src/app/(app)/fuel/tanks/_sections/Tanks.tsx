@@ -8,6 +8,7 @@ import { Droplets, TriangleAlert, ArrowDownToLine, ArrowUpFromLine, Ruler, India
 import Link from "next/link";
 
 import { requirePage, assetScope, projectScope } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 /**
  * The site tanks themselves: what is in each one and what has moved through it.
@@ -59,7 +60,7 @@ export async function Tanks() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         <StatCard label="Tanks" value={num(tanks.length)} sub={`${num(totalCapacity)} L capacity`} accent="brand" icon={<Droplets className="h-5 w-5" />} />
         <StatCard label="Diesel in Stock" value={`${num(totalStock)} L`} sub={inr(totalStock * dieselRate, { compact: true })} accent="violet" icon={<IndianRupee className="h-5 w-5" />} />
         <StatCard label="Short Deliveries" value={`${num(totalShortfall)} L`} sub={inr(totalShortfall * dieselRate, { compact: true })} accent="rose" icon={<TriangleAlert className="h-5 w-5" />} />
@@ -159,18 +160,18 @@ export async function Tanks() {
               </div>
 
               <div className="lg:col-span-3">
-                <SectionTitle title="Tank Ledger" subtitle="Newest first — a dip re-anchors the book to the physical measurement" />
-                <div className="mt-2 max-h-80 overflow-y-auto rounded-lg ring-1 ring-slate-100">
+                <SectionTitle title="Tank In &amp; Out" subtitle="Newest first — a dipstick reading resets the book to the real amount" />
+                <div className="mt-2 max-h-80 overflow-x-auto overflow-y-auto rounded-lg ring-1 ring-slate-100">
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                       <tr>
-                        <th className="px-4 py-2.5 font-medium">Date</th>
-                        <th className="px-4 py-2.5 font-medium">Event</th>
-                        <th className="px-4 py-2.5 font-medium">Detail</th>
-                        <th className="px-4 py-2.5 text-right font-medium">In</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Out</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Balance</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Drift</th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Date" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Event" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Detail" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="In" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="Out" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="Balance" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="Drift" /></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -213,15 +214,15 @@ export async function Tanks() {
                   <table className="w-full text-sm">
                     <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                       <tr>
-                        <th className="px-4 py-2.5 font-medium">Date</th>
-                        <th className="px-4 py-2.5 font-medium">Supplier</th>
-                        <th className="px-4 py-2.5 font-medium">Invoice</th>
-                        <th className="px-4 py-2.5 font-medium">Tanker</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Invoiced</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Received</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Shortfall</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Amount</th>
-                        <th className="px-4 py-2.5 font-medium">Doc</th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Date" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Supplier" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Invoice" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Tanker" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="Invoiced" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="Received" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="Shortfall" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="Amount" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Doc" /></th>
                         <th className="px-4 py-2.5"></th>
                       </tr>
                     </thead>
@@ -258,16 +259,16 @@ export async function Tanks() {
 
             {t.dips.length > 0 && (
               <div className="border-t border-slate-100 p-5">
-                <SectionTitle title="Dip Readings" subtitle="Physical measurements — the ground truth for reconciliation" />
+                <SectionTitle title="Dip Readings" subtitle="Real measurements taken by hand — the books are checked against these" />
                 <div className="mt-2 overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                       <tr>
-                        <th className="px-4 py-2.5 font-medium">Date</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Level</th>
-                        <th className="px-4 py-2.5 font-medium">Read By</th>
-                        <th className="px-4 py-2.5 font-medium">Note</th>
-                        <th className="px-4 py-2.5 font-medium">Photo</th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Date" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="Level" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Read By" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Note" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Photo" /></th>
                         <th className="px-4 py-2.5"></th>
                       </tr>
                     </thead>

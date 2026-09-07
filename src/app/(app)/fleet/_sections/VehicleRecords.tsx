@@ -6,6 +6,7 @@ import { inr, num, fmtDate, ASSET_CLASS_LABEL } from "@/lib/utils";
 import { Database, TriangleAlert, Gauge, History, ClipboardList } from "lucide-react";
 import Link from "next/link";
 import { assetScope, requirePage } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 /**
  * The detail behind each vehicle: identity numbers, meters, and how complete
@@ -66,7 +67,7 @@ export async function VehicleRecords() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         <StatCard label="Data Completeness" value={`${avg.toFixed(0)}%`} sub="fleet average, weighted" accent={avg >= 80 ? "emerald" : "amber"} icon={<Database className="h-5 w-5" />} />
         <StatCard label="Poor Records" value={num(poor)} sub="below 60%" accent="rose" icon={<TriangleAlert className="h-5 w-5" />} />
         <StatCard label="No Acquisition Cost" value={num(noCost)} sub="depreciation reads zero" accent={noCost > 0 ? "rose" : "emerald"} icon={<ClipboardList className="h-5 w-5" />} />
@@ -114,14 +115,14 @@ export async function VehicleRecords() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Vehicle</th>
-                <th className="px-5 py-3 font-medium">Class</th>
-                <th className="px-5 py-3 text-right font-medium">Odometer</th>
-                <th className="px-5 py-3 text-right font-medium">Hour-meter</th>
-                <th className="px-5 py-3 font-medium">Chassis / Engine</th>
-                <th className="px-5 py-3 text-right font-medium">Acq. Cost</th>
-                <th className="px-5 py-3 font-medium">Completeness</th>
-                <th className="px-5 py-3 font-medium">Missing</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Vehicle" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Class" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Odometer" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Hour-meter" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Chassis / Engine" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Acq. Cost" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Completeness" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Missing" /></th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
@@ -169,15 +170,15 @@ export async function VehicleRecords() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="p-0">
           <div className="p-5 pb-3"><SectionTitle title="Meter History" subtitle="Flagged rows ran backwards" /></div>
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-80 overflow-x-auto overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-5 py-2.5 font-medium">Date</th>
-                  <th className="px-5 py-2.5 font-medium">Vehicle</th>
-                  <th className="px-5 py-2.5 font-medium">Meter</th>
-                  <th className="px-5 py-2.5 text-right font-medium">Reading</th>
-                  <th className="px-5 py-2.5 font-medium">Source</th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Date" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Vehicle" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Meter" /></th>
+                  <th className="px-5 py-2.5 text-right font-medium"><Txt text="Reading" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Source" /></th>
                   <th className="px-5 py-2.5"></th>
                 </tr>
               </thead>
@@ -204,15 +205,15 @@ export async function VehicleRecords() {
 
         <Card className="p-0">
           <div className="p-5 pb-3"><SectionTitle title="Lifecycle Events" subtitle="Commissioning, transfers and disposal" /></div>
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-80 overflow-x-auto overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-5 py-2.5 font-medium">Date</th>
-                  <th className="px-5 py-2.5 font-medium">Vehicle</th>
-                  <th className="px-5 py-2.5 font-medium">Event</th>
-                  <th className="px-5 py-2.5 font-medium">Change</th>
-                  <th className="px-5 py-2.5 text-right font-medium">Amount</th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Date" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Vehicle" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Event" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Change" /></th>
+                  <th className="px-5 py-2.5 text-right font-medium"><Txt text="Amount" /></th>
                 </tr>
               </thead>
               <tbody>

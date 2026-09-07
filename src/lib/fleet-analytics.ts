@@ -268,6 +268,64 @@ export type RefuelEvent = {
   hoursObserved: number;
 };
 
+/**
+ * How long a single physical refuel may take.
+ *
+ * A nozzle in a tank raises the level continuously, and a sender reporting once
+ * a minute sees that as a staircase rather than a step. Every tread clears the
+ * refuel threshold on its own, so without this the loop below books each one as
+ * a separate fill.
+ *
+ * RJ21GE2479 on 31 Aug is the case that exposed it: 149.7 L to 300.0 L between
+ * 04:55:49 and 04:59:49 IST, stationary, ignition on — one fill of 150.3 L,
+ * reported to the Fuel screen as three (43.6 L, 56.3 L, 50.4 L) and priced
+ * three times over.
+ *
+ * Ten minutes is comfortably longer than filling a 300 L tank and far shorter
+ * than the gap between two genuine visits to a pump.
+ */
+const FILL_COALESCE_MINUTES = 10;
+
+/**
+ * Joins the treads back into one staircase.
+ *
+ * Two events belong to the same fill when the later one begins where the
+ * earlier ended — which the baseline reset guarantees exactly — and follows it
+ * within the window above. The merged event keeps the first fill's starting
+ * level, the last one's finishing level, and the sum of the litres, so the mass
+ * balance is unchanged: this only stops one fill being counted as several.
+ */
+function coalesceRefuels(events: RefuelEvent[], cfg: FuelAnalysisConfig): RefuelEvent[] {
+  if (events.length < 2) return events;
+
+  const merged: RefuelEvent[] = [];
+  for (const next of events) {
+    const open = merged[merged.length - 1];
+    const contiguous =
+      open !== undefined &&
+      Math.abs(next.fromL - open.toL) < 0.05 &&
+      next.at.getTime() - open.at.getTime() <= FILL_COALESCE_MINUTES * 60_000;
+
+    if (!open || !contiguous) {
+      merged.push({ ...next });
+      continue;
+    }
+
+    open.toL = next.toL;
+    open.litresAdded = round(open.litresAdded + next.litresAdded, 2);
+    open.hoursObserved = round(open.hoursObserved + next.hoursObserved, 2);
+    // The position where filling finished is where the vehicle actually stood.
+    open.lat = next.lat;
+    open.lng = next.lng;
+    open.at = next.at;
+    open.confidence =
+      open.hoursObserved <= 0.5 ? "HIGH" : open.hoursObserved <= cfg.warningGapHours ? "MEDIUM" : "LOW";
+  }
+
+  return merged;
+}
+
+
 export type ImplausibleDrop = {
   at: Date;
   litres: number;
@@ -309,14 +367,77 @@ export type FuelSeriesAnalysis = {
  * the band — a slow drain is recognised late and in a lump, not lost, because
  * the final number comes from the endpoints regardless.
  */
+/**
+ * How much this particular sender wobbles, measured from its own readings.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Diesel cannot appear in a tank. So every upward move that is not a refuel is
+ * the sender being wrong, by an amount we can read straight off the wire — a
+ * free, self-calibrating measurement of that unit's noise, with no assumption
+ * about the hardware.
+ *
+ * It matters because the assumed band (1.5% of tank, so 4.5 L on a 300 L tank)
+ * is far too tight for the units actually fitted to this fleet. Measured over
+ * fourteen days, their impossible *gains* reach 8–12 L: TRU-108 12.3 L,
+ * TRU-106 11.8 L, TRU-053 11.6 L. A drop of 11 L on such a sender is the exact
+ * mirror of a gain of 11 L, and means precisely as much — nothing.
+ *
+ * Read against a 4.5 L band, those wobbles look like fuel leaving the tank, and
+ * the first one over the raise threshold becomes an accusation against a
+ * driver. Guessing wrong in that direction is not a rounding error; it is
+ * telling someone they stole diesel that never moved.
+ *
+ * The result is only ever used to *widen* the band, never to narrow it, so this
+ * can make the system more careful and never more trigger-happy.
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * Returns null when there is too little to measure, in which case the caller
+ * keeps the assumed band.
+ */
+export function measureSenderNoiseL(
+  samples: AnalyticsReading[],
+  refuelMinL: number,
+): number | null {
+  const gains: number[] = [];
+  let previous: number | null = null;
+
+  for (const s of samples) {
+    const level = s.fuelLevelL;
+    if (level == null) continue;
+    if (previous != null) {
+      const delta = level - previous;
+      // Only rises too small to be a refuel: a real fill is not noise, and
+      // including one would inflate the band enough to hide a theft.
+      if (delta > 0 && delta < refuelMinL) gains.push(delta);
+    }
+    previous = level;
+  }
+
+  // Too few impossible gains to characterise anything. A quiet sender should
+  // keep its tight assumed band rather than be handed a made-up one.
+  if (gains.length < 30) return null;
+
+  gains.sort((a, b) => a - b);
+  // The high tail rather than the maximum: one freak sample should not excuse
+  // a real siphon, but the routine worst case must not be called theft.
+  const at = (q: number) => gains[Math.min(gains.length - 1, Math.floor(gains.length * q))]!;
+  return round(at(0.99), 2);
+}
+
 export function analyseFuelSeries(
   samples: AnalyticsReading[],
   tankCapacityL: number | null,
   cfg: FuelAnalysisConfig = DEFAULT_FUEL_CONFIG,
 ): FuelSeriesAnalysis {
-  const { noiseBandL, refuelMinL } = fuelThresholds(tankCapacityL, cfg);
+  const { noiseBandL: assumedNoiseL, refuelMinL } = fuelThresholds(tankCapacityL, cfg);
 
   const levelled = samples.filter((s) => s.fuelLevelL != null);
+
+  // What this sender actually does, in preference to what its tank size
+  // suggests it ought to do. Widens the band only — see measureSenderNoiseL.
+  const measuredNoiseL = measureSenderNoiseL(levelled, refuelMinL);
+  const noiseBandL =
+    measuredNoiseL != null && measuredNoiseL > assumedNoiseL ? measuredNoiseL : assumedNoiseL;
   const base: FuelSeriesAnalysis = {
     startLevelL: null,
     endLevelL: null,
@@ -404,7 +525,9 @@ export function analyseFuelSeries(
     // moved. Leave the baseline where it is.
   }
 
-  const litresRefuelled = refuels.reduce((s, e) => s + e.litresAdded, 0);
+  const fills = coalesceRefuels(refuels, cfg);
+
+  const litresRefuelled = fills.reduce((s, e) => s + e.litresAdded, 0);
   const netDrop = startLevelL - endLevelL;
   const rawConsumed = netDrop + litresRefuelled;
 
@@ -422,7 +545,7 @@ export function analyseFuelSeries(
     endLevelL: round(endLevelL, 2),
     litresConsumed: round(litresConsumed, 2),
     litresRefuelled: round(litresRefuelled, 2),
-    refuels,
+    refuels: fills,
     implausibleDrops,
     levelSamples: levelled.length,
     uncertaintyL,
@@ -431,7 +554,7 @@ export function analyseFuelSeries(
     litresAcrossStaleGaps: round(litresAcrossStaleGaps, 2),
     // Below this the tank has not moved by more than the sender can resolve, so
     // "how much was burnt" has no answer worth printing.
-    withinNoise: litresConsumed <= noiseBandL && refuels.length === 0,
+    withinNoise: litresConsumed <= noiseBandL && fills.length === 0,
   };
 }
 
