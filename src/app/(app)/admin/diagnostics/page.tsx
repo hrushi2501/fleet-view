@@ -103,13 +103,13 @@ export default async function DiagnosticsPage() {
           <table className="w-full min-w-[720px] text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Provider</th>
-                <th className="px-5 py-3 font-medium">Code</th>
-                <th className="px-5 py-3 font-medium">Active</th>
-                <th className="px-5 py-3 font-medium">Interval</th>
-                <th className="px-5 py-3 font-medium">Last sync</th>
-                <th className="px-5 py-3 font-medium">Status</th>
-                <th className="px-5 py-3 font-medium">Last error</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Provider" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Code" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Active" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Interval" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Last sync" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Status" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Last error" /></th>
               </tr>
             </thead>
             <tbody>

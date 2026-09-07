@@ -5,6 +5,7 @@ import { Badge, Progress } from "@/components/ui";
 import { AssetGlass } from "@/components/AssetGlass";
 import { ASSET_CLASS_LABEL, STATUS_COLOR, healthColor, num, cn } from "@/lib/utils";
 import { Search } from "lucide-react";
+import { Txt } from "@/components/Txt";
 
 type Row = {
   id: string;
@@ -121,14 +122,14 @@ export function FleetTable({ rows }: { rows: Row[] }) {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-4 py-3 font-medium">Asset</th>
-                <th className="px-4 py-3 font-medium">Class</th>
-                <th className="px-4 py-3 font-medium">Ownership</th>
-                <th className="px-4 py-3 font-medium">Project</th>
-                <th className="px-4 py-3 font-medium">Meter</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Util.</th>
-                <th className="px-4 py-3 font-medium">Health</th>
+                <th className="px-4 py-3 font-medium"><Txt text="Asset" /></th>
+                <th className="px-4 py-3 font-medium"><Txt text="Class" /></th>
+                <th className="px-4 py-3 font-medium"><Txt text="Ownership" /></th>
+                <th className="px-4 py-3 font-medium"><Txt text="Project" /></th>
+                <th className="px-4 py-3 font-medium"><Txt text="Meter" /></th>
+                <th className="px-4 py-3 font-medium"><Txt text="Status" /></th>
+                <th className="px-4 py-3 font-medium"><Txt text="Util." /></th>
+                <th className="px-4 py-3 font-medium"><Txt text="Health" /></th>
               </tr>
             </thead>
             <tbody>

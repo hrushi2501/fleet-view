@@ -292,11 +292,11 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500 border-b border-slate-100">
                   <tr>
-                    <th className="px-5 py-3 font-medium">Technician</th>
-                    <th className="px-5 py-3 text-center font-medium">Active Jobs</th>
-                    <th className="px-5 py-3 text-right font-medium">Est. Downtime</th>
-                    <th className="px-5 py-3 text-right font-medium">Active Cost</th>
-                    <th className="px-5 py-3 font-medium">Current Assignments</th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Technician" /></th>
+                    <th className="px-5 py-3 text-center font-medium"><Txt text="Active Jobs" /></th>
+                    <th className="px-5 py-3 text-right font-medium"><Txt text="Est. Downtime" /></th>
+                    <th className="px-5 py-3 text-right font-medium"><Txt text="Active Cost" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Current Assignments" /></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -340,10 +340,10 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                     <tr>
-                      <th className="px-5 py-3 font-medium">Vehicle</th>
-                      <th className="px-5 py-3 font-medium">Class</th>
-                      <th className="px-5 py-3 font-medium">Risk</th>
-                      <th className="px-5 py-3 font-medium">Why</th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Vehicle" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Class" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Risk" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Why" /></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -369,16 +369,16 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500 border-b border-slate-100">
                   <tr>
-                    <th className="px-5 py-3 font-medium">WO No.</th>
-                    <th className="px-5 py-3 font-medium">Asset</th>
-                    <th className="px-5 py-3 font-medium">Type</th>
-                    <th className="px-5 py-3 font-medium">Description</th>
-                    <th className="px-5 py-3 font-medium">Priority</th>
-                    <th className="px-5 py-3 font-medium">Downtime</th>
-                    <th className="px-5 py-3 font-medium">Cost</th>
-                    <th className="px-5 py-3 font-medium">Status</th>
-                    <th className="px-5 py-3 font-medium">Repair Photos</th>
-                    <th className="px-5 py-3 font-medium">Reported</th>
+                    <th className="px-5 py-3 font-medium"><Txt text="WO No." /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Asset" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Type" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Description" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Priority" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Downtime" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Cost" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Status" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Repair Photos" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Reported" /></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -452,13 +452,13 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500 border-b border-slate-100">
                     <tr>
-                      <th className="px-5 py-3 font-medium">Machine</th>
-                      <th className="px-5 py-3 font-medium">Task</th>
-                      <th className="px-5 py-3 font-medium">Interval</th>
-                      <th className="px-5 py-3 font-medium">Progress</th>
-                      <th className="px-5 py-3 font-medium">Remaining</th>
-                      <th className="px-5 py-3 text-right font-medium">Est. Cost</th>
-                      <th className="px-5 py-3 font-medium">Status</th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Machine" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Task" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Interval" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Progress" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Remaining" /></th>
+                      <th className="px-5 py-3 text-right font-medium"><Txt text="Est. Cost" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Status" /></th>
                       <th className="px-5 py-3"></th>
                     </tr>
                   </thead>
@@ -515,12 +515,12 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500 border-b border-slate-100">
                   <tr>
-                    <th className="px-5 py-3 font-medium">Machine</th>
-                    <th className="px-5 py-3 font-medium">Task</th>
-                    <th className="px-5 py-3 text-center font-medium">Est. Days Remaining</th>
-                    <th className="px-5 py-3 font-medium">Predicted Due Date</th>
-                    <th className="px-5 py-3 text-right font-medium">Est. Cost</th>
-                    <th className="px-5 py-3 text-right font-medium">Actions</th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Machine" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Task" /></th>
+                    <th className="px-5 py-3 text-center font-medium"><Txt text="Est. Days Remaining" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Predicted Due Date" /></th>
+                    <th className="px-5 py-3 text-right font-medium"><Txt text="Est. Cost" /></th>
+                    <th className="px-5 py-3 text-right font-medium"><Txt text="Actions" /></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -583,12 +583,12 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
                         <table className="w-full text-sm">
                           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                             <tr>
-                              <th className="px-4 py-2 font-medium">Kind</th>
-                              <th className="px-4 py-2 font-medium">Description</th>
-                              <th className="px-4 py-2 font-medium">Part No.</th>
-                              <th className="px-4 py-2 text-right font-medium">Qty</th>
-                              <th className="px-4 py-2 text-right font-medium">Rate</th>
-                              <th className="px-4 py-2 text-right font-medium">Amount</th>
+                              <th className="px-4 py-2 font-medium"><Txt text="Kind" /></th>
+                              <th className="px-4 py-2 font-medium"><Txt text="Description" /></th>
+                              <th className="px-4 py-2 font-medium"><Txt text="Part No." /></th>
+                              <th className="px-4 py-2 text-right font-medium"><Txt text="Qty" /></th>
+                              <th className="px-4 py-2 text-right font-medium"><Txt text="Rate" /></th>
+                              <th className="px-4 py-2 text-right font-medium"><Txt text="Amount" /></th>
                               <th className="px-4 py-2"></th>
                             </tr>
                           </thead>

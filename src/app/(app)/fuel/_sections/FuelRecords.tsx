@@ -7,6 +7,7 @@ import Link from "next/link";
 
 import { requirePage, assetScope } from "@/lib/access";
 import { detectFills } from "@/lib/fuel-fill-reconcile";
+import { Txt } from "@/components/Txt";
 
 /**
  * Every fill, with its time, place and photographs.
@@ -98,13 +99,13 @@ export async function FuelRecords() {
             <table className="w-full text-sm">
               <thead className="bg-amber-50/60 text-left text-xs uppercase tracking-wider text-amber-800">
                 <tr>
-                  <th className="px-5 py-3 font-medium">When</th>
-                  <th className="px-5 py-3 font-medium">Vehicle</th>
-                  <th className="px-5 py-3 font-medium">Litres</th>
-                  <th className="px-5 py-3 font-medium">Tank went</th>
-                  <th className="px-5 py-3 font-medium">Approx. value</th>
-                  <th className="px-5 py-3 font-medium">Where</th>
-                  <th className="px-5 py-3 font-medium">Confidence</th>
+                  <th className="px-5 py-3 font-medium"><Txt text="When" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Vehicle" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Litres" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Tank went" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Approx. value" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Where" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Confidence" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -172,15 +173,15 @@ export async function FuelRecords() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Timestamp</th>
-                <th className="px-5 py-3 font-medium">Vehicle</th>
-                <th className="px-5 py-3 font-medium">Litres</th>
-                <th className="px-5 py-3 font-medium">Meter Value</th>
-                <th className="px-5 py-3 font-medium">Rate</th>
-                <th className="px-5 py-3 font-medium">Amount</th>
-                <th className="px-5 py-3 font-medium">GPS Location</th>
-                <th className="px-5 py-3 font-medium">Photos</th>
-                <th className="px-5 py-3 font-medium">Status</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Timestamp" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Vehicle" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Litres" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Meter Value" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Rate" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Amount" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="GPS Location" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Photos" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Status" /></th>
               </tr>
             </thead>
             <tbody>

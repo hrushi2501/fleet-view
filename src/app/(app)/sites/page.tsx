@@ -282,12 +282,12 @@ export default async function SitesPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                       <tr>
-                        <th className="px-4 py-2.5 font-medium">Class</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Planned</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Allocated</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Variance</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Daily Budget</th>
-                        <th className="px-4 py-2.5 font-medium">Status</th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Class" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="Planned" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="Allocated" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="Variance" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="Daily Budget" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Status" /></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -319,12 +319,12 @@ export default async function SitesPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                       <tr>
-                        <th className="px-4 py-2.5 font-medium">Machine</th>
-                        <th className="px-4 py-2.5 font-medium">Site</th>
-                        <th className="px-4 py-2.5 font-medium">Period</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Rate/day</th>
-                        <th className="px-4 py-2.5 font-medium">Purpose</th>
-                        <th className="px-4 py-2.5 font-medium">Status</th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Machine" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Site" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Period" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="Rate/day" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Purpose" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Status" /></th>
                         <th className="px-4 py-2.5"></th>
                       </tr>
                     </thead>
@@ -359,13 +359,13 @@ export default async function SitesPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                       <tr>
-                        <th className="px-4 py-2.5 font-medium">Machine</th>
-                        <th className="px-4 py-2.5 font-medium">Transport</th>
-                        <th className="px-4 py-2.5 font-medium">Requested</th>
-                        <th className="px-4 py-2.5 font-medium">Dispatched</th>
-                        <th className="px-4 py-2.5 font-medium">Arrived</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Cost</th>
-                        <th className="px-4 py-2.5 font-medium">Status</th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Machine" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Transport" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Requested" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Dispatched" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Arrived" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="Cost" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Status" /></th>
                         <th className="px-4 py-2.5"></th>
                       </tr>
                     </thead>
@@ -430,13 +430,13 @@ export default async function SitesPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Machine</th>
-                <th className="px-5 py-3 font-medium">Project</th>
-                <th className="px-5 py-3 font-medium">Site</th>
-                <th className="px-5 py-3 font-medium">Period</th>
-                <th className="px-5 py-3 text-right font-medium">Rate/day</th>
-                <th className="px-5 py-3 font-medium">Purpose</th>
-                <th className="px-5 py-3 font-medium">Status</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Machine" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Project" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Site" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Period" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Rate/day" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Purpose" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Status" /></th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
@@ -481,14 +481,14 @@ export default async function SitesPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Machine</th>
-                <th className="px-5 py-3 font-medium">To Project</th>
-                <th className="px-5 py-3 font-medium">Transport</th>
-                <th className="px-5 py-3 font-medium">Requested</th>
-                <th className="px-5 py-3 font-medium">Dispatched</th>
-                <th className="px-5 py-3 font-medium">Arrived</th>
-                <th className="px-5 py-3 text-right font-medium">Cost</th>
-                <th className="px-5 py-3 font-medium">Status</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Machine" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="To Project" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Transport" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Requested" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Dispatched" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Arrived" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Cost" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Status" /></th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>

@@ -46,11 +46,11 @@ export default async function AdminUsersPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Name</th>
-                <th className="px-5 py-3 font-medium">Email (login)</th>
-                <th className="px-5 py-3 font-medium">Role</th>
-                <th className="px-5 py-3 font-medium">Created</th>
-                <th className="px-5 py-3 font-medium">Actions</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Name" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Email (login)" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Role" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Created" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Actions" /></th>
               </tr>
             </thead>
             <tbody>

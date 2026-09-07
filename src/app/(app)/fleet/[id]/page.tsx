@@ -20,6 +20,7 @@ import { Panel, PanelTitle, DetailList, AttentionItem, Chip, type Row } from "@/
 import { analyseUsage, type AnalyticsReading } from "@/lib/fleet-analytics";
 import { specCards, estimatedRangeKm } from "@/lib/vehicle-spec";
 import { depreciation } from "@/lib/costing";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -768,11 +769,11 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
             <table className="w-full min-w-[36rem] text-sm">
               <thead>
                 <tr className="border-b border-slate-100 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                  <th className="pb-2">Document</th>
-                  <th className="pb-2">Number</th>
-                  <th className="pb-2">Issued</th>
-                  <th className="pb-2">Expires</th>
-                  <th className="pb-2 text-right">Status</th>
+                  <th className="pb-2"><Txt text="Document" /></th>
+                  <th className="pb-2"><Txt text="Number" /></th>
+                  <th className="pb-2"><Txt text="Issued" /></th>
+                  <th className="pb-2"><Txt text="Expires" /></th>
+                  <th className="pb-2 text-right"><Txt text="Status" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -819,12 +820,12 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
               <table className="w-full min-w-[34rem] text-sm">
                 <thead>
                   <tr className="border-b border-slate-100 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                    <th className="pb-2">Date</th>
-                    <th className="pb-2 text-right">Issued</th>
-                    <th className="pb-2 text-right">Sensor rise</th>
-                    <th className="pb-2 text-right">Variance</th>
-                    <th className="pb-2 text-right">Amount</th>
-                    <th className="pb-2 text-right">Flag</th>
+                    <th className="pb-2"><Txt text="Date" /></th>
+                    <th className="pb-2 text-right"><Txt text="Issued" /></th>
+                    <th className="pb-2 text-right"><Txt text="Sensor rise" /></th>
+                    <th className="pb-2 text-right"><Txt text="Variance" /></th>
+                    <th className="pb-2 text-right"><Txt text="Amount" /></th>
+                    <th className="pb-2 text-right"><Txt text="Flag" /></th>
                   </tr>
                 </thead>
                 <tbody>

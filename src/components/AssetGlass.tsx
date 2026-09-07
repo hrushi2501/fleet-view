@@ -8,6 +8,7 @@ import { Panel, PanelTitle, DetailList, type Row } from "@/components/VehicleDet
 import { VehicleHero, type HeroSpec } from "@/components/VehicleHero";
 import { vehiclePhoto } from "@/lib/vehicle-photo";
 import { useAssetDetail } from "@/lib/query-hooks";
+import { Txt } from "@/components/Txt";
 
 type Detail = {
   id: string; code: string; name: string; registrationNo: string | null; assetClass: string; category: string;
@@ -368,12 +369,12 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                       <table className="w-full min-w-[680px] text-left text-[12px]">
                         <thead className="text-[11px] uppercase tracking-wider text-slate-500">
                           <tr>
-                            <th className="py-1.5 pr-3">Window</th>
-                            <th className="py-1.5 pr-3">Distance</th>
-                            <th className="py-1.5 pr-3">Tank moved</th>
-                            <th className="py-1.5 pr-3">Counted as burn</th>
-                            <th className="py-1.5 pr-3">km/L</th>
-                            <th className="py-1.5">Verdict</th>
+                            <th className="py-1.5 pr-3"><Txt text="Window" /></th>
+                            <th className="py-1.5 pr-3"><Txt text="Distance" /></th>
+                            <th className="py-1.5 pr-3"><Txt text="Tank moved" /></th>
+                            <th className="py-1.5 pr-3"><Txt text="Counted as burn" /></th>
+                            <th className="py-1.5 pr-3"><Txt text="km/L" /></th>
+                            <th className="py-1.5"><Txt text="Verdict" /></th>
                           </tr>
                         </thead>
                         <tbody className="text-ink-900">

@@ -52,12 +52,12 @@ export default async function CompliancePage() {
             <table className="w-full min-w-[560px] text-sm">
               <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-5 py-3 font-medium">Asset</th>
-                  <th className="px-5 py-3 font-medium">Document</th>
-                  <th className="px-5 py-3 font-medium">Number</th>
-                  <th className="px-5 py-3 font-medium">Expiry</th>
-                  <th className="px-5 py-3 font-medium">Status</th>
-                  <th className="px-5 py-3 text-right font-medium">Action</th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Asset" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Document" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Number" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Expiry" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Status" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Action" /></th>
                 </tr>
               </thead>
               <tbody>

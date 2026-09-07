@@ -94,11 +94,11 @@ export default async function RolesPage() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-5 py-3 font-medium">Role</th>
-                  <th className="px-5 py-3 text-right font-medium">Users</th>
-                  <th className="px-5 py-3 text-right font-medium">Permissions</th>
-                  <th className="px-5 py-3 text-right font-medium">Approval Limit</th>
-                  <th className="px-5 py-3 font-medium">Sensitive Grants</th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Role" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Users" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Permissions" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Approval Limit" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Sensitive Grants" /></th>
                   <th className="px-5 py-3"></th>
                 </tr>
               </thead>
@@ -148,12 +148,12 @@ export default async function RolesPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">User</th>
-                <th className="px-5 py-3 font-medium">Email</th>
-                <th className="px-5 py-3 font-medium">Legacy Role</th>
-                <th className="px-5 py-3 font-medium">Assigned Role</th>
-                <th className="px-5 py-3 font-medium">Driver</th>
-                <th className="px-5 py-3 text-right font-medium">Approval Limit</th>
+                <th className="px-5 py-3 font-medium"><Txt text="User" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Email" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Legacy Role" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Assigned Role" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Driver" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Approval Limit" /></th>
               </tr>
             </thead>
             <tbody>

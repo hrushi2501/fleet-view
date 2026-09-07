@@ -211,15 +211,15 @@ export default async function ContractorsPage() {
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                       <tr>
-                        <th className="px-4 py-2.5 font-medium">Date</th>
-                        <th className="px-4 py-2.5 font-medium">Present</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Worked</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Idle</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Breakdown</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Km</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Trips</th>
-                        <th className="px-4 py-2.5 font-medium">Source</th>
-                        <th className="px-4 py-2.5 font-medium">Approval</th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Date" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Present" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="Worked" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="Idle" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="Breakdown" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="Km" /></th>
+                        <th className="px-4 py-2.5 text-right font-medium"><Txt text="Trips" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Source" /></th>
+                        <th className="px-4 py-2.5 font-medium"><Txt text="Approval" /></th>
                         <th className="px-4 py-2.5"></th>
                       </tr>
                     </thead>

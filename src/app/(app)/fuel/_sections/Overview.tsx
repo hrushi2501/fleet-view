@@ -281,18 +281,18 @@ export async function Overview() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Date</th>
-                <th className="px-5 py-3 font-medium">Vehicle</th>
-                <th className="px-5 py-3 font-medium">Litres</th>
-                <th className="px-5 py-3 font-medium">Recorded by</th>
-                <th className="px-5 py-3 font-medium">Odometer</th>
-                <th className="px-5 py-3 font-medium">Rate ₹/L</th>
-                <th className="px-5 py-3 font-medium">Amount</th>
-                <th className="px-5 py-3 font-medium">Location</th>
-                <th className="px-5 py-3 font-medium">Distance from vehicle</th>
-                <th className="px-5 py-3 font-medium">Photos</th>
-                <th className="px-5 py-3 font-medium">Status</th>
-                <th className="px-5 py-3 font-medium">Edit</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Date" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Vehicle" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Litres" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Recorded by" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Odometer" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Rate ₹/L" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Amount" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Location" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Distance from vehicle" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Photos" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Status" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Edit" /></th>
               </tr>
             </thead>
             <tbody>
@@ -374,10 +374,10 @@ export async function Overview() {
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                   <tr>
-                    <th className="px-5 py-3 font-medium">Day</th>
-                    <th className="px-5 py-3 font-medium">Total</th>
-                    <th className="px-5 py-3 font-medium">Which vehicles, and how much</th>
-                    <th className="px-5 py-3 font-medium">Approx. Cost</th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Day" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Total" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Which vehicles, and how much" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Approx. Cost" /></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -446,16 +446,16 @@ Green means a bill was entered — the litres and the money are both correct.
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Vehicle</th>
-                <th className="px-5 py-3 font-medium">Class</th>
-                <th className="px-5 py-3 font-medium">Fills</th>
-                <th className="px-5 py-3 font-medium">Diesel</th>
-                <th className="px-5 py-3 font-medium">Distance / Hours</th>
-                <th className="px-5 py-3 font-medium">Mileage</th>
-                <th className="px-5 py-3 font-medium">Benchmark</th>
-                <th className="px-5 py-3 font-medium">Cost/km</th>
-                <th className="px-5 py-3 font-medium">Last Fill</th>
-                <th className="px-5 py-3 font-medium">Flags</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Vehicle" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Class" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Fills" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Diesel" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Distance / Hours" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Mileage" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Benchmark" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Cost/km" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Last Fill" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Flags" /></th>
               </tr>
             </thead>
             <tbody>

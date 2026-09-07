@@ -56,12 +56,12 @@ export default async function AuditPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">When</th>
-                <th className="px-5 py-3 font-medium">Who</th>
-                <th className="px-5 py-3 font-medium">Action</th>
-                <th className="px-5 py-3 font-medium">Module</th>
-                <th className="px-5 py-3 font-medium">Summary</th>
-                <th className="px-5 py-3 font-medium">Changes</th>
+                <th className="px-5 py-3 font-medium"><Txt text="When" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Who" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Action" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Module" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Summary" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Changes" /></th>
               </tr>
             </thead>
             <tbody>

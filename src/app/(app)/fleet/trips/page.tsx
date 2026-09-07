@@ -103,14 +103,14 @@ export default async function TripsPage() {
             <table className="w-full min-w-[820px] text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-5 py-3 font-medium">Vehicle</th>
-                  <th className="px-5 py-3 font-medium">Distance</th>
-                  <th className="px-5 py-3 font-medium">Diesel burned</th>
-                  <th className="px-5 py-3 font-medium">Efficiency</th>
-                  <th className="px-5 py-3 font-medium">Norm</th>
-                  <th className="px-5 py-3 font-medium">Unaccounted</th>
-                  <th className="px-5 py-3 font-medium">Tank</th>
-                  <th className="px-5 py-3 font-medium">Last reported</th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Vehicle" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Distance" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Diesel burned" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Efficiency" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Norm" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Unaccounted" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Tank" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Last reported" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -164,14 +164,14 @@ export default async function TripsPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Vehicle</th>
-                <th className="px-5 py-3 font-medium">Driver</th>
-                <th className="px-5 py-3 font-medium">Started</th>
-                <th className="px-5 py-3 font-medium">Ended</th>
-                <th className="px-5 py-3 text-right font-medium">Distance</th>
-                <th className="px-5 py-3 font-medium">Tracking</th>
-                <th className="px-5 py-3 text-right font-medium">Points</th>
-                <th className="px-5 py-3 font-medium">Status</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Vehicle" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Driver" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Started" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Ended" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Distance" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Tracking" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Points" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Status" /></th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
@@ -216,12 +216,12 @@ export default async function TripsPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Vehicle</th>
-                <th className="px-5 py-3 font-medium">QR Code</th>
-                <th className="px-5 py-3 font-medium">GPS Provider</th>
-                <th className="px-5 py-3 font-medium">Device ID</th>
-                <th className="px-5 py-3 font-medium">Fuel Source</th>
-                <th className="px-5 py-3 text-right font-medium">Tank Level</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Vehicle" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="QR Code" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="GPS Provider" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Device ID" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Fuel Source" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Tank Level" /></th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>

@@ -8,6 +8,7 @@ import { Scale, TriangleAlert, CheckCircle2, HelpCircle, IndianRupee } from "luc
 import Link from "next/link";
 
 import { requirePage } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 const STATUS_BADGE: Record<string, string> = {
   ok: "bg-emerald-100 text-emerald-700 ring-emerald-600/20",
@@ -101,16 +102,16 @@ export async function Reconciliation() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Tank</th>
-                <th className="px-5 py-3 font-medium">Period</th>
-                <th className="px-5 py-3 text-right font-medium">Opening Dip</th>
-                <th className="px-5 py-3 text-right font-medium">Received</th>
-                <th className="px-5 py-3 text-right font-medium">Issued</th>
-                <th className="px-5 py-3 text-right font-medium">Expected</th>
-                <th className="px-5 py-3 text-right font-medium">Actual Dip</th>
-                <th className="px-5 py-3 text-right font-medium">Variance</th>
-                <th className="px-5 py-3 font-medium">Status</th>
-                <th className="px-5 py-3 font-medium">Action</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Tank" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Period" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Opening Dip" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Received" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Issued" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Expected" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Actual Dip" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Variance" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Status" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Action" /></th>
               </tr>
             </thead>
             <tbody>
@@ -171,11 +172,11 @@ export async function Reconciliation() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Asset Class</th>
-                <th className="px-5 py-3 font-medium">Unit</th>
-                <th className="px-5 py-3 text-right font-medium">Norm Band</th>
-                <th className="px-5 py-3 text-right font-medium">Tolerance</th>
-                <th className="px-5 py-3 font-medium">Updated</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Asset Class" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Unit" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Norm Band" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Tolerance" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Updated" /></th>
               </tr>
             </thead>
             <tbody>
@@ -207,14 +208,14 @@ export async function Reconciliation() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Run On</th>
-                <th className="px-5 py-3 font-medium">Tank</th>
-                <th className="px-5 py-3 font-medium">Period</th>
-                <th className="px-5 py-3 text-right font-medium">Expected</th>
-                <th className="px-5 py-3 text-right font-medium">Actual</th>
-                <th className="px-5 py-3 text-right font-medium">Variance</th>
-                <th className="px-5 py-3 font-medium">Status</th>
-                <th className="px-5 py-3 font-medium">By</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Run On" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Tank" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Period" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Expected" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Actual" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Variance" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Status" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="By" /></th>
               </tr>
             </thead>
             <tbody>

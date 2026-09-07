@@ -6,6 +6,7 @@ import { inr, num, fmtDate, ASSET_CLASS_LABEL } from "@/lib/utils";
 import { Database, TriangleAlert, Gauge, History, ClipboardList } from "lucide-react";
 import Link from "next/link";
 import { assetScope, requirePage } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 /**
  * The detail behind each vehicle: identity numbers, meters, and how complete
@@ -114,14 +115,14 @@ export async function VehicleRecords() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Vehicle</th>
-                <th className="px-5 py-3 font-medium">Class</th>
-                <th className="px-5 py-3 text-right font-medium">Odometer</th>
-                <th className="px-5 py-3 text-right font-medium">Hour-meter</th>
-                <th className="px-5 py-3 font-medium">Chassis / Engine</th>
-                <th className="px-5 py-3 text-right font-medium">Acq. Cost</th>
-                <th className="px-5 py-3 font-medium">Completeness</th>
-                <th className="px-5 py-3 font-medium">Missing</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Vehicle" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Class" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Odometer" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Hour-meter" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Chassis / Engine" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Acq. Cost" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Completeness" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Missing" /></th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
@@ -173,11 +174,11 @@ export async function VehicleRecords() {
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-5 py-2.5 font-medium">Date</th>
-                  <th className="px-5 py-2.5 font-medium">Vehicle</th>
-                  <th className="px-5 py-2.5 font-medium">Meter</th>
-                  <th className="px-5 py-2.5 text-right font-medium">Reading</th>
-                  <th className="px-5 py-2.5 font-medium">Source</th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Date" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Vehicle" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Meter" /></th>
+                  <th className="px-5 py-2.5 text-right font-medium"><Txt text="Reading" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Source" /></th>
                   <th className="px-5 py-2.5"></th>
                 </tr>
               </thead>
@@ -208,11 +209,11 @@ export async function VehicleRecords() {
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-5 py-2.5 font-medium">Date</th>
-                  <th className="px-5 py-2.5 font-medium">Vehicle</th>
-                  <th className="px-5 py-2.5 font-medium">Event</th>
-                  <th className="px-5 py-2.5 font-medium">Change</th>
-                  <th className="px-5 py-2.5 text-right font-medium">Amount</th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Date" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Vehicle" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Event" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Change" /></th>
+                  <th className="px-5 py-2.5 text-right font-medium"><Txt text="Amount" /></th>
                 </tr>
               </thead>
               <tbody>

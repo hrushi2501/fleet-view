@@ -7,6 +7,7 @@ import { inr, fmtDate } from "@/lib/utils";
 import { setWage } from "../actions";
 import { useToast } from "@/components/Toast";
 import { Plus, X } from "lucide-react";
+import { Txt } from "@/components/Txt";
 
 type Rate = {
   id: string;
@@ -62,12 +63,12 @@ export function WageBook({ people, canEdit }: { people: Person[]; canEdit: boole
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-4 py-3 font-medium">Person</th>
-                <th className="px-4 py-3 font-medium">Works as</th>
-                <th className="px-4 py-3 font-medium">Current wage</th>
-                <th className="px-4 py-3 font-medium">Overtime</th>
-                <th className="px-4 py-3 font-medium">Since</th>
-                <th className="px-4 py-3 font-medium">Earlier wages</th>
+                <th className="px-4 py-3 font-medium"><Txt text="Person" /></th>
+                <th className="px-4 py-3 font-medium"><Txt text="Works as" /></th>
+                <th className="px-4 py-3 font-medium"><Txt text="Current wage" /></th>
+                <th className="px-4 py-3 font-medium"><Txt text="Overtime" /></th>
+                <th className="px-4 py-3 font-medium"><Txt text="Since" /></th>
+                <th className="px-4 py-3 font-medium"><Txt text="Earlier wages" /></th>
                 {canEdit && <th className="px-4 py-3" />}
               </tr>
             </thead>

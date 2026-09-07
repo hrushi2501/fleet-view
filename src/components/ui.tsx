@@ -41,7 +41,7 @@ export function Badge({
         className
       )}
     >
-      {children}
+      {typeof children === "string" ? <Txt text={children} /> : children}
     </span>
   );
 }
@@ -363,8 +363,10 @@ export function EmptyState({
           <Icon className="h-6 w-6" />
         </div>
       )}
-      <h3 className="text-base font-bold text-ink-900">{title}</h3>
-      <p className="mt-1 max-w-sm text-xs leading-relaxed text-slate-500">{description}</p>
+      <h3 className="text-base font-bold text-ink-900"><Txt text={title} /></h3>
+      <p className="mt-1 max-w-sm text-xs leading-relaxed text-slate-500">
+        <Txt text={description} />
+      </p>
       {action && <div className="mt-4">{action}</div>}
     </div>
   );

@@ -8,6 +8,7 @@ import { LiveAiPoller } from "@/components/LiveAiPoller";
 import { ShieldAlert, HandCoins, IndianRupee, Clock, Repeat2, Fuel, Gauge } from "lucide-react";
 import Link from "next/link";
 import { requirePage, assetScope, projectScope } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 const SEV: Record<string, string> = {
   HIGH: "bg-rose-100 text-rose-700 ring-rose-600/20",
@@ -118,12 +119,12 @@ export async function LossCases() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-4 py-2.5 font-medium">Party</th>
-                  <th className="px-4 py-2.5 font-medium">Type</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Cases</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Open</th>
-                  <th className="px-4 py-2.5 text-right font-medium">At Risk</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Recovered</th>
+                  <th className="px-4 py-2.5 font-medium"><Txt text="Party" /></th>
+                  <th className="px-4 py-2.5 font-medium"><Txt text="Type" /></th>
+                  <th className="px-4 py-2.5 text-right font-medium"><Txt text="Cases" /></th>
+                  <th className="px-4 py-2.5 text-right font-medium"><Txt text="Open" /></th>
+                  <th className="px-4 py-2.5 text-right font-medium"><Txt text="At Risk" /></th>
+                  <th className="px-4 py-2.5 text-right font-medium"><Txt text="Recovered" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -161,11 +162,11 @@ export async function LossCases() {
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                   <tr>
-                    <th className="px-5 py-2.5 font-medium">Asset / Tank</th>
-                    <th className="px-5 py-2.5 font-medium">Source</th>
-                    <th className="px-5 py-2.5 text-right font-medium">Litres</th>
-                    <th className="px-5 py-2.5 text-right font-medium">Value at Risk</th>
-                    <th className="px-5 py-2.5 font-medium">Severity</th>
+                    <th className="px-5 py-2.5 font-medium"><Txt text="Asset / Tank" /></th>
+                    <th className="px-5 py-2.5 font-medium"><Txt text="Source" /></th>
+                    <th className="px-5 py-2.5 text-right font-medium"><Txt text="Litres" /></th>
+                    <th className="px-5 py-2.5 text-right font-medium"><Txt text="Value at Risk" /></th>
+                    <th className="px-5 py-2.5 font-medium"><Txt text="Severity" /></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -202,11 +203,11 @@ export async function LossCases() {
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                   <tr>
-                    <th className="px-5 py-2.5 font-medium">Asset</th>
-                    <th className="px-5 py-2.5 text-right font-medium">Previous</th>
-                    <th className="px-5 py-2.5 text-right font-medium">Current</th>
-                    <th className="px-5 py-2.5 text-right font-medium">Drop</th>
-                    <th className="px-5 py-2.5 font-medium">Date</th>
+                    <th className="px-5 py-2.5 font-medium"><Txt text="Asset" /></th>
+                    <th className="px-5 py-2.5 text-right font-medium"><Txt text="Previous" /></th>
+                    <th className="px-5 py-2.5 text-right font-medium"><Txt text="Current" /></th>
+                    <th className="px-5 py-2.5 text-right font-medium"><Txt text="Drop" /></th>
+                    <th className="px-5 py-2.5 font-medium"><Txt text="Date" /></th>
                   </tr>
                 </thead>
                 <tbody>

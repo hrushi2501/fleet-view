@@ -142,10 +142,10 @@ export default async function ComplianceChecksPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Machine</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Machine" /></th>
                 {DOC_TYPES.map((t) => <th key={t} className="px-3 py-3 text-center font-medium">{t}</th>)}
-                <th className="px-5 py-3 font-medium">Score</th>
-                <th className="px-5 py-3 font-medium">Operable</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Score" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Operable" /></th>
               </tr>
             </thead>
             <tbody>

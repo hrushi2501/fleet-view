@@ -157,15 +157,15 @@ export default async function TyresPage({ searchParams }: { searchParams: Promis
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                     <tr>
-                      <th className="px-5 py-3 font-medium">Serial</th>
-                      <th className="px-5 py-3 font-medium">Make / Size</th>
-                      <th className="px-5 py-3 font-medium">Fitted To / Location</th>
-                      <th className="px-5 py-3 font-medium">Tread</th>
-                      <th className="px-5 py-3 font-medium">Wear</th>
-                      <th className="px-5 py-3 text-right font-medium">Km Run</th>
-                      <th className="px-5 py-3 text-right font-medium">₹/km</th>
-                      <th className="px-5 py-3 text-right font-medium">Projected Life</th>
-                      <th className="px-5 py-3 font-medium">Health</th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Serial" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Make / Size" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Fitted To / Location" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Tread" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Wear" /></th>
+                      <th className="px-5 py-3 text-right font-medium"><Txt text="Km Run" /></th>
+                      <th className="px-5 py-3 text-right font-medium"><Txt text="₹/km" /></th>
+                      <th className="px-5 py-3 text-right font-medium"><Txt text="Projected Life" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Health" /></th>
                       <th className="px-5 py-3"></th>
                     </tr>
                   </thead>
@@ -257,13 +257,13 @@ export default async function TyresPage({ searchParams }: { searchParams: Promis
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                   <tr>
-                    <th className="px-5 py-3 font-medium">Serial</th>
-                    <th className="px-5 py-3 font-medium">Type</th>
-                    <th className="px-5 py-3 font-medium">Fitted To / Location</th>
-                    <th className="px-5 py-3 text-right font-medium">Hours Run</th>
-                    <th className="px-5 py-3 font-medium">Life Used</th>
-                    <th className="px-5 py-3 text-right font-medium">₹/hr</th>
-                    <th className="px-5 py-3 font-medium">Health</th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Serial" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Type" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Fitted To / Location" /></th>
+                    <th className="px-5 py-3 text-right font-medium"><Txt text="Hours Run" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Life Used" /></th>
+                    <th className="px-5 py-3 text-right font-medium"><Txt text="₹/hr" /></th>
+                    <th className="px-5 py-3 font-medium"><Txt text="Health" /></th>
                     <th className="px-5 py-3"></th>
                   </tr>
                 </thead>
@@ -372,11 +372,11 @@ export default async function TyresPage({ searchParams }: { searchParams: Promis
                             <table className="w-full text-sm">
                               <thead className="bg-slate-50 text-left text-xs text-slate-500 border-b border-slate-100">
                                 <tr>
-                                  <th className="px-4 py-2 font-medium">Serial</th>
-                                  <th className="px-4 py-2 font-medium">Make / Size</th>
-                                  <th className="px-4 py-2 font-medium">Current Tread</th>
-                                  <th className="px-4 py-2 text-right font-medium">Cost</th>
-                                  <th className="px-4 py-2 text-right font-medium">Actions</th>
+                                  <th className="px-4 py-2 font-medium"><Txt text="Serial" /></th>
+                                  <th className="px-4 py-2 font-medium"><Txt text="Make / Size" /></th>
+                                  <th className="px-4 py-2 font-medium"><Txt text="Current Tread" /></th>
+                                  <th className="px-4 py-2 text-right font-medium"><Txt text="Cost" /></th>
+                                  <th className="px-4 py-2 text-right font-medium"><Txt text="Actions" /></th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -411,12 +411,12 @@ export default async function TyresPage({ searchParams }: { searchParams: Promis
                             <table className="w-full text-sm">
                               <thead className="bg-slate-50 text-left text-xs text-slate-500 border-b border-slate-100">
                                 <tr>
-                                  <th className="px-4 py-2 font-medium">Serial</th>
-                                  <th className="px-4 py-2 font-medium">Type</th>
-                                  <th className="px-4 py-2 font-medium">Make</th>
-                                  <th className="px-4 py-2 text-right font-medium">Hours Run</th>
-                                  <th className="px-4 py-2 text-right font-medium">Cost</th>
-                                  <th className="px-4 py-2 text-right font-medium">Actions</th>
+                                  <th className="px-4 py-2 font-medium"><Txt text="Serial" /></th>
+                                  <th className="px-4 py-2 font-medium"><Txt text="Type" /></th>
+                                  <th className="px-4 py-2 font-medium"><Txt text="Make" /></th>
+                                  <th className="px-4 py-2 text-right font-medium"><Txt text="Hours Run" /></th>
+                                  <th className="px-4 py-2 text-right font-medium"><Txt text="Cost" /></th>
+                                  <th className="px-4 py-2 text-right font-medium"><Txt text="Actions" /></th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -466,14 +466,14 @@ export default async function TyresPage({ searchParams }: { searchParams: Promis
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                     <tr>
-                      <th className="px-5 py-2.5 font-medium">Date</th>
-                      <th className="px-5 py-2.5 font-medium">Serial</th>
-                      <th className="px-5 py-2.5 font-medium">Event</th>
-                      <th className="px-5 py-2.5 font-medium">Machine / Location</th>
-                      <th className="px-5 py-2.5 text-right font-medium">Meter</th>
-                      <th className="px-5 py-2.5 text-right font-medium">Tread</th>
-                      <th className="px-5 py-2.5 font-medium">Reason / Note</th>
-                      <th className="px-5 py-2.5 font-medium">By</th>
+                      <th className="px-5 py-2.5 font-medium"><Txt text="Date" /></th>
+                      <th className="px-5 py-2.5 font-medium"><Txt text="Serial" /></th>
+                      <th className="px-5 py-2.5 font-medium"><Txt text="Event" /></th>
+                      <th className="px-5 py-2.5 font-medium"><Txt text="Machine / Location" /></th>
+                      <th className="px-5 py-2.5 text-right font-medium"><Txt text="Meter" /></th>
+                      <th className="px-5 py-2.5 text-right font-medium"><Txt text="Tread" /></th>
+                      <th className="px-5 py-2.5 font-medium"><Txt text="Reason / Note" /></th>
+                      <th className="px-5 py-2.5 font-medium"><Txt text="By" /></th>
                     </tr>
                   </thead>
                   <tbody>

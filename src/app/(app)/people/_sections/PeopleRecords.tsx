@@ -5,6 +5,7 @@ import { attendanceSummary, personDocStatus, PERSON_DOC_LABEL, REQUIRED_PERSON_D
 import { num, fmtDate } from "@/lib/utils";
 import { Users, CalendarCheck, FileX2, TriangleAlert, UserCheck } from "lucide-react";
 import { requirePage } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 const STATE_DOT: Record<string, string> = {
   valid: "bg-emerald-500", expiring: "bg-amber-500", expired: "bg-rose-500", missing: "bg-slate-400", "no-expiry": "bg-brand-400",
@@ -96,11 +97,11 @@ export async function PeopleRecords() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Person</th>
-                <th className="px-5 py-3 font-medium">Employment</th>
-                <th className="px-5 py-3 font-medium">Attendance (30d)</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Person" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Employment" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Attendance (30d)" /></th>
                 {REQUIRED_PERSON_DOCS.map((t) => <th key={t} className="px-3 py-3 text-center font-medium">{PERSON_DOC_LABEL[t]}</th>)}
-                <th className="px-5 py-3 font-medium">Emergency</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Emergency" /></th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
@@ -155,12 +156,12 @@ export async function PeopleRecords() {
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-5 py-2.5 font-medium">Date</th>
-                  <th className="px-5 py-2.5 font-medium">Person</th>
-                  <th className="px-5 py-2.5 font-medium">Status</th>
-                  <th className="px-5 py-2.5 font-medium">Shift</th>
-                  <th className="px-5 py-2.5 text-right font-medium">Hours</th>
-                  <th className="px-5 py-2.5 font-medium">Project</th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Date" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Person" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Status" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Shift" /></th>
+                  <th className="px-5 py-2.5 text-right font-medium"><Txt text="Hours" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Project" /></th>
                   <th className="px-5 py-2.5"></th>
                 </tr>
               </thead>
@@ -188,11 +189,11 @@ export async function PeopleRecords() {
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-5 py-2.5 font-medium">Person</th>
-                  <th className="px-5 py-2.5 font-medium">Document</th>
-                  <th className="px-5 py-2.5 font-medium">Number</th>
-                  <th className="px-5 py-2.5 font-medium">Expiry</th>
-                  <th className="px-5 py-2.5 font-medium">Scan</th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Person" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Document" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Number" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Expiry" /></th>
+                  <th className="px-5 py-2.5 font-medium"><Txt text="Scan" /></th>
                   <th className="px-5 py-2.5"></th>
                 </tr>
               </thead>

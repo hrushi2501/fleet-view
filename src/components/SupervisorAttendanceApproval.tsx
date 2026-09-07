@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from "react";
 import { Card, StatCard, SectionTitle } from "@/components/ui";
 import { DonutChart, LineChart } from "@/components/charts";
+import { Txt } from "@/components/Txt";
 import {
   CheckCircle2,
   Clock,
@@ -242,11 +243,11 @@ export function SupervisorAttendanceApproval({ view }: { view: AttendanceView })
               <table className="w-full text-left text-sm text-slate-600">
                 <thead className="border-b border-slate-100 bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
                   <tr>
-                    <th className="px-5 py-3.5 font-semibold">Driver Details</th>
-                    <th className="px-5 py-3.5 font-semibold">Vehicle & Project</th>
-                    <th className="px-5 py-3.5 font-semibold">Shift & Hours</th>
-                    <th className="px-5 py-3.5 font-semibold">Recorded Evidence</th>
-                    <th className="px-5 py-3.5 font-semibold">Status</th>
+                    <th className="px-5 py-3.5 font-semibold"><Txt text="Driver Details" /></th>
+                    <th className="px-5 py-3.5 font-semibold"><Txt text="Vehicle & Project" /></th>
+                    <th className="px-5 py-3.5 font-semibold"><Txt text="Shift & Hours" /></th>
+                    <th className="px-5 py-3.5 font-semibold"><Txt text="Recorded Evidence" /></th>
+                    <th className="px-5 py-3.5 font-semibold"><Txt text="Status" /></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">

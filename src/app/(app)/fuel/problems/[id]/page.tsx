@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ShieldAlert, HandCoins, IndianRupee, Paperclip, History, ExternalLink } from "lucide-react";
 import { requirePage } from "@/lib/access";
+import { Txt } from "@/components/Txt";
 
 export const dynamic = "force-dynamic";
 
@@ -134,11 +135,11 @@ export default async function CaseDetail({ params }: { params: Promise<{ id: str
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                     <tr>
-                      <th className="px-5 py-3 font-medium">Date</th>
-                      <th className="px-5 py-3 font-medium">Method</th>
-                      <th className="px-5 py-3 font-medium">Reference</th>
-                      <th className="px-5 py-3 text-right font-medium">Amount</th>
-                      <th className="px-5 py-3 font-medium">By</th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Date" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Method" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="Reference" /></th>
+                      <th className="px-5 py-3 text-right font-medium"><Txt text="Amount" /></th>
+                      <th className="px-5 py-3 font-medium"><Txt text="By" /></th>
                     </tr>
                   </thead>
                   <tbody>

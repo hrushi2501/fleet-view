@@ -7,6 +7,7 @@ import { inr } from "@/lib/utils";
 import { buildRun, adjustLine, finaliseRun } from "../actions";
 import { useToast } from "@/components/Toast";
 import { RefreshCw, Lock, FileDown, Sheet, Pencil, X } from "lucide-react";
+import { Txt } from "@/components/Txt";
 
 type Line = {
   id: string;
@@ -161,16 +162,16 @@ export function PayrollBoard({
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Person</th>
-                  <th className="px-4 py-3 font-medium">Wage</th>
-                  <th className="px-4 py-3 text-right font-medium">Present</th>
-                  <th className="px-4 py-3 text-right font-medium">Half</th>
-                  <th className="px-4 py-3 text-right font-medium">Absent</th>
-                  <th className="px-4 py-3 text-right font-medium">Days Paid</th>
-                  <th className="px-4 py-3 text-right font-medium">OT</th>
-                  <th className="px-4 py-3 text-right font-medium">Basic</th>
-                  <th className="px-4 py-3 text-right font-medium">Advance</th>
-                  <th className="px-4 py-3 text-right font-medium">Net</th>
+                  <th className="px-4 py-3 font-medium"><Txt text="Person" /></th>
+                  <th className="px-4 py-3 font-medium"><Txt text="Wage" /></th>
+                  <th className="px-4 py-3 text-right font-medium"><Txt text="Present" /></th>
+                  <th className="px-4 py-3 text-right font-medium"><Txt text="Half" /></th>
+                  <th className="px-4 py-3 text-right font-medium"><Txt text="Absent" /></th>
+                  <th className="px-4 py-3 text-right font-medium"><Txt text="Days Paid" /></th>
+                  <th className="px-4 py-3 text-right font-medium"><Txt text="OT" /></th>
+                  <th className="px-4 py-3 text-right font-medium"><Txt text="Basic" /></th>
+                  <th className="px-4 py-3 text-right font-medium"><Txt text="Advance" /></th>
+                  <th className="px-4 py-3 text-right font-medium"><Txt text="Net" /></th>
                   {canEdit && !finalised && <th className="px-4 py-3" />}
                 </tr>
               </thead>

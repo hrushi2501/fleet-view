@@ -127,14 +127,14 @@ export default async function MaterialsPage() {
             <table className="w-full min-w-[720px] text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-5 py-3 font-medium">Material</th>
-                  <th className="px-5 py-3 text-right font-medium">Loads</th>
-                  <th className="px-5 py-3 text-right font-medium">Sent</th>
-                  <th className="px-5 py-3 text-right font-medium">Arrived</th>
-                  <th className="px-5 py-3 text-right font-medium">Short</th>
-                  <th className="px-5 py-3 text-right font-medium">Short %</th>
-                  <th className="px-5 py-3 text-right font-medium">No receipt</th>
-                  <th className="px-5 py-3 text-right font-medium">Value</th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Material" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Loads" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Sent" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Arrived" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Short" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Short %" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="No receipt" /></th>
+                  <th className="px-5 py-3 text-right font-medium"><Txt text="Value" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -200,14 +200,14 @@ export default async function MaterialsPage() {
           <table className="w-full min-w-[900px] text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Date</th>
-                <th className="px-5 py-3 font-medium">Slip</th>
-                <th className="px-5 py-3 font-medium">Vehicle</th>
-                <th className="px-5 py-3 font-medium">Material</th>
-                <th className="px-5 py-3 text-right font-medium">Sent</th>
-                <th className="px-5 py-3 text-right font-medium">Arrived</th>
-                <th className="px-5 py-3 font-medium">Status</th>
-                <th className="px-5 py-3 font-medium">What it says</th>
+                <th className="px-5 py-3 font-medium"><Txt text="Date" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Slip" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Vehicle" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Material" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Sent" /></th>
+                <th className="px-5 py-3 text-right font-medium"><Txt text="Arrived" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Status" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="What it says" /></th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
