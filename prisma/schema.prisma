@@ -468,6 +468,14 @@ model TelemetryReading {
   // database, because `prisma db push` makes the database match this file and
   // would otherwise drop them as drift.
   @@index([providerId])
+  // These two exist in production and were undeclared, which made them drift
+  // that the next `prisma db push` would have dropped. They are not optional:
+  // by index usage they are the second and third busiest on this table
+  // (220,358 and 24,192 scans). The first serves the retention sweep and every
+  // "latest readings" query that is not scoped to one asset; the second backs
+  // the per-source breakdown on the diagnostics screen.
+  @@index([recordedAt])
+  @@index([source, recordedAt])
 }
 
 /// A fuel level read from a photograph of the gauge, for vehicles with no fuel
