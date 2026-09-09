@@ -1299,7 +1299,6 @@ model HireLog {
   approvalStatus String       @default("DRAFT")
 
   @@unique([contractId, date])
-  @@index([contractId, date])
 }
 
 /// A vendor bill, with the system's independent verification alongside the claim.

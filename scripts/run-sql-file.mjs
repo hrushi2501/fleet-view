@@ -13,7 +13,13 @@ if (!process.env.DATABASE_URL_OWNER && existsSync(".env.local")) {
 const file = process.argv[2];
 if (!file) throw new Error("Usage: node scripts/run-sql-file.mjs <path.sql>");
 
-const requiresOwner = new Set(["enable-rls.sql", "supabase-schema-alignment.sql"]);
+// These scripts alter objects owned by `postgres`. Runtime traffic deliberately
+// connects as `fleetview_app`, which must not receive owner privileges.
+const requiresOwner = new Set([
+  "enable-rls.sql",
+  "supabase-schema-alignment.sql",
+  "drop-redundant-hire-log-index.sql",
+]);
 const runtimeUrl = process.env.DATABASE_URL_UNPOOLED?.trim() || process.env.DATABASE_URL?.trim();
 
 /** Builds a direct postgres-owner URL only when an operator deliberately
@@ -36,7 +42,7 @@ function ownerUrlFromSupabasePassword() {
 const ownerUrl = process.env.DATABASE_URL_OWNER?.trim() || ownerUrlFromSupabasePassword();
 if (requiresOwner.has(basename(file)) && !ownerUrl) {
   throw new Error(
-    `${basename(file)} changes table-owned RLS policies. Set DATABASE_URL_OWNER (or SUPABASE_DB_PASSWORD with DATABASE_URL) for this one-off operator command, or run the SQL in the Supabase Dashboard SQL Editor as postgres.`,
+    `${basename(file)} changes table-owned PostgreSQL objects. Set DATABASE_URL_OWNER (or SUPABASE_DB_PASSWORD with DATABASE_URL) for this one-off operator command, or run the SQL in the Supabase Dashboard SQL Editor as postgres.`,
   );
 }
 

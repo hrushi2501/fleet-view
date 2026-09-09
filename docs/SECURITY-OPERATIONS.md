@@ -61,6 +61,21 @@ SQL Editor as `postgres`. `npm run db:rls:verify` is the read-only repeat
 check. The direct Prisma database owner is intentionally not tested: it needs
 application access and bypasses RLS.
 
+## Targeted schema maintenance
+
+`HireLog` enforces one log per contract and date through its unique constraint.
+That constraint already provides the required composite B-tree index, so the
+separate non-unique index is deliberately removed. On the existing production
+database, run this one-off owner operation after deploying the schema change:
+
+```bash
+npm run db:dedupe-hire-log-index
+```
+
+It only executes `DROP INDEX IF EXISTS public."HireLog_contractId_date_idx"`;
+the `HireLog_contractId_date_key` uniqueness constraint remains intact. Like
+RLS DDL, it needs `DATABASE_URL_OWNER` or the Supabase SQL Editor as `postgres`.
+
 ## Monitoring
 
 Set `SECURITY_AUDIT_WEBHOOK_URL` to an approved HTTPS SIEM or alerting bridge to
