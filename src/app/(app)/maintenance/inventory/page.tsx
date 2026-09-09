@@ -3,7 +3,7 @@ import { Card, SectionTitle, Badge, StatCard } from "@/components/ui";
 import { requirePage, projectScope } from "@/lib/access";
 import { recordScope, isRestricted } from "@/lib/record-access";
 import { inr, num, fmtDate } from "@/lib/utils";
-import { isLowStock, totalStockQty } from "@/lib/inventory";
+import { isLowStock, totalStockQty, calculateReorderDeficit, evaluateLowStockAlerts } from "@/lib/inventory";
 import {
   Boxes,
   AlertTriangle,
@@ -77,6 +77,7 @@ export default async function InventoryPage({
   const projectOpts = projects.map((p) => ({ id: p.id, label: `${p.code} — ${p.name}` }));
 
   // Computations
+  const stockShortages = evaluateLowStockAlerts(items);
   const lowStockItems = items.filter((i) => {
     const totalQty = totalStockQty(i.stocks);
     return isLowStock(totalQty, i.minStockLevel);
@@ -170,6 +171,34 @@ export default async function InventoryPage({
             />
           </div>
 
+          {stockShortages.length > 0 && (
+            <div className="mx-5 mb-4 p-4 rounded-xl border border-amber-200 bg-amber-50/70 flex flex-col gap-2">
+              <div className="flex items-center gap-2 text-amber-900 font-semibold text-sm">
+                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                <span>Restock Recommended ({stockShortages.length} SKUs below reorder threshold)</span>
+              </div>
+              <p className="text-xs text-amber-800">
+                The following parts or lubricants are at or below minimum store levels. Order quantities include a standard safety buffer:
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-1">
+                {stockShortages.slice(0, 6).map((s) => (
+                  <div key={s.itemId} className="bg-white p-2.5 rounded-lg border border-amber-200/80 shadow-xs flex items-center justify-between text-xs">
+                    <div className="min-w-0 pr-2">
+                      <div className="font-mono font-bold text-ink-900 truncate">{s.partNo}</div>
+                      <div className="text-slate-500 truncate max-w-32">{s.name}</div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${s.urgency === "CRITICAL" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"}`}>
+                        {s.urgency === "CRITICAL" ? "Out of Stock" : "Short"}
+                      </span>
+                      <div className="text-[11px] font-semibold text-brand-700 mt-0.5">Order +{s.suggestedOrderQty} {s.unitOfMeasure}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {items.length === 0 ? (
             <div className="py-12 text-center text-slate-500">
               <Package className="mx-auto h-12 w-12 text-slate-300 mb-2" />
@@ -195,7 +224,7 @@ export default async function InventoryPage({
                 <tbody className="divide-y divide-slate-100">
                   {items.map((item) => {
                     const totalQty = totalStockQty(item.stocks);
-                    const isLow = isLowStock(totalQty, item.minStockLevel);
+                    const { isLow, suggestedOrderQty, urgency } = calculateReorderDeficit(totalQty, item.minStockLevel);
                     const value = totalQty * item.averageCost;
 
                     return (
@@ -224,9 +253,14 @@ export default async function InventoryPage({
                         </td>
                         <td className="px-5 py-3">
                           {isLow ? (
-                            <Badge color="bg-rose-100 text-rose-700 ring-rose-600/20">
-                              Low Stock
-                            </Badge>
+                            <div>
+                              <Badge color={urgency === "CRITICAL" ? "bg-rose-100 text-rose-700 ring-rose-600/20" : "bg-amber-100 text-amber-700 ring-amber-600/20"}>
+                                {urgency === "CRITICAL" ? "Out of Stock" : "Low Stock"}
+                              </Badge>
+                              <div className="text-[10px] font-semibold text-brand-700 mt-0.5 whitespace-nowrap">
+                                +{suggestedOrderQty} {item.unitOfMeasure} needed
+                              </div>
+                            </div>
                           ) : (
                             <Badge color="bg-emerald-100 text-emerald-700 ring-emerald-600/20">
                               Sufficient

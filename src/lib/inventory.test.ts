@@ -4,6 +4,9 @@ import {
   computeMovingAverageCost,
   isLowStock,
   totalStockQty,
+  calculateReorderDeficit,
+  evaluateLowStockAlerts,
+  createPurchaseRequisition,
   issueInventoryToWorkOrder,
   returnWorkOrderInventory,
   receiveStock,
@@ -61,6 +64,79 @@ describe("Inventory Domain Logic", () => {
     test("returns false when quantity is strictly above minimum threshold", () => {
       assert.equal(isLowStock(6, 5), false);
       assert.equal(isLowStock(100, 10), false);
+    });
+  });
+
+  describe("calculateReorderDeficit", () => {
+    test("returns not low when stock exceeds threshold", () => {
+      const res = calculateReorderDeficit(20, 10);
+      assert.equal(res.isLow, false);
+      assert.equal(res.deficit, 0);
+      assert.equal(res.suggestedOrderQty, 0);
+    });
+
+    test("calculates deficit and recommended order with safety multiplier", () => {
+      // min = 10, current = 4 (bufferMultiplier 1.5 -> target = 15) -> deficit = 6, suggestedOrder = 15 - 4 = 11
+      const res = calculateReorderDeficit(4, 10, 1.5);
+      assert.equal(res.isLow, true);
+      assert.equal(res.deficit, 6);
+      assert.equal(res.suggestedOrderQty, 11);
+      assert.equal(res.urgency, "WARNING");
+    });
+
+    test("marks completely exhausted stock as CRITICAL urgency", () => {
+      const res = calculateReorderDeficit(0, 8, 2.0);
+      assert.equal(res.isLow, true);
+      assert.equal(res.deficit, 8);
+      assert.equal(res.suggestedOrderQty, 16);
+      assert.equal(res.urgency, "CRITICAL");
+    });
+
+    test("ignores items with no minStockLevel configured (min = 0)", () => {
+      const res = calculateReorderDeficit(0, 0);
+      assert.equal(res.isLow, false);
+    });
+  });
+
+  describe("evaluateLowStockAlerts", () => {
+    test("filters and sorts shortage items by urgency and deficit", () => {
+      const items = [
+        {
+          id: "item-1",
+          partNo: "OIL-15W40",
+          name: "Engine Oil 15W-40",
+          category: "LUBRICANT",
+          unitOfMeasure: "LITRES",
+          minStockLevel: 200,
+          stocks: [{ quantity: 50, warehouse: { id: "wh-1", code: "CENTRAL", name: "Central" } }],
+        },
+        {
+          id: "item-2",
+          partNo: "FLT-001",
+          name: "Fuel Filter",
+          category: "PART",
+          unitOfMeasure: "PCS",
+          minStockLevel: 20,
+          stocks: [{ quantity: 0, warehouse: { id: "wh-1", code: "CENTRAL", name: "Central" } }],
+        },
+        {
+          id: "item-3",
+          partNo: "BRK-PAD",
+          name: "Brake Pad Set",
+          category: "PART",
+          unitOfMeasure: "SET",
+          minStockLevel: 10,
+          stocks: [{ quantity: 50, warehouse: { id: "wh-1", code: "CENTRAL", name: "Central" } }],
+        },
+      ];
+
+      const shortages = evaluateLowStockAlerts(items);
+      assert.equal(shortages.length, 2);
+      // item-2 has 0 stock (CRITICAL), so it ranks first
+      assert.equal(shortages[0].partNo, "FLT-001");
+      assert.equal(shortages[0].urgency, "CRITICAL");
+      assert.equal(shortages[1].partNo, "OIL-15W40");
+      assert.equal(shortages[1].urgency, "WARNING");
     });
   });
 
@@ -371,4 +447,56 @@ describe("Inventory DB Operations", () => {
       assert.equal(txn.totalCost, 150);
     });
   });
+
+  describe("createPurchaseRequisition", () => {
+    test("rejects non-positive suggested quantities", async () => {
+      const mockClient = {} as unknown as DbClient;
+      await assert.rejects(
+        async () => {
+          await createPurchaseRequisition(mockClient, {
+            itemId: "item-1",
+            warehouseId: "wh-1",
+            suggestedQty: 0,
+          });
+        },
+        (err: unknown) => err instanceof ActionError && err.message.includes("greater than zero")
+      );
+    });
+
+    test("logs requisition transaction with refType PURCHASE_ORDER and zero quantity change", async () => {
+      let createdTxn: Record<string, unknown> = {};
+
+      const mockClient = {
+        inventoryItem: {
+          findUnique: async () => ({ id: "item-1", unitOfMeasure: "PCS", averageCost: 250 }),
+        },
+        inventoryWarehouse: {
+          findUnique: async () => ({ id: "wh-1", code: "CENTRAL", active: true }),
+        },
+        inventoryTransaction: {
+          create: async (args: { data: Record<string, unknown> }) => {
+            createdTxn = args.data;
+            return { id: "txn-po-1", ...args.data };
+          },
+        },
+      } as unknown as DbClient;
+
+      await createPurchaseRequisition(mockClient, {
+        itemId: "item-1",
+        warehouseId: "wh-1",
+        suggestedQty: 15,
+        supplier: "BOSCH India",
+        reason: "Buffer replenishment",
+        actor: "Workshop Supervisor",
+      });
+
+      assert.equal(createdTxn.refType, "PURCHASE_ORDER");
+      assert.equal(createdTxn.quantity, 0);
+      assert.equal(createdTxn.unitCost, 250);
+      assert.equal(createdTxn.totalCost, 3750);
+      assert.match(String(createdTxn.note), /Purchase Requisition: 15 PCS for store CENTRAL/);
+      assert.match(String(createdTxn.note), /Vendor: BOSCH India/);
+    });
+  });
 });
+

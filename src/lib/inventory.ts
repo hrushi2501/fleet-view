@@ -31,11 +31,154 @@ export function isLowStock(quantity: number, minStockLevel: number): boolean {
   return quantity <= minStockLevel;
 }
 
+export interface StockShortage {
+  itemId: string;
+  partNo: string;
+  name: string;
+  category: string;
+  unitOfMeasure: string;
+  minStockLevel: number;
+  currentStock: number;
+  deficit: number;
+  suggestedOrderQty: number;
+  urgency: "CRITICAL" | "WARNING" | "NORMAL";
+  warehouseBreakdown: Array<{
+    warehouseId: string;
+    warehouseCode: string;
+    quantity: number;
+  }>;
+}
+
+/**
+ * Computes whether an item has breached its reorder threshold and calculates
+ * the recommended restock purchase quantity with safety buffer.
+ *
+ * Buffer multiplier defaults to 1.5x of minStockLevel (standard economic batching).
+ */
+export function calculateReorderDeficit(
+  currentQty: number,
+  minStockLevel: number,
+  bufferMultiplier = 1.5
+): { isLow: boolean; deficit: number; suggestedOrderQty: number; urgency: "CRITICAL" | "WARNING" | "NORMAL" } {
+  if (minStockLevel <= 0) {
+    return { isLow: false, deficit: 0, suggestedOrderQty: 0, urgency: "NORMAL" };
+  }
+
+  const isLow = currentQty <= minStockLevel;
+  if (!isLow) {
+    return { isLow: false, deficit: 0, suggestedOrderQty: 0, urgency: "NORMAL" };
+  }
+
+  const deficit = Math.max(0, minStockLevel - currentQty);
+  const targetStock = Math.ceil(minStockLevel * Math.max(1, bufferMultiplier));
+  const suggestedOrderQty = Math.max(1, targetStock - Math.max(0, currentQty));
+  const urgency = currentQty <= 0 ? "CRITICAL" : currentQty <= minStockLevel * 0.5 ? "WARNING" : "NORMAL";
+
+  return { isLow: true, deficit, suggestedOrderQty, urgency };
+}
+
+/**
+ * Scans item list and returns all parts with stock deficits across warehouses.
+ */
+export function evaluateLowStockAlerts(
+  items: Array<{
+    id: string;
+    partNo: string;
+    name: string;
+    category: string;
+    unitOfMeasure: string;
+    minStockLevel: number;
+    stocks: Array<{
+      quantity: number;
+      warehouseId?: string;
+      warehouse?: { id?: string; code?: string; name?: string };
+    }>;
+  }>
+): StockShortage[] {
+  const shortages: StockShortage[] = [];
+
+  for (const item of items) {
+    const totalQty = totalStockQty(item.stocks);
+    const { isLow, deficit, suggestedOrderQty, urgency } = calculateReorderDeficit(totalQty, item.minStockLevel);
+
+    if (isLow) {
+      shortages.push({
+        itemId: item.id,
+        partNo: item.partNo,
+        name: item.name,
+        category: item.category,
+        unitOfMeasure: item.unitOfMeasure,
+        minStockLevel: item.minStockLevel,
+        currentStock: totalQty,
+        deficit,
+        suggestedOrderQty,
+        urgency,
+        warehouseBreakdown: (item.stocks || []).map((s) => ({
+          warehouseId: s.warehouseId ?? s.warehouse?.id ?? "",
+          warehouseCode: s.warehouse?.code ?? "SITE",
+          quantity: s.quantity,
+        })),
+      });
+    }
+  }
+
+  return shortages.sort((a, b) => (b.urgency === "CRITICAL" ? 1 : 0) - (a.urgency === "CRITICAL" ? 1 : 0) || b.deficit - a.deficit);
+}
+
 /**
  * Sums stock quantities across warehouses.
  */
 export function totalStockQty(stocks: { quantity: number }[]): number {
   return stocks.reduce((sum, s) => sum + s.quantity, 0);
+}
+
+/**
+ * Records a formal Purchase Requisition / Stock replenishment request in the inventory ledger.
+ * Uses refType: "PURCHASE_ORDER" so it is fully traceable in the audit trail without schema changes.
+ */
+export async function createPurchaseRequisition(
+  client: DbClient,
+  params: {
+    itemId: string;
+    warehouseId: string;
+    suggestedQty: number;
+    supplier?: string | null;
+    unitPrice?: number;
+    reason?: string | null;
+    actor?: string | null;
+  }
+) {
+  const { itemId, warehouseId, suggestedQty, supplier, unitPrice, reason, actor } = params;
+  positiveNumber(suggestedQty, "Requisition quantity");
+
+  const item = await client.inventoryItem.findUnique({ where: { id: itemId } });
+  if (!item) throw new ActionError("Selected inventory item does not exist");
+
+  const warehouse = await client.inventoryWarehouse.findUnique({ where: { id: warehouseId } });
+  if (!warehouse || !warehouse.active) throw new ActionError("Selected warehouse does not exist or is inactive");
+
+  const rate = unitPrice != null && unitPrice >= 0 ? unitPrice : item.averageCost;
+  const note = [
+    `Purchase Requisition: ${suggestedQty} ${item.unitOfMeasure} for store ${warehouse.code}`,
+    supplier ? `Vendor: ${supplier}` : null,
+    reason ? `Reason: ${reason}` : null,
+  ]
+    .filter(Boolean)
+    .join(" | ");
+
+  return await client.inventoryTransaction.create({
+    data: {
+      type: "ADJUSTMENT",
+      itemId,
+      warehouseId,
+      quantity: 0, // Quantity 0 preserves stock balance until receipt
+      unitCost: rate,
+      totalCost: Math.round(suggestedQty * rate * 100) / 100,
+      refType: "PURCHASE_ORDER",
+      note,
+      by: actor ?? null,
+    },
+  });
 }
 
 /**
