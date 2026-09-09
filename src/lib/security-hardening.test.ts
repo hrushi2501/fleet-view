@@ -114,6 +114,68 @@ describe("Cyber Security Hardening — Rate Limiting & Abuse Prevention", () => 
     });
   });
 
+  describe("API Endpoint Rate Limiting Policies", () => {
+    const now = 10_000_000;
+
+    test("enforces payroll-export rate limiting (10 req / 300s)", () => {
+      const config = { limit: 10, windowMs: 300_000 };
+      let timestamps: number[] = [];
+
+      // First 10 requests allowed
+      for (let i = 0; i < 10; i++) {
+        const decision = rateLimitDecision(timestamps, config, now + i * 1000);
+        assert.equal(decision.verdict.ok, true);
+        timestamps = decision.requests;
+      }
+      assert.equal(timestamps.length, 10);
+
+      // 11th request rejected
+      const blocked = rateLimitDecision(timestamps, config, now + 10_000);
+      assert.equal(blocked.verdict.ok, false);
+      if (!blocked.verdict.ok) {
+        assert.equal(blocked.verdict.remaining, 0);
+        // Retry delay calculated relative to oldest request
+        assert.ok(blocked.verdict.retryInSeconds > 0 && blocked.verdict.retryInSeconds <= 300);
+      }
+    });
+
+    test("enforces stats-query and fuel-query rate limiting (30 req / 60s)", () => {
+      const config = { limit: 30, windowMs: 60_000 };
+      let timestamps: number[] = [];
+
+      for (let i = 0; i < 30; i++) {
+        const decision = rateLimitDecision(timestamps, config, now + i * 500);
+        assert.equal(decision.verdict.ok, true);
+        timestamps = decision.requests;
+      }
+
+      const blocked = rateLimitDecision(timestamps, config, now + 15_000);
+      assert.equal(blocked.verdict.ok, false);
+      if (!blocked.verdict.ok) {
+        assert.equal(blocked.verdict.remaining, 0);
+        assert.ok(blocked.verdict.retryInSeconds > 0 && blocked.verdict.retryInSeconds <= 60);
+      }
+    });
+
+    test("enforces assets-query and file-stream rate limiting (60 req / 60s)", () => {
+      const config = { limit: 60, windowMs: 60_000 };
+      let timestamps: number[] = [];
+
+      for (let i = 0; i < 60; i++) {
+        const decision = rateLimitDecision(timestamps, config, now + i * 200);
+        assert.equal(decision.verdict.ok, true);
+        timestamps = decision.requests;
+      }
+
+      const blocked = rateLimitDecision(timestamps, config, now + 12_000);
+      assert.equal(blocked.verdict.ok, false);
+      if (!blocked.verdict.ok) {
+        assert.equal(blocked.verdict.remaining, 0);
+        assert.ok(blocked.verdict.retryInSeconds > 0 && blocked.verdict.retryInSeconds <= 60);
+      }
+    });
+  });
+
   describe("Input Sanitization & Physical Boundaries", () => {
     test("validates GPS coordinates within physical earth bounds", () => {
       const isValid = (lat: number, lng: number) =>

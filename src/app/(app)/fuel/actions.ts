@@ -2,7 +2,14 @@
 
 import { db } from "@/lib/db";
 import { businessTransaction } from "@/lib/business-transaction";
-import { formNumber, positiveNumber } from "@/lib/input-validation";
+import {
+  formNumber,
+  positiveNumber,
+  nonNegativeNumber,
+  boundedNumber,
+  oneOf,
+  safeParseDate,
+} from "@/lib/input-validation";
 import { assertRecordAccess, assertFormAccess, assertGlobalAccess, fuelAnomalyScope } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
@@ -14,7 +21,8 @@ import { uploadPrivateFile } from "@/lib/private-upload";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = formNumber;
-const d = (fd: FormData, k: string) => (s(fd, k) ? new Date(s(fd, k)) : new Date());
+
+const VALID_TANK_STATUSES = ["Active", "Inactive", "Maintenance"] as const;
 
 async function uploadPhoto(file: FormDataEntryValue | null, prefix: string): Promise<string | null> {
   if (!file || typeof file === "string") return null;
@@ -36,18 +44,24 @@ async function saveTank__impl(id: string | null, fd: FormData) {
   const scopeAccess = await requireAction("fuel.receipt");
   await assertFormAccess(scopeAccess, fd);
   if (id) await assertRecordAccess(scopeAccess, "fuelTank", id);
-  const capacity = positiveNumber(fd.get("capacity"), "Tank capacity");
-  const minLevel = n(fd, "minLevel");
-  const openingLevel = n(fd, "openingLevel");
-  if (minLevel < 0 || openingLevel < 0 || minLevel > capacity || openingLevel > capacity) throw new ActionError("Tank levels must be within tank capacity.");
+  const name = s(fd, "name");
+  if (!name) throw new ActionError("Tank name is required.");
+  if (name.length > 100) throw new ActionError("Tank name cannot exceed 100 characters.");
+
+  const capacity = boundedNumber(fd.get("capacity"), "Tank capacity", { min: 1, max: 500_000 });
+  const minLevel = nonNegativeNumber(fd.get("minLevel"), "Minimum level", { max: capacity, fallback: 0 });
+  const openingLevel = nonNegativeNumber(fd.get("openingLevel"), "Opening level", { max: capacity, fallback: 0 });
+  if (minLevel > capacity || openingLevel > capacity) throw new ActionError("Tank levels must be within tank capacity.");
+  const status = oneOf(s(fd, "status") || "Active", VALID_TANK_STATUSES, "tank status");
+
   const data = {
-    name: s(fd, "name"),
+    name,
     location: s(fd, "location"),
     capacity,
     minLevel,
     openingLevel,
     projectId: s(fd, "projectId") || null,
-    status: s(fd, "status") || "Active",
+    status,
     code: s(fd, "code") || null,
   };
   if (id) await db.fuelTank.update({ where: { id }, data });
@@ -79,6 +93,15 @@ async function saveReceipt__impl(fd: FormData) {
   const tank = await db.fuelTank.findFirst({ where: { id: tankId }, select: { capacity: true } });
   if (!tank) throw new ActionError("Tank not found");
 
+  const rawStart = fd.get("flowMeterStart");
+  const flowMeterStart = rawStart && String(rawStart).trim() ? nonNegativeNumber(rawStart, "Flow meter start", { max: 100_000_000, fallback: 0 }) : 0;
+  const rawEnd = fd.get("flowMeterEnd");
+  const flowMeterEnd = rawEnd && String(rawEnd).trim() ? nonNegativeNumber(rawEnd, "Flow meter end", { max: 100_000_000, fallback: 0 }) : 0;
+  if (rawStart && rawEnd && flowMeterEnd < flowMeterStart) {
+    throw new ActionError("Flow meter end reading cannot be less than start reading.");
+  }
+  const date = safeParseDate(fd.get("date"), "Receipt date") || new Date();
+
   const photo = await uploadPhoto(fd.get("invoicePhoto"), "receipt");
   const session = await getSession();
   const shortfall = Math.max(0, qtyInvoiced - qtyReceived);
@@ -94,14 +117,14 @@ async function saveReceipt__impl(fd: FormData) {
         qtyReceived,
         rate,
         amount: n(fd, "amount") || qtyInvoiced * rate,
-        flowMeterStart: n(fd, "flowMeterStart"),
-        flowMeterEnd: n(fd, "flowMeterEnd"),
+        flowMeterStart,
+        flowMeterEnd,
         weighbridgeNet: n(fd, "weighbridgeNet"),
         tankerNo: s(fd, "tankerNo") || null,
         invoicePhoto: photo,
         receivedBy: s(fd, "receivedBy") || session?.name || null,
         shortfall,
-        date: d(fd, "date"),
+        date,
       },
     });
 
@@ -165,7 +188,7 @@ async function saveDip__impl(fd: FormData) {
         readBy: s(fd, "readBy") || session?.name || null,
         note: s(fd, "note") || null,
         photo,
-        date: d(fd, "date"),
+        date: safeParseDate(fd.get("date"), "Dip date") || new Date(),
       },
     });
     await tx.fuelTank.update({ where: { id: tankId }, data: { currentLevel: level } });

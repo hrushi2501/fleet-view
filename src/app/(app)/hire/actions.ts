@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { businessTransaction } from "@/lib/business-transaction";
-import { formNumber } from "@/lib/input-validation";
+import { formNumber, boundedNumber, nonNegativeNumber, positiveNumber, validateDateRange, oneOf, safeParseDate } from "@/lib/input-validation";
 import { assertFormAccess, assertRecordAccess } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
@@ -11,7 +11,12 @@ import { requireAction, ActionError, safe } from "@/lib/guard";
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = formNumber;
 const b = (fd: FormData, k: string) => fd.get(k) === "on" || fd.get(k) === "true";
-const dt = (fd: FormData, k: string) => (s(fd, k) ? new Date(s(fd, k)) : new Date());
+const dt = (fd: FormData, k: string) => {
+  const val = s(fd, k);
+  if (!val) return new Date();
+  const parsed = safeParseDate(val, k);
+  return parsed ?? new Date();
+};
 
 function refresh() {
   revalidatePath("/hire");
@@ -24,24 +29,59 @@ async function saveContract__impl(id: string | null, fd: FormData) {
   const scopeAccess = await requireAction("hire.edit");
   await assertFormAccess(scopeAccess, fd);
   if (id) await assertRecordAccess(scopeAccess, "hireContract", id);
+
+  const assetId = s(fd, "assetId");
+  if (!assetId) throw new ActionError("Asset is required");
+  const asset = await db.asset.findUnique({ where: { id: assetId } });
+  if (!asset) throw new ActionError("Selected asset does not exist");
+
+  const vendor = s(fd, "vendor");
+  if (!vendor) throw new ActionError("Vendor is required");
+
+  const rate = nonNegativeNumber(fd.get("rate"), "Contract rate", { max: 10_000_000, fallback: 0 });
+  const overtimeRate = nonNegativeNumber(fd.get("overtimeRate"), "Overtime rate", { max: 1_000_000, fallback: 0 });
+  const minGuarantee = nonNegativeNumber(fd.get("minGuarantee"), "Minimum guarantee", { max: 1_000, fallback: 0 });
+  
+  const startDate = dt(fd, "startDate");
+  const endDateStr = s(fd, "endDate");
+  const endDate = endDateStr ? safeParseDate(endDateStr, "End date") : null;
+  if (endDate) {
+    validateDateRange(startDate, endDate, "Contract duration");
+  }
+
+  const rateType = oneOf(
+    s(fd, "rateType") || "PER_DAY",
+    ["PER_HOUR", "PER_DAY", "PER_MONTH", "PER_TRIP", "PER_KM"],
+    "Rate type"
+  );
+  const fuelBorneBy = oneOf(
+    s(fd, "fuelBorneBy") || "HIRER",
+    ["HIRER", "OWNER"],
+    "Fuel borne by"
+  );
+  const status = oneOf(
+    s(fd, "status") || "Active",
+    ["Active", "Completed", "Terminated", "Draft", "Suspended"],
+    "Contract status"
+  );
+
   const data = {
-    assetId: s(fd, "assetId"),
-    vendor: s(fd, "vendor"),
+    assetId,
+    vendor,
     contractNo: s(fd, "contractNo") || null,
-    rateType: s(fd, "rateType") || "PER_DAY",
-    rate: n(fd, "rate"),
-    overtimeRate: n(fd, "overtimeRate"),
-    minGuarantee: n(fd, "minGuarantee"),
+    rateType,
+    rate,
+    overtimeRate,
+    minGuarantee,
     guaranteeUnit: s(fd, "guaranteeUnit") || null,
-    fuelBorneBy: s(fd, "fuelBorneBy") || "HIRER",
+    fuelBorneBy,
     breakdownBillable: b(fd, "breakdownBillable"),
     idleBillable: b(fd, "idleBillable"),
-    startDate: dt(fd, "startDate"),
-    endDate: s(fd, "endDate") ? new Date(s(fd, "endDate")) : null,
-    status: s(fd, "status") || "Active",
+    startDate,
+    endDate,
+    status,
     notes: s(fd, "notes") || null,
   };
-  if (!data.assetId) throw new ActionError("Asset is required");
   if (id) await db.hireContract.update({ where: { id }, data });
   else await db.hireContract.create({ data });
   refresh();
@@ -65,14 +105,25 @@ async function saveLog__impl(fd: FormData) {
   const date = dt(fd, "date");
   date.setHours(0, 0, 0, 0);
 
+  const workedHours = boundedNumber(fd.get("workedHours"), "Worked hours", { min: 0, max: 24, fallback: 0 });
+  const idleHours = boundedNumber(fd.get("idleHours"), "Idle hours", { min: 0, max: 24, fallback: 0 });
+  const breakdownHours = boundedNumber(fd.get("breakdownHours"), "Breakdown hours", { min: 0, max: 24, fallback: 0 });
+
+  if (workedHours + idleHours + breakdownHours > 24) {
+    throw new ActionError("Sum of worked, idle, and breakdown hours cannot exceed 24 hours in a single day.");
+  }
+
+  const km = boundedNumber(fd.get("km"), "Distance", { min: 0, max: 2_000, fallback: 0 });
+  const trips = boundedNumber(fd.get("trips"), "Trips", { min: 0, max: 1_000, integer: true, fallback: 0 });
+
   const session = await getSession();
   const data = {
     present: s(fd, "present") !== "false",
-    workedHours: n(fd, "workedHours"),
-    idleHours: n(fd, "idleHours"),
-    breakdownHours: n(fd, "breakdownHours"),
-    km: n(fd, "km"),
-    trips: Math.round(n(fd, "trips")),
+    workedHours,
+    idleHours,
+    breakdownHours,
+    km,
+    trips,
     source: s(fd, "source") || "MANUAL",
     verifiedBy: s(fd, "verifiedBy") || session?.name || null,
     note: s(fd, "note") || null,
@@ -101,20 +152,28 @@ async function saveHireInspection__impl(contractId: string, fd: FormData) {
   await assertRecordAccess(scopeAccess, "hireContract", contractId);
   if (!contractId) throw new ActionError("Contract is required");
   const session = await getSession();
+
+  const type = oneOf(s(fd, "type") || "ON_HIRE", ["ON_HIRE", "OFF_HIRE", "PERIODIC"], "Inspection type");
+  const condition = oneOf(s(fd, "condition") || "GOOD", ["EXCELLENT", "GOOD", "FAIR", "POOR", "DAMAGED"], "Inspection condition");
+  const status = oneOf(s(fd, "status") || "SUBMITTED", ["SUBMITTED", "APPROVED", "REJECTED"], "Inspection status");
+  const meterValue = nonNegativeNumber(fd.get("meterValue"), "Meter value", { max: 10_000_000, fallback: 0 });
+  
+  const rawFuel = fd.get("fuelLevelPct");
+  const fuelLevelPct = rawFuel !== null && rawFuel !== undefined && String(rawFuel).trim() !== ""
+    ? boundedNumber(rawFuel, "Fuel level", { min: 0, max: 100 })
+    : null;
+
   const data = {
     contractId,
-    type: s(fd, "type") || "ON_HIRE",
+    type,
     date: dt(fd, "date"),
     inspector: s(fd, "inspector") || session?.name || "Admin",
-    meterValue: n(fd, "meterValue"),
-    fuelLevelPct: n(fd, "fuelLevelPct") || null,
-    condition: s(fd, "condition") || "GOOD",
+    meterValue,
+    fuelLevelPct,
+    condition,
     damages: s(fd, "damages") || null,
-    status: s(fd, "status") || "SUBMITTED",
+    status,
   };
-  if (data.fuelLevelPct != null && (data.fuelLevelPct < 0 || data.fuelLevelPct > 100)) {
-    throw new ActionError("Fuel level must be between 0 and 100%.");
-  }
   await db.hireInspection.create({ data });
   refresh();
 }
@@ -152,17 +211,28 @@ async function saveHirePayment__impl(fd: FormData) {
   const scopeAccess = await requireAction("hire.approve");
   await assertFormAccess(scopeAccess, fd);
   const contractId = s(fd, "contractId") || null;
+  if (contractId) {
+    const contract = await db.hireContract.findUnique({ where: { id: contractId } });
+    if (!contract) throw new ActionError("Contract not found.");
+  }
+  const vendor = s(fd, "vendor");
+  if (!vendor) throw new ActionError("Vendor is required.");
+  const amount = positiveNumber(fd.get("amount"), "Payment amount", { max: 100_000_000 });
+  const type = oneOf(
+    s(fd, "type") || "ADVANCE",
+    ["ADVANCE", "MONTHLY_BILL", "FINAL_SETTLEMENT", "DAMAGE_RECOVERY", "OTHER"],
+    "Payment type"
+  );
+
   const data = {
     contractId,
-    vendor: s(fd, "vendor"),
-    amount: n(fd, "amount"),
-    type: s(fd, "type") || "ADVANCE",
+    vendor,
+    amount,
+    type,
     date: dt(fd, "date"),
     referenceNo: s(fd, "referenceNo") || null,
     notes: s(fd, "notes") || null,
   };
-  if (!data.vendor) throw new ActionError("Vendor is required.");
-  if (data.amount <= 0) throw new ActionError("Payment amount must be greater than zero.");
   await db.hirePayment.create({ data });
   refresh();
 }
