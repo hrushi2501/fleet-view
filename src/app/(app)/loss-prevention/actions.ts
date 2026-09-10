@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { formNumber } from "@/lib/input-validation";
+import { formNumber, boundedNumber, nonNegativeNumber, oneOf, safeParseDate, sanitizeString, sanitizeOptionalString } from "@/lib/input-validation";
 import { fuelAnomalyScope, recordScope, assertGlobalAccess, assertFormAccess, assertRecordAccess } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
@@ -10,7 +10,8 @@ import { scanSignals, DEFAULT_RULES, nextCaseNo, type RuleLite, type ScanInput }
 import { requireAction, ActionError, safe } from "@/lib/guard";
 import { transition } from "@/lib/transition";
 
-const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
+const s = (fd: FormData, k: string) => sanitizeString(fd.get(k), k);
+const sOrNull = (fd: FormData, k: string) => sanitizeOptionalString(fd.get(k), k);
 const n = formNumber;
 
 function refresh(id?: string) {
@@ -38,11 +39,13 @@ async function updateRule__impl(id: string, fd: FormData) {
   const scopeAccess = await requireAction("admin.settings");
   await assertFormAccess(scopeAccess, fd);
   assertGlobalAccess(scopeAccess);
+  const threshold = nonNegativeNumber(fd.get("threshold"), "Threshold", { max: 100_000_000, fallback: 0 });
+  const severity = oneOf(s(fd, "severity") || "MEDIUM", ["CRITICAL", "HIGH", "MEDIUM", "LOW"], "Severity");
   await db.controlRule.update({
     where: { id },
     data: {
-      threshold: n(fd, "threshold"),
-      severity: s(fd, "severity") || "MEDIUM",
+      threshold,
+      severity,
       enabled: fd.get("enabled") === "on" || fd.get("enabled") === "true",
       autoCase: fd.get("autoCase") === "on" || fd.get("autoCase") === "true",
     },
@@ -186,20 +189,29 @@ async function createCase__impl(fd: FormData) {
   await assertFormAccess(scopeAccess, fd);
   const session = await getSession();
   const seq = await db.fraudCase.count();
+  const title = s(fd, "title");
+  if (!title) throw new ActionError("Case title is required");
+
+  const domain = oneOf(s(fd, "domain") || "FUEL", ["FUEL", "FLEET", "MAINTENANCE", "OPERATIONS", "COMPLIANCE", "OTHER"], "Domain");
+  const severity = oneOf(s(fd, "severity") || "MEDIUM", ["CRITICAL", "HIGH", "MEDIUM", "LOW"], "Severity");
+  const score = boundedNumber(fd.get("score"), "Score", { min: 0, max: 100, integer: true, fallback: 0 });
+  const amountAtRisk = nonNegativeNumber(fd.get("amountAtRisk"), "Amount at risk", { max: 100_000_000_000, fallback: 0 });
+  const dueDate = safeParseDate(fd.get("dueDate"), "Due date");
+
   const c = await db.fraudCase.create({
     data: {
       caseNo: nextCaseNo(new Date().getFullYear(), seq),
-      title: s(fd, "title"),
-      domain: s(fd, "domain") || "FUEL",
-      severity: s(fd, "severity") || "MEDIUM",
-      score: Math.round(n(fd, "score")),
-      amountAtRisk: n(fd, "amountAtRisk"),
-      assetId: s(fd, "assetId") || null,
-      driverId: s(fd, "driverId") || null,
-      vendor: s(fd, "vendor") || null,
-      summary: s(fd, "summary") || null,
-      assignedTo: s(fd, "assignedTo") || null,
-      dueDate: s(fd, "dueDate") ? new Date(s(fd, "dueDate")) : null,
+      title,
+      domain,
+      severity,
+      score,
+      amountAtRisk,
+      assetId: sOrNull(fd, "assetId"),
+      driverId: sOrNull(fd, "driverId"),
+      vendor: sOrNull(fd, "vendor"),
+      summary: sOrNull(fd, "summary"),
+      assignedTo: sOrNull(fd, "assignedTo"),
+      dueDate,
       openedBy: session?.name ?? null,
       actions: { create: [{ action: "OPENED", note: "Opened manually", by: session?.name ?? null }] },
     },
@@ -228,14 +240,16 @@ async function updateCase__impl(id: string, fd: FormData) {
   const prev = await db.fraudCase.findUnique({ where: { id }, select: { status: true } });
   if (!prev) throw new ActionError("That case no longer exists.");
 
+  const dueDate = safeParseDate(fd.get("dueDate"), "Due date");
+
   // Field edits are investigation work and are allowed at this permission.
   await db.fraudCase.update({
     where: { id },
     data: {
-      assignedTo: s(fd, "assignedTo") || null,
-      rootCause: s(fd, "rootCause") || null,
-      disposition: s(fd, "disposition") || null,
-      dueDate: s(fd, "dueDate") ? new Date(s(fd, "dueDate")) : null,
+      assignedTo: sOrNull(fd, "assignedTo"),
+      rootCause: sOrNull(fd, "rootCause"),
+      disposition: sOrNull(fd, "disposition"),
+      dueDate,
     },
   });
 
@@ -278,8 +292,8 @@ async function addEvidence__impl(id: string, fd: FormData) {
       caseId: id,
       kind: s(fd, "kind") || "NOTE",
       label: s(fd, "label"),
-      detail: s(fd, "detail") || null,
-      url: s(fd, "url") || null,
+      detail: sOrNull(fd, "detail"),
+      url: sOrNull(fd, "url"),
       addedBy: session?.name ?? null,
     },
   });
@@ -293,25 +307,32 @@ async function addRecovery__impl(id: string, fd: FormData) {
   await assertFormAccess(scopeAccess, fd);
   await assertRecordAccess(scopeAccess, "fraudCase", id);
   const session = await getSession();
-  const amount = n(fd, "amount");
+  const amount = nonNegativeNumber(fd.get("amount"), "Recovery amount", { max: 100_000_000, fallback: 0 });
   if (amount <= 0) return;
+
+  const method = oneOf(
+    s(fd, "method") || "CASH",
+    ["CASH", "SALARY_DEDUCTION", "VENDOR_DEBIT", "INSURANCE", "LEGAL", "OTHER"],
+    "Recovery method"
+  );
+  const date = safeParseDate(fd.get("date"), "Recovery date") ?? new Date();
 
   await db.caseRecovery.create({
     data: {
       caseId: id,
       amount,
-      method: s(fd, "method") || "CASH",
-      reference: s(fd, "reference") || null,
-      note: s(fd, "note") || null,
+      method,
+      reference: sOrNull(fd, "reference"),
+      note: sOrNull(fd, "note"),
       by: session?.name ?? null,
-      date: s(fd, "date") ? new Date(s(fd, "date")) : new Date(),
+      date,
     },
   });
 
   const total = await db.caseRecovery.aggregate({ where: { caseId: id }, _sum: { amount: true } });
   await db.fraudCase.update({ where: { id }, data: { amountRecovered: total._sum.amount ?? 0 } });
   await db.caseAction.create({
-    data: { caseId: id, action: "RECOVERY", note: `₹${amount.toLocaleString("en-IN")} via ${s(fd, "method")}`, by: session?.name ?? null },
+    data: { caseId: id, action: "RECOVERY", note: `₹${amount.toLocaleString("en-IN")} via ${method}`, by: session?.name ?? null },
   });
   refresh(id);
 }

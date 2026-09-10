@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { getAccess } from "@/lib/access";
 import { completeDuty, matchesActiveVehicleConfirmation } from "@/lib/trip-service";
 import { businessTransaction } from "@/lib/business-transaction";
-import { finiteNumber } from "@/lib/input-validation";
+import { finiteNumber, sanitizeId, sanitizeOptionalString } from "@/lib/input-validation";
 import { ActionError } from "@/lib/action-error";
 import { invalidateLiveFleetCache } from "@/lib/fleet-edge-live";
 import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
@@ -52,8 +52,7 @@ async function handlePost(req: Request) {
   }
 
   const result = await businessTransaction(access.session, async tx => {
-    const requestedSessionId = body.sessionId == null ? null : String(body.sessionId);
-    if (requestedSessionId && requestedSessionId.length > 64) throw new ActionError("Invalid duty session.");
+    const requestedSessionId = body.sessionId == null || body.sessionId === "" ? null : sanitizeId(body.sessionId, "Session ID");
     const active = await tx.tripSession.findFirst({
       where: { driverId: person.id, userId: access.session.id,
         ...(requestedSessionId ? { id: requestedSessionId, status: "ACTIVE" } : { status: "ACTIVE" }),
@@ -73,7 +72,7 @@ async function handlePost(req: Request) {
     const optional = (key: string, min: number, max?: number) => body[key] == null || body[key] === "" ? null : finiteNumber(body[key], key, { min, max });
     return completeDuty(tx, active.id, access.session, {
       odometer: optional("odometer", 0), lat: optional("lat", -90, 90), lng: optional("lng", -180, 180),
-      endedBy: "DRIVER", notes: body.notes ? String(body.notes).slice(0, 2000) : undefined,
+      endedBy: "DRIVER", notes: sanitizeOptionalString(body.notes, "Notes", { maxLength: 2000 }) ?? undefined,
     });
   });
   if (!result) return NextResponse.json({ error: "No matching duty was found. Check the cabin code and reload." }, { status: 404 });

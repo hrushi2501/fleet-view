@@ -3,7 +3,14 @@
 import { businessTransaction } from "@/lib/business-transaction";
 import { completeDuty } from "@/lib/trip-service";
 import { db } from "@/lib/db";
-import { formNumber } from "@/lib/input-validation";
+import {
+  formNumber,
+  boundedNumber,
+  sanitizeString,
+  sanitizeOptionalString,
+  sanitizeId,
+  oneOf,
+} from "@/lib/input-validation";
 import { assertGlobalAccess, assertFormAccess, assertRecordAccess, recordScope } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import crypto from "crypto";
@@ -16,7 +23,8 @@ import { fuelSensorState } from "@/lib/fuel-sensor";
 import { uploadPrivateFile } from "@/lib/private-upload";
 import { assetScope } from "@/lib/access";
 
-const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
+const s = (fd: FormData, k: string) => sanitizeString(fd.get(k), k);
+const sOrNull = (fd: FormData, k: string) => sanitizeOptionalString(fd.get(k), k);
 const n = formNumber;
 
 function refresh() {
@@ -63,15 +71,16 @@ async function seedProviders__impl() {
   return { ok: true as const, count: PROVIDERS.length };
 }
 
-async function saveAssetTelematics__impl(assetId: string, fd: FormData) {
+async function saveAssetTelematics__impl(rawAssetId: string, fd: FormData) {
+  const assetId = sanitizeId(rawAssetId, "Asset ID");
   const scopeAccess = await requireAction("admin.settings");
   await assertFormAccess(scopeAccess, fd);
   await assertRecordAccess(scopeAccess, "asset", assetId);
   await db.asset.update({
     where: { id: assetId },
     data: {
-      telematicsProviderId: s(fd, "telematicsProviderId") || null,
-      deviceId: s(fd, "deviceId") || null,
+      telematicsProviderId: sOrNull(fd, "telematicsProviderId"),
+      deviceId: sOrNull(fd, "deviceId"),
       hasFuelSensor: fd.get("hasFuelSensor") === "on" || fd.get("hasFuelSensor") === "true",
     },
   });
@@ -89,7 +98,7 @@ async function saveAssetTelematics__impl(assetId: string, fd: FormData) {
 async function saveGaugeReading__impl(fd: FormData) {
   const scopeAccess = await requireAction("fuel.receipt");
   await assertFormAccess(scopeAccess, fd);
-  const assetId = s(fd, "assetId");
+  const assetId = sanitizeId(s(fd, "assetId"), "Vehicle ID");
   if (!assetId) throw new ActionError("Vehicle is required");
 
   const asset = await db.asset.findUnique({ where: { id: assetId } });
@@ -118,8 +127,8 @@ async function saveGaugeReading__impl(fd: FormData) {
     levelPct: fd.get("levelPct") != null && s(fd, "levelPct") !== "" ? n(fd, "levelPct") : null,
     odometerKm: s(fd, "odometerKm") ? n(fd, "odometerKm") : null,
     confidence: n(fd, "confidence"),
-    gaugeType: s(fd, "gaugeType") || null,
-    reasoning: s(fd, "reasoning") || null,
+    gaugeType: sOrNull(fd, "gaugeType"),
+    reasoning: sOrNull(fd, "reasoning"),
   };
 
   // A vehicle whose tank sender is reporting does not need a person to confirm
@@ -178,13 +187,14 @@ async function saveGaugeReading__impl(fd: FormData) {
 }
 
 /** Human verdict on a held reading. A correction is recorded as the truth. */
-async function verifyGaugeReading__impl(id: string, fd: FormData) {
+async function verifyGaugeReading__impl(rawId: string, fd: FormData) {
+  const id = sanitizeId(rawId, "Reading ID");
   const scopeAccess = await requireAction("fuel.approve");
   await assertFormAccess(scopeAccess, fd);
   await assertRecordAccess(scopeAccess, "fuelLevelReading", id);
   const session = await getSession();
-  const verdict = s(fd, "verdict"); // VERIFIED | CORRECTED | REJECTED
-  const corrected = s(fd, "correctedPct") ? n(fd, "correctedPct") : null;
+  const verdict = oneOf(s(fd, "verdict"), ["VERIFIED", "CORRECTED", "REJECTED"], "Verdict");
+  const corrected = s(fd, "correctedPct") ? boundedNumber(fd.get("correctedPct"), "Corrected fuel percentage", { min: 0, max: 100 }) : null;
 
   const reading = await db.fuelLevelReading.findUnique({ where: { id }, include: { asset: true } });
   if (!reading) throw new ActionError("Reading not found");
@@ -196,7 +206,7 @@ async function verifyGaugeReading__impl(id: string, fd: FormData) {
     data: {
       status: verdict, correctedPct: verdict === "CORRECTED" ? corrected : null,
       verifiedBy: session?.name ?? null, verifiedAt: new Date(),
-      note: s(fd, "note") || reading.note,
+      note: sOrNull(fd, "note") || reading.note,
     },
   });
 
@@ -221,7 +231,8 @@ async function verifyGaugeReading__impl(id: string, fd: FormData) {
 /* ------------------------------- sessions ------------------------------- */
 
 /** Force-release a session — the supervisor override for a forgotten checkout. */
-async function releaseSession__impl(id: string) {
+async function releaseSession__impl(rawId: string) {
+  const id = sanitizeId(rawId, "Session ID");
   const access = await requireAction("fleet.edit");
   await businessTransaction(access.session, async tx => {
     await assertRecordAccess(access, "tripSession", id, tx);
@@ -251,7 +262,8 @@ async function closeStaleSessions__impl() {
 }
 
 /** Scan the telemetry stream for fuel events worth investigating. */
-async function scanFuelEvents__impl(assetId: string) {
+async function scanFuelEvents__impl(rawAssetId: string) {
+  const assetId = sanitizeId(rawAssetId, "Asset ID");
   const scopeAccess = await requireAction("fuel.reconcile");
   await assertRecordAccess(scopeAccess, "asset", assetId);
   const asset = await db.asset.findUnique({ where: { id: assetId } });

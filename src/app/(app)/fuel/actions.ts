@@ -2,7 +2,17 @@
 
 import { db } from "@/lib/db";
 import { businessTransaction } from "@/lib/business-transaction";
-import { formNumber, positiveNumber } from "@/lib/input-validation";
+import {
+  formNumber,
+  positiveNumber,
+  nonNegativeNumber,
+  boundedNumber,
+  oneOf,
+  safeParseDate,
+  validateDateRange,
+  sanitizeString,
+  sanitizeOptionalString,
+} from "@/lib/input-validation";
 import { assertRecordAccess, assertFormAccess, assertGlobalAccess, fuelAnomalyScope } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
@@ -12,9 +22,11 @@ import { requireAction, ActionError, safe } from "@/lib/guard";
 import { transition } from "@/lib/transition";
 import { uploadPrivateFile } from "@/lib/private-upload";
 
-const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
+const s = (fd: FormData, k: string) => sanitizeString(fd.get(k), k);
+const sOrNull = (fd: FormData, k: string) => sanitizeOptionalString(fd.get(k), k);
 const n = formNumber;
-const d = (fd: FormData, k: string) => (s(fd, k) ? new Date(s(fd, k)) : new Date());
+
+const VALID_TANK_STATUSES = ["Active", "Inactive", "Maintenance"] as const;
 
 async function uploadPhoto(file: FormDataEntryValue | null, prefix: string): Promise<string | null> {
   if (!file || typeof file === "string") return null;
@@ -36,19 +48,25 @@ async function saveTank__impl(id: string | null, fd: FormData) {
   const scopeAccess = await requireAction("fuel.receipt");
   await assertFormAccess(scopeAccess, fd);
   if (id) await assertRecordAccess(scopeAccess, "fuelTank", id);
-  const capacity = positiveNumber(fd.get("capacity"), "Tank capacity");
-  const minLevel = n(fd, "minLevel");
-  const openingLevel = n(fd, "openingLevel");
-  if (minLevel < 0 || openingLevel < 0 || minLevel > capacity || openingLevel > capacity) throw new ActionError("Tank levels must be within tank capacity.");
+  const name = s(fd, "name");
+  if (!name) throw new ActionError("Tank name is required.");
+  if (name.length > 100) throw new ActionError("Tank name cannot exceed 100 characters.");
+
+  const capacity = boundedNumber(fd.get("capacity"), "Tank capacity", { min: 1, max: 500_000 });
+  const minLevel = nonNegativeNumber(fd.get("minLevel"), "Minimum level", { max: capacity, fallback: 0 });
+  const openingLevel = nonNegativeNumber(fd.get("openingLevel"), "Opening level", { max: capacity, fallback: 0 });
+  if (minLevel > capacity || openingLevel > capacity) throw new ActionError("Tank levels must be within tank capacity.");
+  const status = oneOf(s(fd, "status") || "Active", VALID_TANK_STATUSES, "tank status");
+
   const data = {
-    name: s(fd, "name"),
+    name,
     location: s(fd, "location"),
     capacity,
     minLevel,
     openingLevel,
-    projectId: s(fd, "projectId") || null,
-    status: s(fd, "status") || "Active",
-    code: s(fd, "code") || null,
+    projectId: sOrNull(fd, "projectId"),
+    status,
+    code: sOrNull(fd, "code"),
   };
   if (id) await db.fuelTank.update({ where: { id }, data });
   else await db.fuelTank.create({ data: { ...data, currentLevel: data.openingLevel } });
@@ -79,6 +97,15 @@ async function saveReceipt__impl(fd: FormData) {
   const tank = await db.fuelTank.findFirst({ where: { id: tankId }, select: { capacity: true } });
   if (!tank) throw new ActionError("Tank not found");
 
+  const rawStart = fd.get("flowMeterStart");
+  const flowMeterStart = rawStart && String(rawStart).trim() ? nonNegativeNumber(rawStart, "Flow meter start", { max: 100_000_000, fallback: 0 }) : 0;
+  const rawEnd = fd.get("flowMeterEnd");
+  const flowMeterEnd = rawEnd && String(rawEnd).trim() ? nonNegativeNumber(rawEnd, "Flow meter end", { max: 100_000_000, fallback: 0 }) : 0;
+  if (rawStart && rawEnd && flowMeterEnd < flowMeterStart) {
+    throw new ActionError("Flow meter end reading cannot be less than start reading.");
+  }
+  const date = safeParseDate(fd.get("date"), "Receipt date") || new Date();
+
   const photo = await uploadPhoto(fd.get("invoicePhoto"), "receipt");
   const session = await getSession();
   const shortfall = Math.max(0, qtyInvoiced - qtyReceived);
@@ -89,19 +116,19 @@ async function saveReceipt__impl(fd: FormData) {
       data: {
         tankId,
         supplier: s(fd, "supplier"),
-        invoiceNo: s(fd, "invoiceNo") || null,
+        invoiceNo: sOrNull(fd, "invoiceNo"),
         qtyInvoiced,
         qtyReceived,
         rate,
         amount: n(fd, "amount") || qtyInvoiced * rate,
-        flowMeterStart: n(fd, "flowMeterStart"),
-        flowMeterEnd: n(fd, "flowMeterEnd"),
+        flowMeterStart,
+        flowMeterEnd,
         weighbridgeNet: n(fd, "weighbridgeNet"),
-        tankerNo: s(fd, "tankerNo") || null,
+        tankerNo: sOrNull(fd, "tankerNo"),
         invoicePhoto: photo,
-        receivedBy: s(fd, "receivedBy") || session?.name || null,
+        receivedBy: sOrNull(fd, "receivedBy") || session?.name || null,
         shortfall,
-        date: d(fd, "date"),
+        date,
       },
     });
 
@@ -162,10 +189,10 @@ async function saveDip__impl(fd: FormData) {
       data: {
         tankId,
         level,
-        readBy: s(fd, "readBy") || session?.name || null,
-        note: s(fd, "note") || null,
+        readBy: sOrNull(fd, "readBy") || session?.name || null,
+        note: sOrNull(fd, "note"),
         photo,
-        date: d(fd, "date"),
+        date: safeParseDate(fd.get("date"), "Dip date") || new Date(),
       },
     });
     await tx.fuelTank.update({ where: { id: tankId }, data: { currentLevel: level } });
@@ -190,8 +217,11 @@ async function deleteDip__impl(id: string) {
 async function runReconciliation__impl(tankId: string, fromStr?: string, toStr?: string) {
   const scopeAccess = await requireAction("fuel.reconcile");
   await assertRecordAccess(scopeAccess, "fuelTank", tankId);
-  const from = fromStr ? new Date(fromStr) : undefined;
-  const to = toStr ? new Date(toStr) : undefined;
+  const from = fromStr ? safeParseDate(fromStr, "Start date") ?? undefined : undefined;
+  const to = toStr ? safeParseDate(toStr, "End date") ?? undefined : undefined;
+  if (from && to) {
+    validateDateRange(from, to, "Reconciliation window");
+  }
 
   const tank = await db.fuelTank.findUnique({
     where: { id: tankId },
@@ -301,15 +331,16 @@ async function updateAnomaly__impl(id: string, fd: FormData) {
   const scopeAccess = await requireAction("fuel.approve");
   const visible = await db.fuelAnomaly.findFirst({ where: { id, ...await fuelAnomalyScope(scopeAccess) }, select: { id: true } });
   if (!visible) throw new ActionError("This anomaly is unavailable or outside your assigned sites.");
-  const status = s(fd, "status");
+  const status = oneOf(s(fd, "status") || "OPEN", ["OPEN", "INVESTIGATING", "RESOLVED", "DISMISSED"], "Anomaly status");
   const session = await getSession();
+  const recovered = nonNegativeNumber(fd.get("recovered"), "Recovered amount", { max: 100_000_000, fallback: 0 });
   await db.fuelAnomaly.update({
     where: { id },
     data: {
       status,
-      resolution: s(fd, "resolution") || null,
-      recovered: n(fd, "recovered"),
-      assignedTo: s(fd, "assignedTo") || session?.name || null,
+      resolution: sOrNull(fd, "resolution"),
+      recovered,
+      assignedTo: sOrNull(fd, "assignedTo") || session?.name || null,
       resolvedAt: status === "OPEN" || status === "INVESTIGATING" ? null : new Date(),
     },
   });
@@ -322,14 +353,20 @@ async function saveNorm__impl(fd: FormData) {
   const scopeAccess = await requireAction("fuel.reconcile");
   await assertFormAccess(scopeAccess, fd);
   assertGlobalAccess(scopeAccess);
-  const assetClass = s(fd, "assetClass") || null;
-  const unit = s(fd, "unit") || "KMPL";
-  const data = {
-    normLow: n(fd, "normLow"),
-    normHigh: n(fd, "normHigh"),
-    tolerancePct: n(fd, "tolerancePct") || 15,
-  };
+  const assetClass = s(fd, "assetClass");
   if (!assetClass) throw new ActionError("Asset class is required");
+  const unit = oneOf(s(fd, "unit") || "KMPL", ["KMPL", "LPH", "L_PER_TONNE", "L_PER_TRIP"], "Unit");
+  const normLow = nonNegativeNumber(fd.get("normLow"), "Norm low", { max: 10_000, fallback: 0 });
+  const normHigh = nonNegativeNumber(fd.get("normHigh"), "Norm high", { max: 10_000, fallback: 0 });
+  if (normLow > normHigh) {
+    throw new ActionError("Norm low cannot exceed norm high.");
+  }
+  const tolerancePct = boundedNumber(fd.get("tolerancePct"), "Tolerance percentage", { min: 0, max: 100, fallback: 15 });
+  const data = {
+    normLow,
+    normHigh,
+    tolerancePct,
+  };
   await db.consumptionNorm.upsert({
     where: { assetClass_unit: { assetClass, unit } },
     create: { assetClass, unit, ...data },

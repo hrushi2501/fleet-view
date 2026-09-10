@@ -5,9 +5,10 @@ import { revalidatePath } from "next/cache";
 import { DEFAULT_ROLES } from "@/lib/rbac";
 import { requireAction, ActionError, safe } from "@/lib/guard";
 import { audit } from "@/lib/audit";
+import { nonNegativeNumber, sanitizeString, sanitizeOptionalString } from "@/lib/input-validation";
 
-const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
-const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
+const s = (fd: FormData, k: string) => sanitizeString(fd.get(k), k);
+const sOrNull = (fd: FormData, k: string) => sanitizeOptionalString(fd.get(k), k);
 
 function refresh() {
   revalidatePath("/admin/roles");
@@ -48,12 +49,14 @@ async function seedRoles__impl() {
 
 async function saveRole__impl(id: string | null, fd: FormData) {
   await requireAction("admin.roles");
-  const permissions = fd.getAll("permissions").map(String).filter(Boolean);
+  const label = s(fd, "label");
+  if (!label) throw new ActionError("Role label is required");
+  const permissions = fd.getAll("permissions").map((p) => sanitizeString(p, "Permission")).filter(Boolean);
   const data = {
-    label: s(fd, "label"),
-    description: s(fd, "description") || null,
+    label,
+    description: sOrNull(fd, "description"),
     permissions: permissions.join("\n"),
-    approvalLimit: n(fd, "approvalLimit"),
+    approvalLimit: nonNegativeNumber(fd.get("approvalLimit"), "Approval limit", { max: 100_000_000_000, fallback: 0 }),
   };
   if (id) {
     const before = await db.role.findUnique({ where: { id } });

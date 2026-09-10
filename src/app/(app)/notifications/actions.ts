@@ -6,7 +6,13 @@ import { revalidatePath } from "next/cache";
 import { raiseWoFromSchedule } from "@/app/(app)/maintenance/actions";
 import { requireAction, ActionError, safe, isActionError } from "@/lib/guard";
 import { assertRecordAccess } from "@/lib/record-access";
-import { finiteNumber } from "@/lib/input-validation";
+import {
+  formNumber,
+  boundedNumber,
+  sanitizeString,
+  sanitizeOptionalString,
+  sanitizeId,
+} from "@/lib/input-validation";
 
 function refresh() {
   revalidatePath("/notifications");
@@ -14,18 +20,12 @@ function refresh() {
   revalidatePath("/dashboard");
 }
 
-function s(fd: FormData, key: string): string {
-  return (fd.get(key) as string)?.trim() ?? "";
-}
-
-function n(fd: FormData, key: string): number {
-  const v = fd.get(key);
-  if (v === null || v === "") return 0;
-  return finiteNumber(v, key.replace(/([A-Z])/g, " $1"), { fallback: 0 });
-}
+const s = (fd: FormData, key: string) => sanitizeString(fd.get(key), key);
+const n = formNumber;
 
 /** Acknowledge an alert / reminder */
-async function acknowledgeAlert__impl(alertId: string) {
+async function acknowledgeAlert__impl(rawAlertId: string) {
+  const alertId = sanitizeId(rawAlertId, "Alert ID");
   const scopeAccess = await requireAction("maintenance.edit");
   await assertRecordAccess(scopeAccess, "alert", alertId);
   const session = await getSession();
@@ -42,7 +42,8 @@ async function acknowledgeAlert__impl(alertId: string) {
 }
 
 /** Resolve an alert / reminder */
-async function resolveAlert__impl(alertId: string) {
+async function resolveAlert__impl(rawAlertId: string) {
+  const alertId = sanitizeId(rawAlertId, "Alert ID");
   const scopeAccess = await requireAction("maintenance.edit");
   await assertRecordAccess(scopeAccess, "alert", alertId);
   await db.alert.update({
@@ -59,15 +60,11 @@ async function resolveAlert__impl(alertId: string) {
 /** Snooze a service reminder with mandatory reason logging */
 async function snoozeAlert__impl(fd: FormData) {
   const scopeAccess = await requireAction("maintenance.edit");
-  const alertId = s(fd, "alertId");
-  const snoozeDays = n(fd, "snoozeDays") || 7;
-  const reason = s(fd, "reason");
+  const alertId = sanitizeId(s(fd, "alertId"), "Alert ID");
+  const snoozeDays = boundedNumber(fd.get("snoozeDays"), "Snooze days", { min: 1, max: 90, integer: true, fallback: 7 });
+  const reason = sanitizeString(fd.get("reason"), "Reason", { required: true, maxLength: 1_000 });
 
-  if (!alertId) throw new ActionError("Alert ID is required");
   await assertRecordAccess(scopeAccess, "alert", alertId);
-  if (!reason) throw new ActionError("A reason for deferring the reminder is required");
-  if (reason.length > 1_000) throw new ActionError("Deferral reason is too long.");
-  if (snoozeDays < 1 || snoozeDays > 90) throw new ActionError("Deferral must be between 1 and 90 days.");
 
   const alert = await db.alert.findUnique({ where: { id: alertId } });
   if (!alert) throw new ActionError("Alert not found");
@@ -91,7 +88,8 @@ async function snoozeAlert__impl(fd: FormData) {
 }
 
 /** Create PM Work Order directly from a due service reminder */
-async function createWoFromReminder__impl(scheduleId: string) {
+async function createWoFromReminder__impl(rawScheduleId: string) {
+  const scheduleId = sanitizeId(rawScheduleId, "Schedule ID");
   const scopeAccess = await requireAction("maintenance.edit");
   await assertRecordAccess(scopeAccess, "maintenanceSchedule", scheduleId);
   const created = await raiseWoFromSchedule(scheduleId);

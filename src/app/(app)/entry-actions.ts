@@ -2,7 +2,20 @@
 
 import { db } from "@/lib/db";
 import { businessTransaction } from "@/lib/business-transaction";
-import { finiteNumber, formNumber } from "@/lib/input-validation";
+import {
+  finiteNumber,
+  formNumber,
+  positiveNumber,
+  nonNegativeNumber,
+  boundedNumber,
+  percentageNumber,
+  coordinatePair,
+  oneOf,
+  safeParseDate,
+  validateDateRange,
+  sanitizeString,
+  sanitizeOptionalString,
+} from "@/lib/input-validation";
 import { assertRecordAccess, assertFormAccess, assertGlobalAccess } from "@/lib/record-access";
 import { changeWorkOrderStatus } from "@/lib/work-order-service";
 import { revalidatePath } from "next/cache";
@@ -24,7 +37,7 @@ async function uploadPhoto(file: FormDataEntryValue | null, prefix: string): Pro
   return uploadPrivateFile(f, { folder: `fuel-${prefix}`, kind: "image" });
 }
 
-const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
+const s = (fd: FormData, k: string) => sanitizeString(fd.get(k), k);
 const n = formNumber;
 
 /**
@@ -43,40 +56,116 @@ const nOrNull = (fd: FormData, k: string) => {
 };
 
 /** A text field that may be blank; empty becomes null rather than "". */
-const sOrNull = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim() || null;
+const sOrNull = (fd: FormData, k: string) => sanitizeOptionalString(fd.get(k), k);
 
 function docStatus(expiry: Date) {
   const days = (expiry.getTime() - Date.now()) / 86400000;
   return days < 0 ? "Expired" : days < 30 ? "Expiring" : "Valid";
 }
 
+const VALID_ASSET_CLASSES = [
+  "DUMPER", "TIPPER", "EXCAVATOR", "BACKHOE", "GRADER", "ROLLER",
+  "CRANE", "TRANSIT_MIXER", "WATER_TANKER", "TRUCK", "PICKUP",
+  "CAR", "BIKE", "TRACTOR", "PLANT", "CRUSHER", "MINES",
+] as const;
+
+const VALID_CATEGORIES = ["VEHICLE", "EQUIPMENT"] as const;
+const VALID_OWNERSHIP_TYPES = ["OWNED", "LEASED", "HIRED", "CONTRACTOR"] as const;
+const VALID_STATUSES = ["Active", "Idle", "Under-Maintenance", "In-Transit", "Breakdown", "Off-hired"] as const;
+const VALID_PRIMARY_METERS = ["ODOMETER", "SMU"] as const;
+
 /* ----------------------------- ASSETS ----------------------------- */
 async function saveAsset__impl(id: string | null, fd: FormData) {
   await requireAction("fleet.edit");
+  const code = s(fd, "code");
+  const name = s(fd, "name");
+  if (!code) throw new ActionError("Asset code is required.");
+  if (code.length > 50) throw new ActionError("Asset code cannot exceed 50 characters.");
+  if (!name) throw new ActionError("Asset name is required.");
+  if (name.length > 100) throw new ActionError("Asset name cannot exceed 100 characters.");
+
+  const assetClass = oneOf(s(fd, "assetClass") || "DUMPER", VALID_ASSET_CLASSES, "asset class");
+  const category = oneOf(s(fd, "category") || "VEHICLE", VALID_CATEGORIES, "category");
+  const ownershipType = oneOf(s(fd, "ownershipType") || "OWNED", VALID_OWNERSHIP_TYPES, "ownership type");
+  const status = oneOf(s(fd, "status") || "Active", VALID_STATUSES, "status");
+  const primaryMeter = oneOf(s(fd, "primaryMeter") || "ODOMETER", VALID_PRIMARY_METERS, "primary meter");
+
+  const yearMfg = boundedNumber(fd.get("yearMfg"), "Manufacturing year", {
+    min: 1950,
+    max: new Date().getFullYear() + 1,
+    integer: true,
+    fallback: new Date().getFullYear(),
+  });
+  const meterValue = boundedNumber(fd.get("meterValue"), "Meter reading", {
+    min: 0,
+    max: 10_000_000,
+    fallback: 0,
+  });
+  const fuelCapacity = boundedNumber(fd.get("fuelCapacity"), "Fuel capacity", {
+    min: 0,
+    max: 50_000,
+    fallback: 0,
+  });
+  const acquisitionCost = nonNegativeNumber(fd.get("acquisitionCost"), "Acquisition cost", {
+    max: 100_000_000_000,
+    fallback: 0,
+  });
+  const healthScore = percentageNumber(fd.get("healthScore"), "Health score", { fallback: 90 });
+  const utilization = percentageNumber(fd.get("utilization"), "Utilization", { fallback: 0 });
+
+  const rawEngineHp = fd.get("enginePowerHp");
+  const enginePowerHp = rawEngineHp && String(rawEngineHp).trim()
+    ? boundedNumber(rawEngineHp, "Engine power", { min: 1, max: 10_000 })
+    : null;
+  const rawTorque = fd.get("torqueNm");
+  const torqueNm = rawTorque && String(rawTorque).trim()
+    ? boundedNumber(rawTorque, "Torque", { min: 1, max: 50_000 })
+    : null;
+  const rawTonnage = fd.get("tonnage");
+  const tonnage = rawTonnage && String(rawTonnage).trim()
+    ? boundedNumber(rawTonnage, "Tonnage", { min: 0.01, max: 1_000 })
+    : null;
+
+  const rawLaden = fd.get("ladenWeightKg");
+  const ladenWeightKg = rawLaden && String(rawLaden).trim()
+    ? boundedNumber(rawLaden, "Gross laden weight", { min: 10, max: 500_000 })
+    : null;
+  const rawUnladen = fd.get("unladenWeightKg");
+  const unladenWeightKg = rawUnladen && String(rawUnladen).trim()
+    ? boundedNumber(rawUnladen, "Unladen weight", { min: 10, max: 500_000 })
+    : null;
+
+  if (ladenWeightKg !== null && unladenWeightKg !== null && ladenWeightKg < unladenWeightKg) {
+    throw new ActionError("Gross laden weight cannot be less than unladen (tare) weight.");
+  }
+
+  const serviceDueDate = safeParseDate(fd.get("serviceDueDate"), "Next service due");
+  const lastServiceDate = safeParseDate(fd.get("lastServiceDate"), "Last service date");
+  validateDateRange(lastServiceDate, serviceDueDate, "Service dates");
+  const registrationDate = safeParseDate(fd.get("registrationDate"), "Registration date", { minYear: 1950, maxYear: 2100 });
+
+  const coords = coordinatePair(fd.get("lat"), fd.get("lng"), "Vehicle location");
+
   const data = {
-    code: s(fd, "code"),
-    name: s(fd, "name"),
-    assetClass: s(fd, "assetClass"),
-    category: s(fd, "category") || "VEHICLE",
-    ownershipType: s(fd, "ownershipType"),
+    code,
+    name,
+    assetClass,
+    category,
+    ownershipType,
     make: s(fd, "make"),
     model: s(fd, "model"),
-    yearMfg: n(fd, "yearMfg") || new Date().getFullYear(),
-    primaryMeter: s(fd, "primaryMeter"),
-    meterValue: n(fd, "meterValue"),
-    fuelCapacity: n(fd, "fuelCapacity"),
-    status: s(fd, "status") || "Active",
+    yearMfg,
+    primaryMeter,
+    meterValue,
+    fuelCapacity,
+    status,
     registrationNo: s(fd, "registrationNo") || null,
-    acquisitionCost: n(fd, "acquisitionCost"),
-    healthScore: n(fd, "healthScore") || 90,
-    utilization: n(fd, "utilization"),
-    serviceDueDate: s(fd, "serviceDueDate") ? new Date(s(fd, "serviceDueDate")) : null,
-    lastServiceDate: s(fd, "lastServiceDate") ? new Date(s(fd, "lastServiceDate")) : null,
+    acquisitionCost,
+    healthScore,
+    utilization,
+    serviceDueDate,
+    lastServiceDate,
     projectId: s(fd, "projectId") || null,
-    // Identity and specification. These were not in the form at all, so
-    // `chassisNo` and `engineNo` were unreachable once a vehicle existed, and
-    // the specification fields the vehicle page now shows had no way of ever
-    // being filled — every one of them would have read "not recorded" forever.
     chassisNo: sOrNull(fd, "chassisNo"),
     engineNo: sOrNull(fd, "engineNo"),
     fuelType: sOrNull(fd, "fuelType"),
@@ -87,24 +176,28 @@ async function saveAsset__impl(id: string | null, fd: FormData) {
     specification: sOrNull(fd, "specification"),
     engineModel: sOrNull(fd, "engineModel"),
     transmission: sOrNull(fd, "transmission"),
-    enginePowerHp: nOrNull(fd, "enginePowerHp"),
-    torqueNm: nOrNull(fd, "torqueNm"),
-    ladenWeightKg: nOrNull(fd, "ladenWeightKg"),
-    unladenWeightKg: nOrNull(fd, "unladenWeightKg"),
-    tonnage: nOrNull(fd, "tonnage"),
-    registrationDate: s(fd, "registrationDate") ? new Date(s(fd, "registrationDate")) : null,
-    ...(s(fd, "lat") ? { lat: n(fd, "lat") } : {}),
-    ...(s(fd, "lng") ? { lng: n(fd, "lng") } : {}),
+    enginePowerHp,
+    torqueNm,
+    ladenWeightKg,
+    unladenWeightKg,
+    tonnage,
+    registrationDate,
+    ...(coords.lat !== null ? { lat: coords.lat } : {}),
+    ...(coords.lng !== null ? { lng: coords.lng } : {}),
   };
   if (id) {
     const before = await db.asset.findUnique({ where: { id }, select: { meterValue: true } });
-    if (before && data.meterValue > 0 && data.meterValue < before.meterValue) {
+    if (before && before.meterValue > 0 && data.meterValue < before.meterValue) {
       throw new ActionError(`Odometer reading (${data.meterValue} km) cannot be lower than existing reading (${before.meterValue} km).`);
     }
     const updated = await db.asset.updateMany({ where: { id, decommissionedOn: null }, data });
     if (updated.count !== 1) throw new ActionError("Decommissioned vehicles cannot be edited. Restore it deliberately before changing its register record.");
   }
-  else await db.asset.create({ data });
+  else {
+    const existing = await db.asset.findUnique({ where: { code }, select: { id: true } });
+    if (existing) throw new ActionError(`Asset code "${code}" is already in use.`);
+    await db.asset.create({ data });
+  }
   revalidatePath("/fleet");
   revalidatePath("/");
   await invalidateLiveFleetCache();
@@ -213,18 +306,27 @@ async function saveDriver__impl(id: string | null, fd: FormData) {
     if (passwordError) throw new ActionError(passwordError);
   }
 
+  const empCode = s(fd, "empCode");
+  const name = s(fd, "name");
+  if (!empCode) throw new ActionError("Employee code is required.");
+  if (!name) throw new ActionError("Driver name is required.");
+
+  const type = oneOf(s(fd, "type") || "DRIVER", ["DRIVER", "OPERATOR"] as const, "driver type");
+  const status = oneOf(s(fd, "status") || "Active", ["Active", "Inactive", "Suspended"] as const, "driver status");
+  const licenseExpiry = safeParseDate(fd.get("licenseExpiry"), "License expiry") || new Date(Date.now() + 365 * 86400000);
+
   const data = {
-    empCode: s(fd, "empCode"),
-    name: s(fd, "name"),
+    empCode,
+    name,
     phone,
-    type: s(fd, "type") || "DRIVER",
+    type,
     licenseNo,
-    licenseExpiry: new Date(s(fd, "licenseExpiry") || Date.now()),
+    licenseExpiry,
     certifications: s(fd, "certifications"),
-    safetyScore: n(fd, "safetyScore") || 80,
-    performanceScore: n(fd, "performanceScore") || 80,
-    attendance: n(fd, "attendance") || 95,
-    status: s(fd, "status") || "Active",
+    safetyScore: percentageNumber(fd.get("safetyScore"), "Safety score", { fallback: 80 }),
+    performanceScore: percentageNumber(fd.get("performanceScore"), "Performance score", { fallback: 80 }),
+    attendance: percentageNumber(fd.get("attendance"), "Attendance", { fallback: 95 }),
+    status,
   };
   if (id) {
     await db.driver.update({ where: { id }, data });
@@ -282,10 +384,12 @@ async function deleteDriver__impl(id: string) {
 }
 
 /* ----------------------------- FUEL ----------------------------- */
+const VALID_FUEL_TYPES = ["ISSUE", "RECEIPT", "TRANSFER", "ADJUSTMENT"] as const;
+
 async function saveFuel__impl(fd: FormData) {
   const access = await requireAction("fuel.issue");
   await assertFormAccess(access, fd);
-  const type = s(fd, "type") || "ISSUE";
+  const type = oneOf(s(fd, "type") || "ISSUE", VALID_FUEL_TYPES, "fuel transaction type");
   if (access.group === "DRIVER" && type !== "ISSUE") {
     throw new ActionError("Drivers can record fuel issued to their checked-in vehicle only.");
   }
@@ -366,7 +470,7 @@ async function saveFuel__impl(fd: FormData) {
     if (distKm > 15) geofenceOk = false; // fill logged >15km from the vehicle
   }
 
-  const meterValue = n(fd, "meterValue");
+  const meterValue = boundedNumber(fd.get("meterValue"), "Meter reading", { min: 0, max: 10_000_000, fallback: 0 });
   const activeSession = assetId
     ? await db.tripSession.findFirst({
         where: { assetId, status: "ACTIVE" },
@@ -396,7 +500,7 @@ async function saveFuel__impl(fd: FormData) {
         projectId: access.group === "DRIVER" ? session?.projectId ?? asset?.projectId ?? null : s(fd, "projectId") || asset?.projectId || null,
         quantity,
         rate,
-        amount: access.group === "DRIVER" ? financials.amount : quantity * rate,
+        amount: access.group === "DRIVER" ? financials.amount : Math.round(quantity * rate),
         meterValue,
         sensorRise,
         variancePct,
@@ -460,6 +564,9 @@ async function saveServicePhotos__impl(fd: FormData) {
   await assertFormAccess(scopeAccess, fd);
   const assetId = s(fd, "assetId");
   if (!assetId) throw new ActionError("Select a vehicle.");
+  const asset = await db.asset.findUnique({ where: { id: assetId } });
+  if (!asset) throw new ActionError("Vehicle not found.");
+
   const collect = async (field: string, prefix: string) => {
     const files = fd.getAll(field).filter((f) => typeof f !== "string" && (f as File).size > 0) as File[];
     const urls: string[] = [];
@@ -490,8 +597,7 @@ async function setDieselRate__impl(fd: FormData) {
   assertGlobalAccess(scopeAccess);
   const session = await getSession();
   if (session?.role !== "Admin") throw new ActionError("Only admins can set the rate.");
-  const rate = n(fd, "rate");
-  if (!rate || rate < 30 || rate > 200) throw new ActionError("Enter a valid diesel rate (₹/L).");
+  const rate = boundedNumber(fd.get("rate"), "Diesel rate", { min: 30, max: 200 });
   await db.setting.upsert({ where: { key: "dieselRate" }, update: { value: String(rate) }, create: { key: "dieselRate", value: String(rate) } });
   await serverCache.del(DIESEL_RATE_CACHE_KEY);
   revalidatePath("/fuel");
@@ -502,13 +608,14 @@ async function updateFuel__impl(id: string, fd: FormData) {
   const scopeAccess = await requireAction("fuel.issue");
   await assertFormAccess(scopeAccess, fd);
   await assertRecordAccess(scopeAccess, "fuelTransaction", id);
-  const quantity = n(fd, "quantity");
-  const rate = n(fd, "rate") || 92.5;
+  const quantity = positiveNumber(fd.get("quantity"), "Fuel quantity", { max: 100_000 });
+  const rate = positiveNumber(fd.get("rate") || 92.5, "Fuel rate", { max: 500 });
+  const meterValue = boundedNumber(fd.get("meterValue"), "Meter reading", { min: 0, max: 10_000_000, fallback: 0 });
   const data: { quantity: number; rate: number; amount: number; meterValue: number; date?: Date } = {
-    quantity, rate, amount: Math.round(quantity * rate), meterValue: n(fd, "meterValue"),
+    quantity, rate, amount: Math.round(quantity * rate), meterValue,
   };
-  const d = s(fd, "date");
-  if (d) data.date = new Date(d);
+  const d = safeParseDate(fd.get("date"), "Fuel transaction date");
+  if (d) data.date = d;
   await db.fuelTransaction.update({ where: { id }, data });
   revalidatePath("/fuel");
   revalidatePath("/");
@@ -525,35 +632,46 @@ async function deleteFuel__impl(id: string) {
 }
 
 /* ----------------------------- WORK ORDER ----------------------------- */
+const VALID_WO_TYPES = ["PM", "REPAIR", "BREAKDOWN", "INSPECTION", "TYRE"] as const;
+const VALID_WO_PRIORITIES = ["Low", "Medium", "High", "Critical"] as const;
+const VALID_WO_STATUSES = ["Open", "In-Progress", "Waiting-Parts", "Completed", "Closed"] as const;
+
 async function saveWorkOrder__impl(fd: FormData) {
   const scopeAccess = await requireAction("maintenance.edit");
   await assertFormAccess(scopeAccess, fd);
-  const labor = n(fd, "laborCost");
-  const parts = n(fd, "partsCost");
+  const labor = nonNegativeNumber(fd.get("laborCost"), "Labor cost", { max: 10_000_000, fallback: 0 });
+  const parts = nonNegativeNumber(fd.get("partsCost"), "Parts cost", { max: 50_000_000, fallback: 0 });
+  const downtimeHrs = boundedNumber(fd.get("downtimeHrs"), "Downtime hours", { min: 0, max: 8_760, fallback: 0 });
   const assetId = s(fd, "assetId");
-  const type = s(fd, "type") || "PM";
-  const status = s(fd, "status") || "Open";
+  if (!assetId) throw new ActionError("Asset is required.");
+  const asset = await db.asset.findUnique({ where: { id: assetId } });
+  if (!asset) throw new ActionError("Asset not found.");
+
+  const type = oneOf(s(fd, "type") || "PM", VALID_WO_TYPES, "work order type");
+  const priority = oneOf(s(fd, "priority") || "Medium", VALID_WO_PRIORITIES, "priority");
+  const status = oneOf(s(fd, "status") || "Open", VALID_WO_STATUSES, "work order status");
 
   await businessTransaction(scopeAccess.session, async (tx) => {
     await tx.workOrder.create({
       data: {
         woNo: `WO-${Date.now().toString().slice(-8)}`,
         assetId,
+        projectId: asset.projectId,
         type,
-        priority: s(fd, "priority") || "Medium",
+        priority,
         status,
         description: s(fd, "description"),
         laborCost: labor,
         partsCost: parts,
         totalCost: labor + parts,
-        downtimeHrs: n(fd, "downtimeHrs"),
+        downtimeHrs,
         warranty: fd.get("warranty") === "on",
         reportedAt: new Date(),
         completedAt: status === "Completed" || status === "Closed" ? new Date() : null,
       },
     });
 
-    if (assetId && (type === "BREAKDOWN" || s(fd, "priority") === "Critical") && status !== "Completed" && status !== "Closed") {
+    if (assetId && (type === "BREAKDOWN" || priority === "Critical") && status !== "Completed" && status !== "Closed") {
       await tx.asset.update({
         where: { id: assetId },
         data: { status: "Breakdown" },
@@ -566,7 +684,8 @@ async function saveWorkOrder__impl(fd: FormData) {
 
 async function updateWorkOrderStatus__impl(id: string, status: string) {
   const access = await requireAction("maintenance.edit");
-  await changeWorkOrderStatus(access, id, status);
+  const validStatus = oneOf(status, VALID_WO_STATUSES, "work order status");
+  await changeWorkOrderStatus(access, id, validStatus);
   revalidatePath("/maintenance");
   revalidatePath("/fleet");
   revalidatePath("/costs");
@@ -575,16 +694,26 @@ async function updateWorkOrderStatus__impl(id: string, status: string) {
 }
 
 /* ----------------------------- COMPLIANCE ----------------------------- */
+const VALID_DOC_TYPES = [
+  "RC", "FITNESS", "INSURANCE", "PUC", "ROAD_TAX", "NATIONAL_PERMIT", "STATE_PERMIT", "CALIBRATION",
+] as const;
+
 async function saveCompliance__impl(fd: FormData) {
   const scopeAccess = await requireAction("compliance.edit");
   await assertFormAccess(scopeAccess, fd);
-  const expiry = new Date(s(fd, "expiryDate") || Date.now());
+  const docType = oneOf(s(fd, "docType"), VALID_DOC_TYPES, "compliance document type");
+  const number = s(fd, "number");
+  if (!number) throw new ActionError("Document number is required.");
+  const issueDate = safeParseDate(fd.get("issueDate"), "Issue date") || new Date();
+  const expiry = safeParseDate(fd.get("expiryDate"), "Expiry date", { required: true })!;
+  validateDateRange(issueDate, expiry, "Compliance document validity");
+
   await db.complianceDoc.create({
     data: {
       assetId: s(fd, "assetId"),
-      docType: s(fd, "docType"),
-      number: s(fd, "number"),
-      issueDate: new Date(s(fd, "issueDate") || Date.now()),
+      docType,
+      number,
+      issueDate,
       expiryDate: expiry,
       status: docStatus(expiry),
     },
@@ -599,10 +728,10 @@ async function renewComplianceDoc__impl(id: string, fd: FormData) {
   const scopeAccess = await requireAction("compliance.edit");
   await assertFormAccess(scopeAccess, fd);
   await assertRecordAccess(scopeAccess, "complianceDoc", id);
-  const expiry = new Date(s(fd, "expiryDate") || Date.now());
   const number = s(fd, "number");
-  const issueDateStr = s(fd, "issueDate");
-  const issueDate = issueDateStr ? new Date(issueDateStr) : new Date();
+  const issueDate = safeParseDate(fd.get("issueDate"), "Issue date") || new Date();
+  const expiry = safeParseDate(fd.get("expiryDate"), "Expiry date", { required: true })!;
+  validateDateRange(issueDate, expiry, "Compliance document validity");
 
   await db.complianceDoc.update({
     where: { id },
@@ -753,16 +882,20 @@ async function saveProject__impl(fd: FormData) {
   const existing = await db.project.findUnique({ where: { code } });
   if (existing) throw new ActionError(`A project with code "${code}" already exists`);
 
+  const budget = nonNegativeNumber(fd.get("budget"), "Project budget", { max: 100_000_000_000, fallback: 0 });
+  const spent = nonNegativeNumber(fd.get("spent"), "Spent amount", { max: 100_000_000_000, fallback: 0 });
+  const coords = coordinatePair(fd.get("lat"), fd.get("lng"), "Project location");
+
   const project = await db.project.create({
     data: {
       code,
       name,
       location: s(fd, "location"),
       client: s(fd, "client"),
-      budget: n(fd, "budget"),
-      spent: n(fd, "spent"),
-      lat: n(fd, "lat"),
-      lng: n(fd, "lng"),
+      budget,
+      spent,
+      lat: coords.lat ?? 0,
+      lng: coords.lng ?? 0,
       status: s(fd, "status") || "Active",
     },
   });
@@ -800,6 +933,10 @@ async function updateProject__impl(id: string, fd: FormData) {
   const dup = await db.project.findUnique({ where: { code } });
   if (dup && dup.id !== id) throw new ActionError(`A project with code "${code}" already exists`);
 
+  const budget = nonNegativeNumber(fd.get("budget"), "Project budget", { max: 100_000_000_000, fallback: 0 });
+  const spent = nonNegativeNumber(fd.get("spent"), "Spent amount", { max: 100_000_000_000, fallback: 0 });
+  const coords = coordinatePair(fd.get("lat"), fd.get("lng"), "Project location");
+
   await db.project.update({
     where: { id },
     data: {
@@ -807,10 +944,10 @@ async function updateProject__impl(id: string, fd: FormData) {
       name,
       location: s(fd, "location"),
       client: s(fd, "client"),
-      budget: n(fd, "budget"),
-      spent: n(fd, "spent"),
-      lat: n(fd, "lat"),
-      lng: n(fd, "lng"),
+      budget,
+      spent,
+      lat: coords.lat ?? 0,
+      lng: coords.lng ?? 0,
       status: s(fd, "status") || existing.status,
     },
   });

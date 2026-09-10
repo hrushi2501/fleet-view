@@ -2,10 +2,21 @@ import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireApi, assetScope, projectIdScope } from "@/lib/access";
+import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 
 async function handleGET() {
   const auth = await requireApi("fleet.view");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
+  const limit = await reserveRateLimit({
+    scope: "stats-query",
+    subject: auth.access.session.id,
+    limit: 30,
+    windowMs: 60_000,
+  });
+  if (!limit.ok) {
+    return rateLimitResponse(limit.retryInSeconds, "Too many statistics requests. Please slow down.");
+  }
 
   // Every figure below is a company-wide total unless it is bounded by what the
   // caller may see. A headline count is still data: "your fleet is 4 vehicles"

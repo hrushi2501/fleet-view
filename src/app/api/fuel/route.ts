@@ -50,6 +50,16 @@ async function handleGET(req: Request) {
   const auth = await requireApi("fuel.view");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
+  const limit = await reserveRateLimit({
+    scope: "fuel-query",
+    subject: auth.access.session.id,
+    limit: 30,
+    windowMs: 60_000,
+  });
+  if (!limit.ok) {
+    return rateLimitResponse(limit.retryInSeconds, "Too many fuel queries. Please slow down.");
+  }
+
   try {
     const url = new URL(req.url);
     const sinceDays = Math.min(365, Math.max(1, Number(url.searchParams.get("days")) || 30));
