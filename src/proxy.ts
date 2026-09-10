@@ -51,10 +51,15 @@ export const config = {
   // answer to a device, an API client, or a cron runner. Each of them authenticates with a
   // session or shared secret in its own handler.
   //
-  // `vehicles/` is excluded for a subtler reason. Next's image optimiser fetches
-  // the underlying file over HTTP itself, and that internal request carries no
-  // session cookie — so guarding the folder does not protect anything, it just
-  // makes every optimised image 307 to /login for signed-in users too. The files
-  // there are generic vehicle photography with nothing customer-specific in them.
-  matcher: ["/((?!api/|api|.well-known|manifest.webmanifest|sw.js|icon.svg|icon-192.png|icon-512.png|_next/static|_next/image|favicon.ico|vehicles/).*)"],
+  // `vehicles/` and `brand/` are excluded for a subtler reason. Next's image
+  // optimiser fetches the underlying file over HTTP itself, and that internal
+  // request carries no session cookie — so guarding the folder does not protect
+  // anything, it just makes every optimised image 307 to /login for signed-in
+  // users too. The files in both are generic photography and brand artwork with
+  // nothing customer-specific in them.
+  //
+  // `brand/` matters twice over: it holds the sign-in artwork, which by
+  // definition has to load for someone who is not signed in yet. Guarding it
+  // redirected the login page's own background to the login page.
+  matcher: ["/((?!api/|api|.well-known|manifest.webmanifest|sw.js|icon.svg|icon-192.png|icon-512.png|_next/static|_next/image|favicon.ico|vehicles/|brand/).*)"],
 };

@@ -11,6 +11,19 @@
   --color-brand-700: #1a37bb;
   --color-brand-800: #1b3196;
   --color-brand-900: #1c2f77;
+  /* Mahadev Constructions' own colour, taken from the brand mark and the
+     sign-in artwork. Separate from `brand-*`, which is the product blue used
+     across the application chrome — the two are not interchangeable. */
+  --color-gold-50: #faf6ef;
+  --color-gold-100: #f2e8d6;
+  --color-gold-200: #e6d3b1;
+  --color-gold-300: #d7b985;
+  --color-gold-400: #c9a367;
+  --color-gold-500: #b8935e;
+  --color-gold-600: #a17c4c;
+  --color-gold-700: #85643e;
+  --color-gold-800: #6b5033;
+  --color-gold-900: #4a3722;
   --color-ink-900: #0b1220;
   --color-ink-800: #111a2e;
   --color-ink-700: #1b2742;
