@@ -179,32 +179,53 @@ performance before treating "below norm" as a finding.
 
 ## ⚠️ Known limitations
 
-1. **An old copy of the app is still online and must be shut down.**
-   `https://fleetview-erp.vercel.app` is a **separate, outdated deployment** that is not
-   part of this project but still connects to the same live database. It runs the code
-   from before the data-integrity fixes, and it accepts a telemetry key that is published
-   in this repository — meaning anyone who knows the address can write false vehicle data
-   into your fleet records. It was verified doing exactly that.
+Each item below was re-verified against the live system on 10 September 2026.
 
-   The correct address is the one at the top of this document. **Delete or disable the
-   old deployment, and rotate the database credentials afterwards.** Until then, treat any
-   figure seen at the old address as unreliable.
+1. **An older deployment is still online.** `https://fleetview-erp.vercel.app` is a
+   separate, outdated deployment that reads this same live database, so any figure seen
+   there is stale and should not be trusted. It sits in a different Vercel account and
+   cannot be removed from this project — ask whoever owns that account to delete it.
+
+   Checked on 10 Sep: its ingest endpoints **do** require a key and return
+   `401 Unauthorized` without one, and no ingest key is published anywhere in this
+   repository. An earlier version of this document said otherwise; that was wrong. The
+   risk is misleading figures, not an open write endpoint.
 
 2. **Automated backups.** The database has none — backups are taken manually. Move to a
-   plan with daily backups (and India-region hosting for DPDP) before the fleet depends
-   on this system.
-3. **Telemetry history has gaps.** Continuous 2-minute polling is recent; earlier data
-   was collected hourly or less. Until a period is fully covered, fuel analysis over it
-   will correctly report low confidence. Roughly 80% of the first window was unobserved.
-4. **One vehicle is tracked**, and only until 09 Sep 2026. See *Live tracking* above.
-5. **A database index is pending deployment.** The next `npm run db:deploy` applies a
-   uniqueness rule that prevents the same telemetry sample being counted twice if a
-   provider retries. Until then a rare duplicate is possible; the application already
-   checks for one on every insert.
+   plan with daily backups before the fleet depends on this system. Hosting is already
+   in-region (`ap-south-1`) for DPDP.
+
+3. **Telemetry history has gaps.** Continuous polling is recent; earlier data was
+   collected hourly or less. Fuel analysis over an incompletely observed period
+   correctly reports low confidence rather than guessing.
+
+4. **Multi-factor authentication** is not enabled for the administrator accounts.
+
+5. **Leaked-password protection** is switched off in Supabase Auth, so a password known
+   to be compromised would still be accepted. It is a single toggle in the Supabase
+   dashboard under Authentication.
+
 6. **Custom domain** not yet configured, e.g. `fleet.mahadevconstructions.com`.
-7. **Multi-factor authentication** is not yet enabled for the administrator account.
-8. **AI photo-reading** runs on a free, rate-limited key — fine for current volume,
+
+7. **AI photo-reading** runs on a free, rate-limited key — fine for current volume,
    needs a paid key at scale.
+
+8. **Forty of fifty-six machines have no fuel sensor or tracker.** That is expected:
+   they fall back to the driver's gauge and odometer photographs, and the screens say so
+   rather than showing a confident number built from nothing.
+
+### Resolved since the previous version of this document
+
+- **Telemetry duplicates.** A uniqueness rule now prevents the same observation being
+  counted twice when a provider retries. The nine historical duplicate groups it was
+  waiting on were reviewed and reconciled; the removed rows were exported first.
+- **Tipper classification.** Five Tata Signa `TK` tippers were classed as `TRUCK` and so
+  judged against highway-truck fuel economy they cannot reach. They are now `TIPPER`
+  (2.2–3.8 km/L). Compliance requirements are unchanged by this.
+- **Live tracking.** Twelve vehicles are reporting, not one.
+- **`FLEET_INGEST_KEY`.** Set in the production environment.
+- **Row Level Security.** Enabled on all 67 tables with restrictive deny policies for
+  the public API roles and no residual grants.
 
 ---
 

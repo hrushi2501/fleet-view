@@ -457,10 +457,18 @@ model TelemetryReading {
   raw          Json?
   createdAt    DateTime            @default(now())
 
-  /// Ingestion checks this tuple before inserting. The live database currently
-  /// contains historical duplicates, so the owner-only unique index in
-  /// `prisma/sql/telemetry-unique-index.sql` must not be declared here until
-  /// those rows have been reviewed and reconciled without discarding evidence.
+  /// One observation per vehicle, per instant, per source.
+  ///
+  /// This was deferred while the live database still held historical duplicates.
+  /// That review is done: nine groups across 126k rows — eight byte-identical
+  /// re-deliveries, and one genuine conflict on TRU-107 resolved by keeping the
+  /// first write, which is what ingestion's check-then-insert would have produced
+  /// without the race. The rows were exported before removal.
+  ///
+  /// `source` is part of the key deliberately: the same instant reported by the
+  /// OEM pull and by a tracker push are two independent observations, and
+  /// collapsing them would silently discard one provider's data.
+  @@unique([assetId, recordedAt, source])
   @@index([assetId, recordedAt])
   @@index([sessionId, recordedAt])
   // Postgres does not index a foreign key on its own, so every filter and join
