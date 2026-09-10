@@ -2,6 +2,7 @@ import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireApi, assetScope } from "@/lib/access";
+import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 
 const MAX_ROWS = 500;
 
@@ -16,6 +17,16 @@ const MAX_ROWS = 500;
 async function handleGET(req: Request) {
   const auth = await requireApi("fleet.view");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
+  const rateLimit = await reserveRateLimit({
+    scope: "assets-query",
+    subject: auth.access.session.id,
+    limit: 60,
+    windowMs: 60_000,
+  });
+  if (!rateLimit.ok) {
+    return rateLimitResponse(rateLimit.retryInSeconds, "Too many vehicle queries. Please slow down.");
+  }
 
   const { searchParams } = new URL(req.url);
   const assetClass = searchParams.get("class") ?? undefined;

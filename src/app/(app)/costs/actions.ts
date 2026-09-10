@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { formNumber } from "@/lib/input-validation";
+import { formNumber, positiveNumber, boundedNumber, oneOf, safeParseDate } from "@/lib/input-validation";
 import { assertFormAccess, assertRecordAccess } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
@@ -21,15 +21,36 @@ function refresh() {
 async function saveCost__impl(fd: FormData) {
   const scopeAccess = await requireAction("cost.edit");
   await assertFormAccess(scopeAccess, fd);
-  const amount = n(fd, "amount");
-  if (amount <= 0) throw new ActionError("Cost amount must be greater than zero");
+  const amount = positiveNumber(fd.get("amount"), "Cost amount", { max: 100_000_000 });
 
-  const date = parseBusinessDay(s(fd, "date"));
+  const costHead = oneOf(
+    s(fd, "costHead") || "OTHER",
+    ["FUEL", "MAINTENANCE", "TYRE", "INSURANCE", "EMI", "PERMIT", "TOLL", "SALARY", "OVERHEAD", "OTHER"],
+    "Cost head"
+  );
+
+  const assetId = s(fd, "assetId") || null;
+  if (assetId) {
+    const asset = await db.asset.findUnique({ where: { id: assetId } });
+    if (!asset) throw new ActionError("Selected asset does not exist");
+  }
+
+  const projectId = s(fd, "projectId") || null;
+  if (projectId) {
+    const project = await db.project.findUnique({ where: { id: projectId } });
+    if (!project) throw new ActionError("Selected project does not exist");
+  }
+
+  const rawDate = s(fd, "date");
+  if (rawDate) {
+    safeParseDate(rawDate, "Cost date");
+  }
+  const date = parseBusinessDay(rawDate);
   await db.costTransaction.create({
     data: {
-      assetId: s(fd, "assetId") || null,
-      projectId: s(fd, "projectId") || null,
-      costHead: s(fd, "costHead") || "OTHER",
+      assetId,
+      projectId,
+      costHead,
       amount,
       period: businessMonth(date),
       date,
@@ -69,16 +90,27 @@ async function saveRevenue__impl(fd: FormData) {
   await assertFormAccess(scopeAccess, fd);
   const projectId = s(fd, "projectId");
   if (!projectId) throw new ActionError("Project is required");
-  const amount = n(fd, "amount");
-  if (amount <= 0) throw new ActionError("Revenue amount must be greater than zero");
+  const project = await db.project.findUnique({ where: { id: projectId } });
+  if (!project) throw new ActionError("Selected project does not exist");
 
-  const date = parseBusinessDay(s(fd, "date"));
+  const amount = positiveNumber(fd.get("amount"), "Revenue amount", { max: 1_000_000_000 });
+  const billType = oneOf(
+    s(fd, "billType") || "RA_BILL",
+    ["RA_BILL", "ADVANCE", "RETENTION_RELEASE", "OTHER"],
+    "Bill type"
+  );
+
+  const rawDate = s(fd, "date");
+  if (rawDate) {
+    safeParseDate(rawDate, "Revenue date");
+  }
+  const date = parseBusinessDay(rawDate);
   await db.projectRevenue.create({
     data: {
       projectId,
-      description: s(fd, "description"),
+      description: s(fd, "description") || "Project Revenue",
       amount,
-      billType: s(fd, "billType") || "RA_BILL",
+      billType,
       period: businessMonth(date),
       date,
     },
@@ -116,24 +148,33 @@ async function saveDepreciation__impl(assetId: string, fd: FormData) {
   const scopeAccess = await requireAction("cost.edit");
   await assertFormAccess(scopeAccess, fd);
   await assertRecordAccess(scopeAccess, "asset", assetId);
-  const acquisitionCost = n(fd, "acquisitionCost");
-  const salvageValue = n(fd, "salvageValue");
 
-  if (acquisitionCost < 0 || salvageValue < 0) {
-    throw new ActionError("Acquisition cost and salvage value cannot be negative");
-  }
+  const asset = await db.asset.findUnique({ where: { id: assetId } });
+  if (!asset) throw new ActionError("Asset not found");
+
+  const acquisitionCost = boundedNumber(fd.get("acquisitionCost"), "Acquisition cost", { min: 0, max: 1_000_000_000, fallback: 0 });
+  const salvageValue = boundedNumber(fd.get("salvageValue"), "Salvage value", { min: 0, max: 1_000_000_000, fallback: 0 });
+
   if (salvageValue > acquisitionCost) {
     throw new ActionError("Salvage value cannot exceed original acquisition cost");
   }
+
+  const usefulLifeYears = boundedNumber(fd.get("usefulLifeYears"), "Useful life (years)", { min: 1, max: 100, integer: true, fallback: 10 });
+  const depMethod = oneOf(s(fd, "depMethod") || "SLM", ["SLM", "WDV"], "Depreciation method");
+
+  const inServiceDateStr = s(fd, "inServiceDate");
+  const inServiceDate = inServiceDateStr
+    ? safeParseDate(inServiceDateStr, "In-service date", { minYear: 1980, maxYear: 2050 })
+    : null;
 
   await db.asset.update({
     where: { id: assetId },
     data: {
       acquisitionCost,
       salvageValue,
-      usefulLifeYears: Math.max(1, Math.round(n(fd, "usefulLifeYears"))),
-      depMethod: s(fd, "depMethod") || "SLM",
-      inServiceDate: s(fd, "inServiceDate") ? new Date(s(fd, "inServiceDate")) : null,
+      usefulLifeYears,
+      depMethod,
+      inServiceDate,
     },
   });
   revalidatePath("/costs");

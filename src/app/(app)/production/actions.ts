@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { formNumber } from "@/lib/input-validation";
+import { formNumber, boundedNumber, nonNegativeNumber } from "@/lib/input-validation";
 import { assertFormAccess, assertRecordAccess, assertGlobalAccess } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
@@ -30,18 +30,32 @@ async function saveProduction__impl(fd: FormData) {
   const shift = s(fd, "shift") || "DAY";
   const session = await getSession();
 
+  const trips = boundedNumber(fd.get("trips"), "Trips", { min: 0, max: 1_000, integer: true, fallback: 0 });
+  const cycles = boundedNumber(fd.get("cycles"), "Cycles", { min: 0, max: 5_000, integer: true, fallback: 0 });
+  const tonnage = nonNegativeNumber(fd.get("tonnage"), "Tonnage", { max: 100_000, fallback: 0 });
+  const volumeM3 = nonNegativeNumber(fd.get("volumeM3"), "Volume (m³)", { max: 100_000, fallback: 0 });
+  const workedHours = boundedNumber(fd.get("workedHours"), "Worked hours", { min: 0, max: 24, fallback: 0 });
+  const idleHours = boundedNumber(fd.get("idleHours"), "Idle hours", { min: 0, max: 24, fallback: 0 });
+
+  if (workedHours + idleHours > 24) {
+    throw new ActionError("Total hours (worked + idle) cannot exceed 24 hours for a single shift.");
+  }
+
+  const distanceKm = boundedNumber(fd.get("distanceKm"), "Distance", { min: 0, max: 2_000, fallback: 0 });
+  const leadKm = boundedNumber(fd.get("leadKm"), "Lead distance", { min: 0, max: 500, fallback: 0 });
+
   const data = {
     projectId: s(fd, "projectId") || null,
     driverId: s(fd, "driverId") || null,
     material: s(fd, "material") || null,
-    trips: Math.round(n(fd, "trips")),
-    tonnage: n(fd, "tonnage"),
-    volumeM3: n(fd, "volumeM3"),
-    cycles: Math.round(n(fd, "cycles")),
-    workedHours: n(fd, "workedHours"),
-    idleHours: n(fd, "idleHours"),
-    distanceKm: n(fd, "distanceKm"),
-    leadKm: n(fd, "leadKm"),
+    trips,
+    tonnage,
+    volumeM3,
+    cycles,
+    workedHours,
+    idleHours,
+    distanceKm,
+    leadKm,
     source: s(fd, "source") || "MANUAL",
     verifiedBy: s(fd, "verifiedBy") || session?.name || null,
     note: s(fd, "note") || null,
@@ -69,7 +83,14 @@ async function saveProdNorm__impl(fd: FormData) {
   const assetClass = s(fd, "assetClass");
   const unit = s(fd, "unit");
   if (!assetClass || !unit) throw new ActionError("Asset class and unit are required");
-  const data = { targetLow: n(fd, "targetLow"), targetHigh: n(fd, "targetHigh") };
+
+  const targetLow = nonNegativeNumber(fd.get("targetLow"), "Target low", { max: 10_000, fallback: 0 });
+  const targetHigh = nonNegativeNumber(fd.get("targetHigh"), "Target high", { max: 10_000, fallback: 0 });
+  if (targetLow > targetHigh) {
+    throw new ActionError("Target low cannot exceed target high.");
+  }
+
+  const data = { targetLow, targetHigh };
   await db.productionNorm.upsert({
     where: { assetClass_unit: { assetClass, unit } },
     create: { assetClass, unit, ...data },

@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { businessTransaction } from "@/lib/business-transaction";
-import { formNumber } from "@/lib/input-validation";
+import { formNumber, boundedNumber, nonNegativeNumber } from "@/lib/input-validation";
 import { assertFormAccess, assertRecordAccess } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
@@ -24,15 +24,27 @@ async function saveTyre__impl(id: string | null, fd: FormData) {
   await assertFormAccess(scopeAccess, fd);
   if (id) await assertRecordAccess(scopeAccess, "tyre", id);
   const status = s(fd, "status") || "IN_STOCK";
+
+  const treadNewMm = boundedNumber(fd.get("treadNewMm"), "New tyre tread depth", { min: 5, max: 60, fallback: 20 });
+  const rawCurrentTread = fd.get("currentTreadMm");
+  const currentTreadMm = rawCurrentTread && String(rawCurrentTread).trim()
+    ? boundedNumber(rawCurrentTread, "Current tyre tread depth", { min: 0, max: 60 })
+    : treadNewMm;
+  if (currentTreadMm > treadNewMm) {
+    throw new ActionError("Current tread depth cannot exceed new tyre tread depth.");
+  }
+  const cost = nonNegativeNumber(fd.get("cost"), "Tyre cost", { max: 1_000_000, fallback: 0 });
+  const expectedLifeKm = boundedNumber(fd.get("expectedLifeKm"), "Expected life", { min: 1_000, max: 500_000, fallback: 60_000 });
+
   const data = {
     serialNo: s(fd, "serialNo"),
     make: s(fd, "make"),
     pattern: s(fd, "pattern") || null,
     size: s(fd, "size"),
-    cost: n(fd, "cost"),
-    treadNewMm: n(fd, "treadNewMm") || 20,
-    currentTreadMm: n(fd, "currentTreadMm") || n(fd, "treadNewMm") || 20,
-    expectedLifeKm: n(fd, "expectedLifeKm") || 60000,
+    cost,
+    treadNewMm,
+    currentTreadMm,
+    expectedLifeKm,
     purchaseDate: s(fd, "purchaseDate") ? new Date(s(fd, "purchaseDate")) : null,
     status,
     warehouseId: status === "IN_USE" ? null : (s(fd, "warehouseId") || null),

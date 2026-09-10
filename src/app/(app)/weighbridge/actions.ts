@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { formNumber } from "@/lib/input-validation";
+import { formNumber, oneOf, safeParseDate } from "@/lib/input-validation";
 import { assertFormAccess, assertRecordAccess } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
@@ -12,6 +12,8 @@ import { validateWeighbridgeWeights } from "@/lib/weighbridge";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const n = formNumber;
+
+const VALID_TICKET_KINDS = ["DISPATCH", "RECEIPT", "INTERNAL"] as const;
 
 function refresh() {
   revalidatePath("/weighbridge");
@@ -24,10 +26,14 @@ async function saveTicket__impl(fd: FormData) {
   await assertFormAccess(scopeAccess, fd);
   const ticketNo = s(fd, "ticketNo");
   if (!ticketNo) throw new ActionError("Ticket number is required");
+  if (ticketNo.length > 50) throw new ActionError("Ticket number cannot exceed 50 characters.");
 
   // Prevent duplicate ticket entry crashes
   const existing = await db.weighbridgeTicket.findFirst({ where: { ticketNo } });
   if (existing) throw new ActionError(`Weighbridge ticket ${ticketNo} already exists.`);
+
+  const kind = oneOf(s(fd, "kind") || "DISPATCH", VALID_TICKET_KINDS, "ticket kind");
+  const date = safeParseDate(fd.get("date"), "Ticket date") || new Date();
 
   const gross = n(fd, "grossKg");
   const tare = n(fd, "tareKg");
@@ -61,8 +67,8 @@ async function saveTicket__impl(fd: FormData) {
   await db.weighbridgeTicket.create({
     data: {
       ticketNo,
-      kind: s(fd, "kind") || "DISPATCH",
-      date: s(fd, "date") ? new Date(s(fd, "date")) : new Date(),
+      kind,
+      date,
       assetId: s(fd, "assetId") || null,
       driverId: s(fd, "driverId") || null,
       projectId: s(fd, "projectId") || null,

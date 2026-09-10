@@ -2,7 +2,15 @@
 
 import { db } from "@/lib/db";
 import { businessTransaction } from "@/lib/business-transaction";
-import { formNumber } from "@/lib/input-validation";
+import {
+  formNumber,
+  boundedNumber,
+  nonNegativeNumber,
+  coordinatePair,
+  oneOf,
+  safeParseDate,
+  validateDateRange,
+} from "@/lib/input-validation";
 import { assertFormAccess, assertRecordAccess } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
@@ -37,14 +45,23 @@ async function saveSite__impl(id: string | null, fd: FormData) {
   if (id) await assertRecordAccess(scopeAccess, "site", id);
   const projectId = s(fd, "projectId");
   if (!projectId) throw new ActionError("Project is required");
+
+  const type = oneOf(
+    s(fd, "type") || "WORK_FRONT",
+    ["WORK_FRONT", "CAMP", "WORKSHOP", "QUARRY", "CRUSHER", "OTHER"],
+    "Site type"
+  );
+  const radiusM = boundedNumber(fd.get("radiusM"), "Radius (m)", { min: 10, max: 50_000, fallback: 500 });
+  const { lat, lng } = coordinatePair(fd.get("lat"), fd.get("lng"), "Site");
+
   const data = {
     projectId,
     code: s(fd, "code"),
     name: s(fd, "name"),
-    type: s(fd, "type") || "WORK_FRONT",
-    lat: n(fd, "lat"),
-    lng: n(fd, "lng"),
-    radiusM: n(fd, "radiusM") || 500,
+    type,
+    lat: lat ?? 0,
+    lng: lng ?? 0,
+    radiusM,
     address: s(fd, "address") || null,
     active: fd.get("active") == null ? true : fd.get("active") === "on",
   };
@@ -103,21 +120,24 @@ async function saveEquipmentPlan__impl(fd: FormData) {
   const project = await db.project.findUnique({ where: { id: projectId } });
   if (!project) throw new ActionError("Selected project does not exist");
 
-  const plannedCount = Math.max(0, Math.round(n(fd, "plannedCount")));
-  if (plannedCount < 1) throw new ActionError("Planned count must be at least 1");
+  const plannedCount = boundedNumber(fd.get("plannedCount"), "Planned count", { min: 1, max: 500, integer: true, fallback: 1 });
+  const fromDateRaw = s(fd, "fromDate");
+  const fromDate = fromDateRaw ? safeParseDate(fromDateRaw, "Start date") ?? new Date() : new Date();
+  const toDateRaw = s(fd, "toDate");
+  const toDate = toDateRaw ? safeParseDate(toDateRaw, "End date") : null;
+  if (toDate) {
+    validateDateRange(fromDate, toDate, "Equipment plan duration");
+  }
+
+  const budgetPerDay = nonNegativeNumber(fd.get("budgetPerDay"), "Budget per day", { max: 10_000_000, fallback: 0 });
 
   const data = {
     plannedCount,
-    fromDate: s(fd, "fromDate") ? new Date(s(fd, "fromDate")) : new Date(),
-    toDate: s(fd, "toDate") ? new Date(s(fd, "toDate")) : null,
-    budgetPerDay: n(fd, "budgetPerDay"),
+    fromDate,
+    toDate,
+    budgetPerDay,
     notes: s(fd, "notes") || null,
   };
-
-  // Date sanity
-  if (data.toDate && data.toDate <= data.fromDate) {
-    throw new ActionError("End date must be after start date");
-  }
 
   await db.equipmentPlan.upsert({
     where: { projectId_assetClass: { projectId, assetClass } },
@@ -177,11 +197,18 @@ async function saveAllocation__impl(fd: FormData) {
     if (site.projectId !== projectId) throw new ActionError("Site does not belong to the selected project");
   }
 
-  const fromDate = s(fd, "fromDate") ? new Date(s(fd, "fromDate")) : new Date();
-  const toDate = s(fd, "toDate") ? new Date(s(fd, "toDate")) : null;
-  if (toDate && toDate <= fromDate) throw new ActionError("End date must be after start date");
+  const fromDateRaw = s(fd, "fromDate");
+  const fromDate = fromDateRaw ? safeParseDate(fromDateRaw, "Start date") ?? new Date() : new Date();
+  const toDateRaw = s(fd, "toDate");
+  const toDate = toDateRaw ? safeParseDate(toDateRaw, "End date") : null;
+  if (toDate) validateDateRange(fromDate, toDate, "Allocation duration");
 
-  const status = s(fd, "status") || "PLANNED";
+  const status = oneOf(
+    s(fd, "status") || "PLANNED",
+    ["PLANNED", "ACTIVE", "COMPLETED", "CANCELLED", "RELEASED"],
+    "Allocation status"
+  );
+  const ratePerDay = nonNegativeNumber(fd.get("ratePerDay"), "Rate per day", { max: 10_000_000, fallback: 0 });
   const session = await getSession();
 
   // ACID: single transaction for allocation creation + asset project sync + race condition check
@@ -200,7 +227,7 @@ async function saveAllocation__impl(fd: FormData) {
         assetId, projectId, siteId,
         fromDate, toDate, status,
         purpose: s(fd, "purpose") || null,
-        ratePerDay: n(fd, "ratePerDay"),
+        ratePerDay,
         allocatedBy: session?.name ?? null,
         notes: s(fd, "notes") || null,
       },
@@ -228,11 +255,19 @@ async function updateAllocationStatus__impl(id: string, fd: FormData) {
   const scopeAccess = await requireAction("production.edit");
   await assertFormAccess(scopeAccess, fd, { allowProjectMove: true });
   await assertRecordAccess(scopeAccess, "allocation", id);
-  const status = s(fd, "status");
-  if (!status) throw new ActionError("Status is required");
+  const rawStatus = s(fd, "status");
+  if (!rawStatus) throw new ActionError("Status is required");
+  const status = oneOf(
+    rawStatus,
+    ["PLANNED", "ACTIVE", "COMPLETED", "CANCELLED", "RELEASED"],
+    "Allocation status"
+  );
 
   const existing = await db.allocation.findUnique({ where: { id } });
   if (!existing) throw new ActionError("Allocation not found");
+
+  const toDateRaw = s(fd, "toDate");
+  const toDate = toDateRaw ? safeParseDate(toDateRaw, "End date") : undefined;
 
   // ACID: single transaction for allocation status change + asset project sync + race condition guard
   await businessTransaction(scopeAccess.session, async (tx) => {
@@ -249,7 +284,7 @@ async function updateAllocationStatus__impl(id: string, fd: FormData) {
       where: { id },
       data: {
         status,
-        toDate: s(fd, "toDate") ? new Date(s(fd, "toDate")) : undefined,
+        toDate: toDate ?? undefined,
         releasedOn: status === "RELEASED" ? new Date() : null,
         notes: s(fd, "notes") || undefined,
       },
@@ -326,6 +361,21 @@ async function saveMobilization__impl(fd: FormData) {
     if (!proj) throw new ActionError("Source project does not exist");
   }
 
+  const transportMode = oneOf(
+    s(fd, "transportMode") || "SELF_DRIVE",
+    ["SELF_DRIVE", "TRAILER", "LOW_BED", "TOWED", "RAIL", "OTHER"],
+    "Transport mode"
+  );
+  const status = oneOf(
+    s(fd, "status") || "REQUESTED",
+    ["REQUESTED", "APPROVED", "DISPATCHED", "IN_TRANSIT", "ARRIVED", "CANCELLED"],
+    "Mobilization status"
+  );
+  const distanceKm = nonNegativeNumber(fd.get("distanceKm"), "Distance", { max: 50_000, fallback: 0 });
+  const cost = nonNegativeNumber(fd.get("cost"), "Cost", { max: 10_000_000, fallback: 0 });
+  const reqDateRaw = s(fd, "requestedDate");
+  const requestedDate = reqDateRaw ? safeParseDate(reqDateRaw, "Requested date") ?? new Date() : new Date();
+
   const session = await getSession();
 
   // Atomic creation + audit in transaction
@@ -335,12 +385,12 @@ async function saveMobilization__impl(fd: FormData) {
         assetId,
         fromProjectId,
         toProjectId,
-        requestedDate: s(fd, "requestedDate") ? new Date(s(fd, "requestedDate")) : new Date(),
-        transportMode: s(fd, "transportMode") || "SELF_DRIVE",
+        requestedDate,
+        transportMode,
         transporter: s(fd, "transporter") || null,
-        distanceKm: n(fd, "distanceKm"),
-        cost: n(fd, "cost"),
-        status: s(fd, "status") || "REQUESTED",
+        distanceKm,
+        cost,
+        status,
         requestedBy: session?.name ?? null,
         notes: s(fd, "notes") || null,
       },
@@ -361,11 +411,25 @@ async function updateMobilization__impl(id: string, fd: FormData) {
   const scopeAccess = await requireAction("production.edit");
   await assertFormAccess(scopeAccess, fd, { allowProjectMove: true });
   await assertRecordAccess(scopeAccess, "mobilizationOrder", id);
-  const status = s(fd, "status");
-  if (!status) throw new ActionError("Status is required");
+  const rawStatus = s(fd, "status");
+  if (!rawStatus) throw new ActionError("Status is required");
+  const status = oneOf(
+    rawStatus,
+    ["REQUESTED", "APPROVED", "DISPATCHED", "IN_TRANSIT", "ARRIVED", "CANCELLED"],
+    "Mobilization status"
+  );
 
   const existing = await db.mobilizationOrder.findUnique({ where: { id }, include: { asset: true } });
   if (!existing) throw new ActionError("Mobilisation order not found");
+
+  const dispatchRaw = s(fd, "dispatchDate");
+  const dispatchDate = dispatchRaw ? safeParseDate(dispatchRaw, "Dispatch date") : undefined;
+  const arrivalRaw = s(fd, "arrivalDate");
+  const arrivalDate = arrivalRaw ? safeParseDate(arrivalRaw, "Arrival date") : undefined;
+  if (dispatchDate && arrivalDate) {
+    validateDateRange(dispatchDate, arrivalDate, "Mobilization journey");
+  }
+  const cost = nonNegativeNumber(fd.get("cost"), "Cost", { max: 10_000_000, fallback: 0 });
 
   // ACID: single transaction for mob order update + asset status/project sync + lifecycle event
   await businessTransaction(scopeAccess.session, async (tx) => {
@@ -373,9 +437,9 @@ async function updateMobilization__impl(id: string, fd: FormData) {
       where: { id },
       data: {
         status,
-        dispatchDate: s(fd, "dispatchDate") ? new Date(s(fd, "dispatchDate")) : undefined,
-        arrivalDate: s(fd, "arrivalDate") ? new Date(s(fd, "arrivalDate")) : undefined,
-        cost: n(fd, "cost"),
+        dispatchDate: dispatchDate ?? undefined,
+        arrivalDate: arrivalDate ?? undefined,
+        cost,
         notes: s(fd, "notes") || undefined,
       },
     });

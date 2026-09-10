@@ -6,6 +6,7 @@ import { canSeeAsset, getAccess, requireApi, type Access } from "@/lib/access";
 import { db } from "@/lib/db";
 import { privateFileUrl } from "@/lib/private-upload";
 import { recordScope } from "@/lib/record-access";
+import { clientIp, reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,18 @@ async function handleGET(req: Request) {
   if (!blobUrl || !isPrivateBlobUrl(blobUrl)) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const storedUrl = privateFileUrl(blobUrl);
 
+  const access = await getAccess();
+  const subject = access?.session.id ?? clientIp(req);
+  const limit = await reserveRateLimit({
+    scope: "file-stream",
+    subject,
+    limit: 60,
+    windowMs: 60_000,
+  });
+  if (!limit.ok) {
+    return rateLimitResponse(limit.retryInSeconds, "Too many file requests. Please wait.");
+  }
+
   // Resolve the resource before its permission so a caller needs both a real
   // database reference and the appropriate module/row scope to receive it.
   const [compliance, personDocument, transaction, receipt, dip, gauge, workOrder, ticket] = await Promise.all([
@@ -62,7 +75,6 @@ async function handleGET(req: Request) {
 
   let permitted = false;
   if (compliance) {
-    const access = await getAccess();
     // The driver document screen shows the papers for the driver's assigned
     // vehicle. It is safe to open those files only when the same asset scope
     // confirms that the vehicle is still theirs; office users retain the
@@ -74,7 +86,6 @@ async function handleGET(req: Request) {
       permitted = auth.ok && await canReadAssetFile(auth.access, compliance.assetId);
     }
   } else if (personDocument) {
-    const access = await getAccess();
     // Drivers have no broad people permission. Their one permitted exception
     // is the document attached to their own linked driver record.
     if (access?.group === "DRIVER") {

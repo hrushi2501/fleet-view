@@ -4,6 +4,7 @@ import { requireApi } from "@/lib/access";
 import { audit } from "@/lib/audit";
 import { isValidPeriod } from "@/lib/payroll";
 import { payrollWorkbook, payrollPdf, periodLabel } from "@/lib/payroll-export";
+import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,16 @@ export async function GET(
 ) {
   const auth = await requireApi("payroll.view");
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
+  const limit = await reserveRateLimit({
+    scope: "payroll-export",
+    subject: auth.access.session.id,
+    limit: 10,
+    windowMs: 300_000,
+  });
+  if (!limit.ok) {
+    return rateLimitResponse(limit.retryInSeconds, "Too many payroll export requests. Please try again later.");
+  }
 
   const { period } = await ctx.params;
   if (!isValidPeriod(period)) {
