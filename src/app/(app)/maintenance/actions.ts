@@ -8,7 +8,7 @@ import { requireAction, ActionError, safe } from "@/lib/guard";
 import { changeWorkOrderStatus, editableWorkOrder, recalculateWorkOrder } from "@/lib/work-order-service";
 import { businessTransaction } from "@/lib/business-transaction";
 import { assertFormAccess, assertRecordAccess, assertGlobalAccess, recordScope } from "@/lib/record-access";
-import { formNumber, positiveNumber, finiteNumber, nonNegativeNumber, boundedNumber, oneOf } from "@/lib/input-validation";
+import { formNumber, positiveNumber, finiteNumber, nonNegativeNumber, boundedNumber, oneOf, safeParseDate, sanitizeString } from "@/lib/input-validation";
 import { randomUUID } from "node:crypto";
 import {
   issueInventoryToWorkOrder,
@@ -19,7 +19,7 @@ import {
 } from "@/lib/inventory";
 import { audit } from "@/lib/audit";
 
-const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
+const s = (fd: FormData, k: string) => sanitizeString(fd.get(k), k);
 const n = formNumber;
 const b = (fd: FormData, k: string) => fd.get(k) === "on" || fd.get(k) === "true";
 
@@ -48,7 +48,7 @@ async function saveSchedule__impl(id: string | null, fd: FormData) {
     intervalHours: nonNegativeNumber(fd.get("intervalHours"), "Interval hours", { max: 50_000, fallback: 0 }),
     intervalDays: boundedNumber(fd.get("intervalDays"), "Interval days", { min: 0, max: 3650, integer: true, fallback: 0 }),
     lastDoneMeter: nonNegativeNumber(fd.get("lastDoneMeter"), "Last done meter", { max: 10_000_000, fallback: 0 }),
-    lastDoneDate: s(fd, "lastDoneDate") ? new Date(s(fd, "lastDoneDate")) : null,
+    lastDoneDate: safeParseDate(fd.get("lastDoneDate"), "Last done date"),
     estimatedCost: nonNegativeNumber(fd.get("estimatedCost"), "Estimated cost", { max: 10_000_000, fallback: 0 }),
     estimatedHours: nonNegativeNumber(fd.get("estimatedHours"), "Estimated hours", { max: 500, fallback: 0 }),
     active: fd.get("active") == null ? true : b(fd, "active"),

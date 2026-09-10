@@ -10,6 +10,9 @@ import {
   oneOf,
   safeParseDate,
   validateDateRange,
+  sanitizeString,
+  sanitizeOptionalString,
+  sanitizeId,
 } from "@/lib/input-validation";
 import { assertFormAccess, assertRecordAccess } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
@@ -17,7 +20,8 @@ import { getSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { requireAction, ActionError, safe } from "@/lib/guard";
 
-const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
+const s = (fd: FormData, k: string) => sanitizeString(fd.get(k), k);
+const sOrNull = (fd: FormData, k: string) => sanitizeOptionalString(fd.get(k), k);
 const n = formNumber;
 
 /**
@@ -42,7 +46,10 @@ function refresh() {
 async function saveSite__impl(id: string | null, fd: FormData) {
   const scopeAccess = await requireAction("fleet.edit");
   await assertFormAccess(scopeAccess, fd, { allowProjectMove: true });
-  if (id) await assertRecordAccess(scopeAccess, "site", id);
+  if (id) {
+    id = sanitizeId(id);
+    await assertRecordAccess(scopeAccess, "site", id);
+  }
   const projectId = s(fd, "projectId");
   if (!projectId) throw new ActionError("Project is required");
 
@@ -62,7 +69,7 @@ async function saveSite__impl(id: string | null, fd: FormData) {
     lat: lat ?? 0,
     lng: lng ?? 0,
     radiusM,
-    address: s(fd, "address") || null,
+    address: sOrNull(fd, "address"),
     active: fd.get("active") == null ? true : fd.get("active") === "on",
   };
   if (!data.code || !data.name) throw new ActionError("Site code and name are required");
@@ -86,6 +93,7 @@ async function saveSite__impl(id: string | null, fd: FormData) {
 }
 
 async function deleteSite__impl(id: string) {
+  id = sanitizeId(id);
   const scopeAccess = await requireAction("fleet.edit");
   await assertRecordAccess(scopeAccess, "site", id);
   const site = await db.site.findUnique({ where: { id }, include: { allocations: { select: { id: true } } } });
@@ -136,7 +144,7 @@ async function saveEquipmentPlan__impl(fd: FormData) {
     fromDate,
     toDate,
     budgetPerDay,
-    notes: s(fd, "notes") || null,
+    notes: sOrNull(fd, "notes"),
   };
 
   await db.equipmentPlan.upsert({
@@ -155,6 +163,7 @@ async function saveEquipmentPlan__impl(fd: FormData) {
 }
 
 async function deleteEquipmentPlan__impl(id: string) {
+  id = sanitizeId(id);
   const scopeAccess = await requireAction("production.edit");
   await assertRecordAccess(scopeAccess, "equipmentPlan", id);
   const plan = await db.equipmentPlan.findUnique({ where: { id }, include: { project: { select: { code: true } } } });
@@ -190,7 +199,7 @@ async function saveAllocation__impl(fd: FormData) {
   if (!project) throw new ActionError("Selected project does not exist");
 
   // Validate site belongs to this project (if provided)
-  const siteId = s(fd, "siteId") || null;
+  const siteId = sOrNull(fd, "siteId");
   if (siteId) {
     const site = await db.site.findUnique({ where: { id: siteId } });
     if (!site) throw new ActionError("Selected site does not exist");
@@ -226,10 +235,10 @@ async function saveAllocation__impl(fd: FormData) {
       data: {
         assetId, projectId, siteId,
         fromDate, toDate, status,
-        purpose: s(fd, "purpose") || null,
+        purpose: sOrNull(fd, "purpose"),
         ratePerDay,
         allocatedBy: session?.name ?? null,
-        notes: s(fd, "notes") || null,
+        notes: sOrNull(fd, "notes"),
       },
     });
 
@@ -252,6 +261,7 @@ async function saveAllocation__impl(fd: FormData) {
 }
 
 async function updateAllocationStatus__impl(id: string, fd: FormData) {
+  id = sanitizeId(id);
   const scopeAccess = await requireAction("production.edit");
   await assertFormAccess(scopeAccess, fd, { allowProjectMove: true });
   await assertRecordAccess(scopeAccess, "allocation", id);
@@ -286,7 +296,7 @@ async function updateAllocationStatus__impl(id: string, fd: FormData) {
         status,
         toDate: toDate ?? undefined,
         releasedOn: status === "RELEASED" ? new Date() : null,
-        notes: s(fd, "notes") || undefined,
+        notes: sOrNull(fd, "notes") ?? undefined,
       },
     });
 
@@ -311,6 +321,7 @@ async function updateAllocationStatus__impl(id: string, fd: FormData) {
 }
 
 async function deleteAllocation__impl(id: string) {
+  id = sanitizeId(id);
   const scopeAccess = await requireAction("production.edit");
   await assertRecordAccess(scopeAccess, "allocation", id);
   const alloc = await db.allocation.findUnique({
@@ -350,8 +361,8 @@ async function saveMobilization__impl(fd: FormData) {
   if (!asset) throw new ActionError("Selected asset does not exist");
 
   // Validate projects if provided
-  const toProjectId = s(fd, "toProjectId") || null;
-  const fromProjectId = s(fd, "fromProjectId") || null;
+  const toProjectId = sOrNull(fd, "toProjectId");
+  const fromProjectId = sOrNull(fd, "fromProjectId");
   if (toProjectId) {
     const proj = await db.project.findUnique({ where: { id: toProjectId } });
     if (!proj) throw new ActionError("Destination project does not exist");
@@ -387,12 +398,12 @@ async function saveMobilization__impl(fd: FormData) {
         toProjectId,
         requestedDate,
         transportMode,
-        transporter: s(fd, "transporter") || null,
+        transporter: sOrNull(fd, "transporter"),
         distanceKm,
         cost,
         status,
         requestedBy: session?.name ?? null,
-        notes: s(fd, "notes") || null,
+        notes: sOrNull(fd, "notes"),
       },
     });
   });
@@ -408,6 +419,7 @@ async function saveMobilization__impl(fd: FormData) {
 }
 
 async function updateMobilization__impl(id: string, fd: FormData) {
+  id = sanitizeId(id);
   const scopeAccess = await requireAction("production.edit");
   await assertFormAccess(scopeAccess, fd, { allowProjectMove: true });
   await assertRecordAccess(scopeAccess, "mobilizationOrder", id);
@@ -440,7 +452,7 @@ async function updateMobilization__impl(id: string, fd: FormData) {
         dispatchDate: dispatchDate ?? undefined,
         arrivalDate: arrivalDate ?? undefined,
         cost,
-        notes: s(fd, "notes") || undefined,
+        notes: sOrNull(fd, "notes") ?? undefined,
       },
     });
 
@@ -481,6 +493,7 @@ async function updateMobilization__impl(id: string, fd: FormData) {
 }
 
 async function deleteMobilization__impl(id: string) {
+  id = sanitizeId(id);
   const scopeAccess = await requireAction("production.edit");
   await assertRecordAccess(scopeAccess, "mobilizationOrder", id);
   const order = await db.mobilizationOrder.findUnique({

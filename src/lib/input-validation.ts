@@ -84,12 +84,31 @@ export function oneOf<T extends string>(value: string, allowed: readonly T[], la
 export function safeParseDate(
   value: unknown,
   label: string,
-  options: { minYear?: number; maxYear?: number; required?: boolean } = {}
+  options: { minYear?: number; maxYear?: number; required: true; fallback?: Date }
+): Date;
+export function safeParseDate(
+  value: unknown,
+  label: string,
+  options?: { minYear?: number; maxYear?: number; required?: boolean; fallback?: Date }
+): Date | null;
+export function safeParseDate(
+  value: unknown,
+  label: string,
+  options: { minYear?: number; maxYear?: number; required?: boolean; fallback?: Date } = {}
 ): Date | null {
   if (value === null || value === undefined || (typeof value === "string" && !value.trim())) {
+    if (options.fallback !== undefined) return options.fallback;
     if (options.required) throw new ActionError(`${label} is required.`);
     return null;
   }
+  const rawStr = typeof value === "string" ? value.trim() : null;
+  if (rawStr && /^\d{4}-\d{2}-\d{2}$/.test(rawStr)) {
+    const utcDate = new Date(`${rawStr}T00:00:00.000Z`);
+    if (Number.isNaN(utcDate.getTime()) || utcDate.toISOString().slice(0, 10) !== rawStr) {
+      throw new ActionError(`Invalid date provided for ${label}.`);
+    }
+  }
+
   const date = value instanceof Date ? value : new Date(String(value).trim());
   if (Number.isNaN(date.getTime())) {
     throw new ActionError(`Invalid date provided for ${label}.`);
@@ -102,5 +121,79 @@ export function safeParseDate(
     throw new ActionError(`${label} year cannot be later than ${options.maxYear}.`);
   }
   return date;
+}
+
+/**
+ * Sanitizes and normalizes string inputs:
+ * 1. Safely handles empty File objects from multipart form uploads.
+ * 2. Strips null bytes (\0) to prevent PostgreSQL "invalid byte sequence for encoding UTF8: 0x00" fatal errors.
+ * 3. Strips harmful non-printable control characters (preserving space, \t, \n, \r).
+ * 4. Trims leading and trailing whitespace.
+ * 5. Enforces minLength and maxLength bounds to prevent memory denial-of-service or database column overflow.
+ */
+export function sanitizeString(
+  value: unknown,
+  label: string = "Input",
+  options: { minLength?: number; maxLength?: number; required?: boolean; fallback?: string } = {}
+): string {
+  if (value === null || value === undefined) {
+    if (options.fallback !== undefined) return options.fallback;
+    if (options.required) throw new ActionError(`${label} is required.`);
+    return "";
+  }
+
+  // Handle empty File / Blob objects from multipart form data
+  if (typeof value === "object" && value !== null) {
+    if ("size" in value && typeof (value as { size: unknown }).size === "number" && (value as { size: number }).size === 0) {
+      if (options.fallback !== undefined) return options.fallback;
+      if (options.required) throw new ActionError(`${label} is required.`);
+      return "";
+    }
+  }
+
+  const clean = String(value)
+    .replace(/\0/g, "")
+    .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+    .trim();
+
+  if (!clean) {
+    if (options.fallback !== undefined) return options.fallback;
+    if (options.required) throw new ActionError(`${label} is required.`);
+    return "";
+  }
+
+  if (options.minLength !== undefined && clean.length < options.minLength) {
+    throw new ActionError(`${label} must be at least ${options.minLength} characters.`);
+  }
+
+  const max = options.maxLength ?? 5000;
+  if (clean.length > max) {
+    throw new ActionError(`${label} cannot exceed ${max} characters.`);
+  }
+
+  return clean;
+}
+
+/**
+ * Sanitizes an optional string input, returning trimmed string or null if empty.
+ */
+export function sanitizeOptionalString(
+  value: unknown,
+  label: string = "Input",
+  options: { maxLength?: number } = {}
+): string | null {
+  const result = sanitizeString(value, label, { maxLength: options.maxLength });
+  return result.length > 0 ? result : null;
+}
+
+/**
+ * Validates and sanitizes an alphanumeric identifier (CUID, UUID, or code).
+ */
+export function sanitizeId(value: unknown, label: string = "ID"): string {
+  const id = sanitizeString(value, label, { required: true, maxLength: 100 });
+  if (!/^[a-zA-Z0-9_\-:]+$/.test(id)) {
+    throw new ActionError(`Invalid ${label} format.`);
+  }
+  return id;
 }
 

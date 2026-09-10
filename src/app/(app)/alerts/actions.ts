@@ -7,11 +7,19 @@ import { audit } from "@/lib/audit";
 import { sweepAlerts, dueForEscalation, DEFAULT_ALERT_RULES, type AlertRuleLite, type SweepInput } from "@/lib/alerts";
 import { pmDue, type ScheduleLite } from "@/lib/maintenance";
 import { allocationConflicts, mobilizationStats, type AllocationLite, type MobLite } from "@/lib/operations";
-import { requireAction, safe } from "@/lib/guard";
+import {
+  formNumber,
+  boundedNumber,
+  nonNegativeNumber,
+  oneOf,
+  sanitizeString,
+  sanitizeId,
+} from "@/lib/input-validation";
+import { ActionError, requireAction, safe } from "@/lib/guard";
 import { assertRecordAccess } from "@/lib/record-access";
 
-const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
-const n = (fd: FormData, k: string) => Number(fd.get(k) ?? 0) || 0;
+const s = (fd: FormData, k: string) => sanitizeString(fd.get(k), k);
+const n = formNumber;
 
 function refresh() {
   revalidatePath("/alerts");
@@ -22,7 +30,9 @@ function refresh() {
  * Kept from the original build so the existing AlertsClient keeps working;
  * now also stamps who acted and when, which M18's response-time stats need.
  */
-async function updateAlert__impl(id: string, status: "Acknowledged" | "Resolved") {
+async function updateAlert__impl(id: string, rawStatus: "Acknowledged" | "Resolved") {
+  id = sanitizeId(id, "Alert ID");
+  const status = oneOf(rawStatus, ["Acknowledged", "Resolved"], "Alert status");
   const scopeAccess = await requireAction("maintenance.edit");
   await assertRecordAccess(scopeAccess, "alert", id);
   const session = await getSession();
@@ -39,6 +49,7 @@ async function updateAlert__impl(id: string, status: "Acknowledged" | "Resolved"
 }
 
 async function acknowledgeAlert__impl(id: string) {
+  id = sanitizeId(id, "Alert ID");
   const scopeAccess = await requireAction("maintenance.edit");
   await assertRecordAccess(scopeAccess, "alert", id);
   const session = await getSession();
@@ -50,6 +61,7 @@ async function acknowledgeAlert__impl(id: string) {
 }
 
 async function resolveAlert__impl(id: string) {
+  id = sanitizeId(id, "Alert ID");
   const scopeAccess = await requireAction("maintenance.edit");
   await assertRecordAccess(scopeAccess, "alert", id);
   await db.alert.update({ where: { id }, data: { status: "Resolved", resolvedAt: new Date() } });
@@ -57,6 +69,7 @@ async function resolveAlert__impl(id: string) {
 }
 
 async function escalateAlert__impl(id: string) {
+  id = sanitizeId(id, "Alert ID");
   const scopeAccess = await requireAction("maintenance.edit");
   await assertRecordAccess(scopeAccess, "alert", id);
   const session = await getSession();
@@ -67,7 +80,9 @@ async function escalateAlert__impl(id: string) {
   refresh();
 }
 
-async function assignAlert__impl(id: string, supervisor: string) {
+async function assignAlert__impl(id: string, rawSupervisor: string) {
+  id = sanitizeId(id, "Alert ID");
+  const supervisor = sanitizeString(rawSupervisor, "Supervisor", { required: true, maxLength: 120 });
   const scopeAccess = await requireAction("maintenance.edit");
   await assertRecordAccess(scopeAccess, "alert", id);
   const session = await getSession();
@@ -101,15 +116,21 @@ async function seedAlertRules__impl() {
 }
 
 async function updateAlertRule__impl(id: string, fd: FormData) {
+  id = sanitizeId(id, "Alert Rule ID");
   await requireAction("admin.settings");
+  const threshold = nonNegativeNumber(fd.get("threshold"), "Threshold", { max: 10_000_000, fallback: 0 });
+  const severity = oneOf(s(fd, "severity") || "Warning", ["Info", "Warning", "Critical"], "Severity");
+  const escalateAfterHours = boundedNumber(fd.get("escalateAfterHours"), "Escalate after hours", { min: 1, max: 720, integer: true, fallback: 24 });
+  const channels = fd.getAll("channels").map((c) => sanitizeString(c, "Channel", { maxLength: 50 })).filter(Boolean).join(",") || "IN_APP";
+
   await db.alertRule.update({
     where: { id },
     data: {
-      threshold: n(fd, "threshold"),
-      severity: s(fd, "severity") || "Warning",
+      threshold,
+      severity,
       enabled: fd.get("enabled") === "on" || fd.get("enabled") === "true",
-      escalateAfterHours: Math.max(1, Math.round(n(fd, "escalateAfterHours"))) || 24,
-      channels: fd.getAll("channels").map(String).join(",") || "IN_APP",
+      escalateAfterHours,
+      channels,
     },
   });
   await audit({ action: "CONFIG", module: "ADMIN", entity: "AlertRule", entityId: id, summary: "Alert rule tuned" });

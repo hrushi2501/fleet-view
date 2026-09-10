@@ -18,7 +18,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { businessTransaction } from "@/lib/business-transaction";
-import { positiveNumber, finiteNumber, oneOf } from "@/lib/input-validation";
+import { positiveNumber, finiteNumber, oneOf, sanitizeString, sanitizeOptionalString, sanitizeId } from "@/lib/input-validation";
 import { ActionError, safe } from "@/lib/guard";
 import { requirePage, canSeeAsset } from "@/lib/access";
 import { auditAs } from "@/lib/audit";
@@ -35,9 +35,9 @@ async function reportProblem__impl(fd: FormData) {
   // action could legitimately be reporting against.
   if (!access.driverId) throw new ActionError("A linked driver account is required to report a vehicle problem.");
 
-  const assetId = String(fd.get("assetId") ?? "").trim();
-  const kind = String(fd.get("kind") ?? "").trim();
-  const note = String(fd.get("note") ?? "").trim().slice(0, 500);
+  const assetId = sanitizeId(fd.get("assetId"), "Asset ID");
+  const kind = sanitizeString(fd.get("kind"), "Problem kind");
+  const note = sanitizeString(fd.get("note"), "Note", { maxLength: 500 });
   const stopped = fd.get("stopped") === "on";
   const returnToReport = fd.get("returnTo") === "report";
 
@@ -173,14 +173,14 @@ export const reportProblem = safe(reportProblem__impl);
 async function logDriverTrip__impl(fd: FormData) {
   const access = await requirePage("my.trips");
   if (!access.driverId) throw new ActionError("A linked driver account is required.");
-  const assetId = String(fd.get("assetId") ?? "").trim();
+  const assetId = sanitizeId(fd.get("assetId"), "Asset ID");
   if (!assetId || !(await canSeeAsset(access, assetId))) throw new ActionError("This is not your assigned machine.");
   const submissionId = String(fd.get("submissionId") ?? "");
   if (!/^[0-9a-f-]{36}$/i.test(submissionId)) throw new ActionError("Reload the trip form and try again.");
   const tonnage = positiveNumber(fd.get("tonnage"), "Tonnage");
   if (tonnage > 1_000) throw new ActionError("Tonnage is above the permitted trip-entry limit.");
   const distanceKm = finiteNumber(fd.get("distanceKm"), "Distance", { min: 0, max: 1_000 });
-  const meterText = String(fd.get("endMeter") ?? "").trim();
+  const meterText = sanitizeString(fd.get("endMeter"), "Meter");
   const endMeter = meterText ? finiteNumber(meterText, "Meter", { min: 0, max: 10_000_000 }) : null;
   await businessTransaction(access.session, async tx => {
     const previous = await tx.trip.findFirst({ where: { driverId: access.driverId, id: { endsWith: "_" + submissionId } } });
@@ -244,8 +244,7 @@ async function uploadOwnDocument__impl(fd: FormData) {
     throw new ActionError("Choose a licence or Aadhaar scan to upload.");
   }
 
-  const number = String(fd.get("number") ?? "").trim();
-  if (number.length > 80) throw new ActionError("Document number is too long.");
+  const number = sanitizeOptionalString(fd.get("number"), "Document number", { maxLength: 80 });
   const expiryDate = optionalCalendarDate(fd.get("expiryDate"), "Expiry date");
   const documentUrl = await uploadPrivateFile(file, { folder: "driver-documents", kind: "document" });
 

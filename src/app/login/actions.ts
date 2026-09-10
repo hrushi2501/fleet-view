@@ -63,8 +63,8 @@ async function recordLastLogin(userId: string): Promise<void> {
  *    password, so the form cannot be used to enumerate who holds an account.
  */
 async function loginImpl(_prev: unknown, formData: FormData) {
-  const email = String(formData.get("email") || "").trim().toLowerCase();
-  const password = String(formData.get("password") || "");
+  const email = String(formData.get("email") || "").replace(/\0/g, "").trim().toLowerCase();
+  const password = String(formData.get("password") || "").replace(/\0/g, "");
 
   if (!email || !password) return { error: "Enter your email and password." };
   if (email.length > 254 || password.length > 1024) return { error: "Invalid email or password." };

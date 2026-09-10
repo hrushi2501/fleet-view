@@ -9,6 +9,9 @@ import {
   boundedNumber,
   oneOf,
   safeParseDate,
+  validateDateRange,
+  sanitizeString,
+  sanitizeOptionalString,
 } from "@/lib/input-validation";
 import { assertRecordAccess, assertFormAccess, assertGlobalAccess, fuelAnomalyScope } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
@@ -19,7 +22,8 @@ import { requireAction, ActionError, safe } from "@/lib/guard";
 import { transition } from "@/lib/transition";
 import { uploadPrivateFile } from "@/lib/private-upload";
 
-const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
+const s = (fd: FormData, k: string) => sanitizeString(fd.get(k), k);
+const sOrNull = (fd: FormData, k: string) => sanitizeOptionalString(fd.get(k), k);
 const n = formNumber;
 
 const VALID_TANK_STATUSES = ["Active", "Inactive", "Maintenance"] as const;
@@ -60,9 +64,9 @@ async function saveTank__impl(id: string | null, fd: FormData) {
     capacity,
     minLevel,
     openingLevel,
-    projectId: s(fd, "projectId") || null,
+    projectId: sOrNull(fd, "projectId"),
     status,
-    code: s(fd, "code") || null,
+    code: sOrNull(fd, "code"),
   };
   if (id) await db.fuelTank.update({ where: { id }, data });
   else await db.fuelTank.create({ data: { ...data, currentLevel: data.openingLevel } });
@@ -112,7 +116,7 @@ async function saveReceipt__impl(fd: FormData) {
       data: {
         tankId,
         supplier: s(fd, "supplier"),
-        invoiceNo: s(fd, "invoiceNo") || null,
+        invoiceNo: sOrNull(fd, "invoiceNo"),
         qtyInvoiced,
         qtyReceived,
         rate,
@@ -120,9 +124,9 @@ async function saveReceipt__impl(fd: FormData) {
         flowMeterStart,
         flowMeterEnd,
         weighbridgeNet: n(fd, "weighbridgeNet"),
-        tankerNo: s(fd, "tankerNo") || null,
+        tankerNo: sOrNull(fd, "tankerNo"),
         invoicePhoto: photo,
-        receivedBy: s(fd, "receivedBy") || session?.name || null,
+        receivedBy: sOrNull(fd, "receivedBy") || session?.name || null,
         shortfall,
         date,
       },
@@ -185,8 +189,8 @@ async function saveDip__impl(fd: FormData) {
       data: {
         tankId,
         level,
-        readBy: s(fd, "readBy") || session?.name || null,
-        note: s(fd, "note") || null,
+        readBy: sOrNull(fd, "readBy") || session?.name || null,
+        note: sOrNull(fd, "note"),
         photo,
         date: safeParseDate(fd.get("date"), "Dip date") || new Date(),
       },
@@ -213,8 +217,11 @@ async function deleteDip__impl(id: string) {
 async function runReconciliation__impl(tankId: string, fromStr?: string, toStr?: string) {
   const scopeAccess = await requireAction("fuel.reconcile");
   await assertRecordAccess(scopeAccess, "fuelTank", tankId);
-  const from = fromStr ? new Date(fromStr) : undefined;
-  const to = toStr ? new Date(toStr) : undefined;
+  const from = fromStr ? safeParseDate(fromStr, "Start date") ?? undefined : undefined;
+  const to = toStr ? safeParseDate(toStr, "End date") ?? undefined : undefined;
+  if (from && to) {
+    validateDateRange(from, to, "Reconciliation window");
+  }
 
   const tank = await db.fuelTank.findUnique({
     where: { id: tankId },
@@ -324,15 +331,16 @@ async function updateAnomaly__impl(id: string, fd: FormData) {
   const scopeAccess = await requireAction("fuel.approve");
   const visible = await db.fuelAnomaly.findFirst({ where: { id, ...await fuelAnomalyScope(scopeAccess) }, select: { id: true } });
   if (!visible) throw new ActionError("This anomaly is unavailable or outside your assigned sites.");
-  const status = s(fd, "status");
+  const status = oneOf(s(fd, "status") || "OPEN", ["OPEN", "INVESTIGATING", "RESOLVED", "DISMISSED"], "Anomaly status");
   const session = await getSession();
+  const recovered = nonNegativeNumber(fd.get("recovered"), "Recovered amount", { max: 100_000_000, fallback: 0 });
   await db.fuelAnomaly.update({
     where: { id },
     data: {
       status,
-      resolution: s(fd, "resolution") || null,
-      recovered: n(fd, "recovered"),
-      assignedTo: s(fd, "assignedTo") || session?.name || null,
+      resolution: sOrNull(fd, "resolution"),
+      recovered,
+      assignedTo: sOrNull(fd, "assignedTo") || session?.name || null,
       resolvedAt: status === "OPEN" || status === "INVESTIGATING" ? null : new Date(),
     },
   });
@@ -345,14 +353,20 @@ async function saveNorm__impl(fd: FormData) {
   const scopeAccess = await requireAction("fuel.reconcile");
   await assertFormAccess(scopeAccess, fd);
   assertGlobalAccess(scopeAccess);
-  const assetClass = s(fd, "assetClass") || null;
-  const unit = s(fd, "unit") || "KMPL";
-  const data = {
-    normLow: n(fd, "normLow"),
-    normHigh: n(fd, "normHigh"),
-    tolerancePct: n(fd, "tolerancePct") || 15,
-  };
+  const assetClass = s(fd, "assetClass");
   if (!assetClass) throw new ActionError("Asset class is required");
+  const unit = oneOf(s(fd, "unit") || "KMPL", ["KMPL", "LPH", "L_PER_TONNE", "L_PER_TRIP"], "Unit");
+  const normLow = nonNegativeNumber(fd.get("normLow"), "Norm low", { max: 10_000, fallback: 0 });
+  const normHigh = nonNegativeNumber(fd.get("normHigh"), "Norm high", { max: 10_000, fallback: 0 });
+  if (normLow > normHigh) {
+    throw new ActionError("Norm low cannot exceed norm high.");
+  }
+  const tolerancePct = boundedNumber(fd.get("tolerancePct"), "Tolerance percentage", { min: 0, max: 100, fallback: 15 });
+  const data = {
+    normLow,
+    normHigh,
+    tolerancePct,
+  };
   await db.consumptionNorm.upsert({
     where: { assetClass_unit: { assetClass, unit } },
     create: { assetClass, unit, ...data },

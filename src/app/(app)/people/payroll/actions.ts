@@ -29,6 +29,13 @@ import {
   type AttendanceDay,
   type WageAgreement,
 } from "@/lib/payroll";
+import {
+  safeParseDate,
+  sanitizeString,
+  sanitizeOptionalString,
+  sanitizeId,
+  oneOf,
+} from "@/lib/input-validation";
 
 type Result = { ok: true; message: string };
 
@@ -47,23 +54,19 @@ async function setWage__impl(input: {
   note?: string;
 }): Promise<Result> {
   const access = await requireAction("payroll.edit");
+  const driverId = sanitizeId(input.driverId, "Person ID");
+  const kind = oneOf(input.kind, ["DAILY", "MONTHLY"], "Wage kind");
 
-  if (!["DAILY", "MONTHLY"].includes(input.kind)) {
-    throw new ActionError("Wage must be either daily or monthly.");
-  }
   if (!Number.isFinite(input.amount) || input.amount <= 0) {
     throw new ActionError("Enter a wage amount greater than zero.");
   }
   if (!Number.isFinite(input.otHourly) || input.otHourly < 0) {
     throw new ActionError("Overtime rate cannot be negative.");
   }
-  const effectiveFrom = new Date(input.effectiveFrom);
-  if (Number.isNaN(effectiveFrom.getTime())) {
-    throw new ActionError("Enter a valid date for when this wage starts.");
-  }
+  const effectiveFrom = safeParseDate(input.effectiveFrom, "Effective from date", { required: true });
 
   const driver = await db.driver.findUnique({
-    where: { id: input.driverId },
+    where: { id: driverId },
     select: { id: true, name: true, empCode: true },
   });
   if (!driver) throw new ActionError("That person no longer exists.");
@@ -234,6 +237,7 @@ async function adjustLine__impl(input: {
   note?: string;
 }): Promise<Result> {
   const access = await requireAction("payroll.edit");
+  const lineId = sanitizeId(input.lineId, "Payroll line ID");
 
   for (const [label, value] of [
     ["Bonus", input.bonus],
@@ -246,7 +250,7 @@ async function adjustLine__impl(input: {
   }
 
   const line = await db.payrollLine.findUnique({
-    where: { id: input.lineId },
+    where: { id: lineId },
     include: { run: { select: { status: true, period: true } } },
   });
   if (!line) throw new ActionError("That payroll row no longer exists.");
@@ -261,6 +265,8 @@ async function adjustLine__impl(input: {
     deduction: input.deduction,
   });
 
+  const note = sanitizeOptionalString(input.note, "Adjustment note", { maxLength: 500 });
+
   await db.payrollLine.update({
     where: { id: line.id },
     data: {
@@ -269,7 +275,7 @@ async function adjustLine__impl(input: {
       deduction: input.deduction,
       net,
       adjustedBy: access.session.name,
-      adjustedNote: input.note?.trim() || null,
+      adjustedNote: note,
     },
   });
 
@@ -282,7 +288,7 @@ async function adjustLine__impl(input: {
       `${line.name} (${line.empCode}) ${line.run.period}: ` +
       `advance ₹${line.advance}→₹${input.advance}, deduction ₹${line.deduction}→₹${input.deduction}, ` +
       `bonus ₹${line.bonus}→₹${input.bonus}, net ₹${line.net}→₹${net}` +
-      (input.note?.trim() ? ` — ${input.note.trim()}` : ""),
+      (note ? ` — ${note}` : ""),
   });
 
   revalidatePath("/people/payroll");
@@ -297,8 +303,9 @@ async function adjustLine__impl(input: {
  * paid. A mistake found afterwards is corrected in the next month, which is
  * also how it would be handled on paper.
  */
-async function finaliseRun__impl(runId: string): Promise<Result> {
+async function finaliseRun__impl(rawRunId: string): Promise<Result> {
   const access = await requireAction("payroll.approve");
+  const runId = sanitizeId(rawRunId, "Payroll run ID");
 
   const run = await db.payrollRun.findUnique({
     where: { id: runId },

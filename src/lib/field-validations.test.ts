@@ -10,6 +10,10 @@ import {
   coordinatePair,
   validateDateRange,
   oneOf,
+  safeParseDate,
+  sanitizeString,
+  sanitizeOptionalString,
+  sanitizeId,
 } from "./input-validation";
 import { validateWeighbridgeWeights } from "./weighbridge";
 import { ActionError } from "./action-error";
@@ -347,3 +351,100 @@ describe("Domain Validation: Hire Daily Logsheet Limits", () => {
     assert.throws(() => checkDayLog(-1, 0, 0), /Worked hours must be at least 0/);
   });
 });
+
+describe("Sanitization: sanitizeString & sanitizeOptionalString", () => {
+  it("strips null bytes (\\0) to prevent Postgres UTF-8 fatal errors", () => {
+    const malicious = "Truck\0MH-12\0AB-1234";
+    assert.equal(sanitizeString(malicious), "TruckMH-12AB-1234");
+  });
+
+  it("strips harmful non-printable control characters while preserving normal whitespace", () => {
+    const textWithControls = "Line 1\x01\x02\x03\x08\x0B\x0C\x0E\x1F\x7F\nLine 2\tEnd";
+    assert.equal(sanitizeString(textWithControls), "Line 1\nLine 2\tEnd");
+  });
+
+  it("trims leading and trailing whitespace", () => {
+    assert.equal(sanitizeString("   Hello World   "), "Hello World");
+  });
+
+  it("safely handles empty File / Blob objects from multipart form uploads", () => {
+    const emptyFile = { size: 0, name: "" };
+    assert.equal(sanitizeString(emptyFile), "");
+    assert.equal(sanitizeOptionalString(emptyFile), null);
+    assert.throws(() => sanitizeString(emptyFile, "Invoice", { required: true }), /Invoice is required/);
+  });
+
+  it("handles null, undefined, and empty strings with required/fallback options", () => {
+    assert.equal(sanitizeString(null), "");
+    assert.equal(sanitizeString(undefined), "");
+    assert.equal(sanitizeString(""), "");
+    assert.equal(sanitizeString(null, "Field", { fallback: "default" }), "default");
+    assert.throws(() => sanitizeString(null, "Field", { required: true }), /Field is required/);
+    assert.throws(() => sanitizeString("   ", "Field", { required: true }), /Field is required/);
+  });
+
+  it("enforces minLength and maxLength", () => {
+    assert.throws(() => sanitizeString("hi", "Code", { minLength: 3 }), /Code must be at least 3 characters/);
+    assert.throws(() => sanitizeString("a".repeat(5001), "Description"), /Description cannot exceed 5000 characters/);
+    assert.throws(() => sanitizeString("a".repeat(101), "Code", { maxLength: 100 }), /Code cannot exceed 100 characters/);
+    assert.equal(sanitizeString("abc", "Code", { minLength: 3, maxLength: 5 }), "abc");
+  });
+
+  it("sanitizeOptionalString returns null when empty or whitespace-only", () => {
+    assert.equal(sanitizeOptionalString(null), null);
+    assert.equal(sanitizeOptionalString(undefined), null);
+    assert.equal(sanitizeOptionalString(""), null);
+    assert.equal(sanitizeOptionalString("    "), null);
+    assert.equal(sanitizeOptionalString("  Valid Note  "), "Valid Note");
+  });
+});
+
+describe("Sanitization: sanitizeId", () => {
+  it("accepts valid alphanumeric, CUID, UUID, and code IDs", () => {
+    assert.equal(sanitizeId("cuid_1234567890"), "cuid_1234567890");
+    assert.equal(sanitizeId("clh1234567890abcdef"), "clh1234567890abcdef");
+    assert.equal(sanitizeId("550e8400-e29b-41d4-a716-446655440000"), "550e8400-e29b-41d4-a716-446655440000");
+    assert.equal(sanitizeId("TRUCK-01"), "TRUCK-01");
+    assert.equal(sanitizeId("site:north:01"), "site:north:01");
+  });
+
+  it("rejects malicious injection characters and path traversals in IDs", () => {
+    assert.throws(() => sanitizeId("../etc/passwd"), /Invalid ID format/);
+    assert.throws(() => sanitizeId("id'; DROP TABLE users;--"), /Invalid ID format/);
+    assert.throws(() => sanitizeId("<script>alert(1)</script>"), /Invalid ID format/);
+    assert.throws(() => sanitizeId("id with spaces"), /Invalid ID format/);
+    assert.throws(() => sanitizeId(""), /ID is required/);
+    assert.throws(() => sanitizeId(null), /ID is required/);
+  });
+});
+
+describe("Validation: safeParseDate", () => {
+  it("parses valid date strings and Date objects", () => {
+    const d1 = safeParseDate("2026-08-15", "Date");
+    assert.ok(d1 instanceof Date);
+    assert.equal(d1?.getUTCFullYear(), 2026);
+
+    const d2 = safeParseDate("2026-08-15T10:30:00.000Z", "Date");
+    assert.ok(d2 instanceof Date);
+  });
+
+  it("returns null or fallback for empty optional dates", () => {
+    assert.equal(safeParseDate(null, "Date"), null);
+    assert.equal(safeParseDate("", "Date"), null);
+    assert.equal(safeParseDate(undefined, "Date"), null);
+    const fb = new Date("2026-01-01");
+    assert.equal(safeParseDate(null, "Date", { fallback: fb }), fb);
+  });
+
+  it("throws ActionError on invalid or unparseable date strings", () => {
+    assert.throws(() => safeParseDate("not-a-date", "Expiry date"), /Invalid date provided for Expiry date/);
+    assert.throws(() => safeParseDate("2026-02-31", "Expiry date"), /Invalid date provided for Expiry date/);
+    assert.throws(() => safeParseDate("2026-13-45", "Expiry date"), /Invalid date provided for Expiry date/);
+  });
+
+  it("validates year bounds", () => {
+    assert.throws(() => safeParseDate("1899-01-01", "Date", { minYear: 1950, maxYear: 2100 }), /Date year cannot be earlier than 1950/);
+    assert.throws(() => safeParseDate("2150-01-01", "Date", { minYear: 1950, maxYear: 2100 }), /Date year cannot be later than 2100/);
+  });
+});
+

@@ -13,6 +13,8 @@ import {
   oneOf,
   safeParseDate,
   validateDateRange,
+  sanitizeString,
+  sanitizeOptionalString,
 } from "@/lib/input-validation";
 import { assertRecordAccess, assertFormAccess, assertGlobalAccess } from "@/lib/record-access";
 import { changeWorkOrderStatus } from "@/lib/work-order-service";
@@ -35,7 +37,7 @@ async function uploadPhoto(file: FormDataEntryValue | null, prefix: string): Pro
   return uploadPrivateFile(f, { folder: `fuel-${prefix}`, kind: "image" });
 }
 
-const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
+const s = (fd: FormData, k: string) => sanitizeString(fd.get(k), k);
 const n = formNumber;
 
 /**
@@ -54,7 +56,7 @@ const nOrNull = (fd: FormData, k: string) => {
 };
 
 /** A text field that may be blank; empty becomes null rather than "". */
-const sOrNull = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim() || null;
+const sOrNull = (fd: FormData, k: string) => sanitizeOptionalString(fd.get(k), k);
 
 function docStatus(expiry: Date) {
   const days = (expiry.getTime() - Date.now()) / 86400000;

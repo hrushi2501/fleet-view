@@ -1,14 +1,15 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { formNumber, positiveNumber, boundedNumber, oneOf, safeParseDate } from "@/lib/input-validation";
+import { formNumber, positiveNumber, boundedNumber, oneOf, safeParseDate, sanitizeString, sanitizeOptionalString } from "@/lib/input-validation";
 import { assertFormAccess, assertRecordAccess } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { parseBusinessDay, businessMonth } from "@/lib/business-time";
 import { requireAction, ActionError, safe } from "@/lib/guard";
 
-const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
+const s = (fd: FormData, k: string) => sanitizeString(fd.get(k), k);
+const sOrNull = (fd: FormData, k: string) => sanitizeOptionalString(fd.get(k), k);
 const n = formNumber;
 
 function refresh() {
@@ -29,13 +30,13 @@ async function saveCost__impl(fd: FormData) {
     "Cost head"
   );
 
-  const assetId = s(fd, "assetId") || null;
+  const assetId = sOrNull(fd, "assetId");
   if (assetId) {
     const asset = await db.asset.findUnique({ where: { id: assetId } });
     if (!asset) throw new ActionError("Selected asset does not exist");
   }
 
-  const projectId = s(fd, "projectId") || null;
+  const projectId = sOrNull(fd, "projectId");
   if (projectId) {
     const project = await db.project.findUnique({ where: { id: projectId } });
     if (!project) throw new ActionError("Selected project does not exist");

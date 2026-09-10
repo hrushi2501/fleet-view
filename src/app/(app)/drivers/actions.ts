@@ -8,6 +8,8 @@ import {
   oneOf,
   safeParseDate,
   validateDateRange,
+  sanitizeString,
+  sanitizeOptionalString,
 } from "@/lib/input-validation";
 import { assertRecordAccess, assertFormAccess, assertGlobalAccess } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
@@ -16,7 +18,8 @@ import { SEVERITY_POINTS, safetyScore } from "@/lib/drivers";
 import { requireAction, ActionError, safe } from "@/lib/guard";
 import { uploadPrivateFile } from "@/lib/private-upload";
 
-const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
+const s = (fd: FormData, k: string) => sanitizeString(fd.get(k), k);
+const sOrNull = (fd: FormData, k: string) => sanitizeOptionalString(fd.get(k), k);
 const n = formNumber;
 
 function refresh() {
@@ -56,10 +59,10 @@ async function saveCompetency__impl(fd: FormData) {
 
   const data = {
     level,
-    certNo: s(fd, "certNo") || null,
+    certNo: sOrNull(fd, "certNo"),
     certifiedOn,
     expiresOn,
-    issuedBy: s(fd, "issuedBy") || null,
+    issuedBy: sOrNull(fd, "issuedBy"),
   };
   await db.competency.upsert({
     where: { driverId_assetClass: { driverId, assetClass } },
@@ -87,7 +90,7 @@ async function saveViolation__impl(fd: FormData) {
   const driver = await db.driver.findUnique({ where: { id: driverId } });
   if (!driver) throw new ActionError("Selected driver does not exist");
 
-  const assetId = s(fd, "assetId") || null;
+  const assetId = sOrNull(fd, "assetId");
   if (assetId) {
     const asset = await db.asset.findUnique({ where: { id: assetId } });
     if (!asset) throw new ActionError("Selected asset does not exist");
@@ -130,9 +133,9 @@ async function saveViolation__impl(fd: FormData) {
       severity,
       points,
       date,
-      description: s(fd, "description") || null,
+      description: sOrNull(fd, "description"),
       penalty,
-      actionTaken: s(fd, "actionTaken") || null,
+      actionTaken: sOrNull(fd, "actionTaken"),
       recordedBy: session?.name ?? null,
     },
   });
@@ -145,11 +148,12 @@ async function updateViolation__impl(id: string, fd: FormData) {
   await assertFormAccess(scopeAccess, fd);
   await assertRecordAccess(scopeAccess, "violation", id);
   const penalty = nonNegativeNumber(fd.get("penalty"), "Penalty amount", { max: 1_000_000, fallback: 0 });
+  const status = oneOf(s(fd, "status") || "OPEN", ["OPEN", "ACTIONED", "DISMISSED"], "Violation status");
   const v = await db.violation.update({
     where: { id },
     data: {
-      status: s(fd, "status") || "OPEN",
-      actionTaken: s(fd, "actionTaken") || null,
+      status,
+      actionTaken: sOrNull(fd, "actionTaken"),
       penalty,
     },
   });
@@ -205,7 +209,7 @@ async function saveDocument__impl(fd: FormData) {
     }
   }
 
-  const supersedesId = s(fd, "supersedesId") || null;
+  const supersedesId = sOrNull(fd, "supersedesId");
 
   await db.complianceDoc.create({
     data: {
@@ -217,8 +221,8 @@ async function saveDocument__impl(fd: FormData) {
       status,
       reminderDays,
       cost,
-      vendor: s(fd, "vendor") || null,
-      notes: s(fd, "notes") || null,
+      vendor: sOrNull(fd, "vendor"),
+      notes: sOrNull(fd, "notes"),
       documentUrl,
       supersedesId,
       renewedAt: supersedesId ? new Date() : null,

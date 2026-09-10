@@ -16,9 +16,13 @@ import {
   oneOf,
   safeParseDate,
   validateDateRange,
+  sanitizeString,
+  sanitizeOptionalString,
+  sanitizeId,
 } from "@/lib/input-validation";
 
-const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
+const s = (fd: FormData, k: string) => sanitizeString(fd.get(k), k);
+const sOrNull = (fd: FormData, k: string) => sanitizeOptionalString(fd.get(k), k);
 const n = (fd: FormData, k: string) => formNumber(fd, k);
 
 const VALID_LIFECYCLE_KINDS = [
@@ -73,8 +77,8 @@ async function saveReading__impl(fd: FormData) {
     data: {
       assetId, meterType, value, date,
       source: s(fd, "source") || "MANUAL",
-      recordedBy: s(fd, "recordedBy") || session?.name || null,
-      note: check.message ? `${s(fd, "note")}${s(fd, "note") ? " — " : ""}${check.message}` : s(fd, "note") || null,
+      recordedBy: sOrNull(fd, "recordedBy") || session?.name || null,
+      note: check.message ? `${s(fd, "note")}${s(fd, "note") ? " — " : ""}${check.message}` : sOrNull(fd, "note"),
       isRollback: check.isRollback,
     },
   });
@@ -97,6 +101,7 @@ async function saveReading__impl(fd: FormData) {
 }
 
 async function deleteReading__impl(id: string) {
+  id = sanitizeId(id, "Reading ID");
   const scopeAccess = await requireAction("fleet.edit");
   await assertRecordAccess(scopeAccess, "meterReading", id);
   await db.meterReading.delete({ where: { id } });
@@ -105,6 +110,7 @@ async function deleteReading__impl(id: string) {
 
 /** Extra master-data fields the demo's asset form never captured. */
 async function saveAssetMaster__impl(assetId: string, fd: FormData) {
+  assetId = sanitizeId(assetId, "Asset ID");
   const scopeAccess = await requireAction("fleet.edit");
   await assertRecordAccess(scopeAccess, "asset", assetId);
   const before = await db.asset.findUnique({ where: { id: assetId } });
@@ -130,8 +136,8 @@ async function saveAssetMaster__impl(assetId: string, fd: FormData) {
   await db.asset.update({
     where: { id: assetId },
     data: {
-      chassisNo: s(fd, "chassisNo") || null,
-      engineNo: s(fd, "engineNo") || null,
+      chassisNo: sOrNull(fd, "chassisNo"),
+      engineNo: sOrNull(fd, "engineNo"),
       insuredValue,
       hourMeterValue,
       commissionedOn,
@@ -169,10 +175,10 @@ async function saveLifecycleEvent__impl(fd: FormData) {
     data: {
       assetId,
       kind,
-      fromValue: s(fd, "fromValue") || null,
-      toValue: s(fd, "toValue") || null,
+      fromValue: sOrNull(fd, "fromValue"),
+      toValue: sOrNull(fd, "toValue"),
       amount,
-      note: s(fd, "note") || null,
+      note: sOrNull(fd, "note"),
       date,
       by: session?.name ?? null,
     },
@@ -205,7 +211,7 @@ async function saveAttendance__impl(fd: FormData) {
   const driver = await db.driver.findUnique({ where: { id: driverId } });
   if (!driver) throw new ActionError("Selected person does not exist");
 
-  const projectId = s(fd, "projectId") || null;
+  const projectId = sOrNull(fd, "projectId");
   if (projectId) {
     const project = await db.project.findUnique({ where: { id: projectId } });
     if (!project) throw new ActionError("Selected project does not exist");
@@ -231,8 +237,8 @@ async function saveAttendance__impl(fd: FormData) {
     status,
     projectId,
     hours,
-    markedBy: s(fd, "markedBy") || session?.name || null,
-    note: s(fd, "note") || null,
+    markedBy: sOrNull(fd, "markedBy") || session?.name || null,
+    note: sOrNull(fd, "note"),
   };
   await db.attendance.upsert({
     where: { driverId_date_shift: { driverId, date, shift } },
@@ -243,6 +249,7 @@ async function saveAttendance__impl(fd: FormData) {
 }
 
 async function deleteAttendance__impl(id: string) {
+  id = sanitizeId(id, "Attendance ID");
   const scopeAccess = await requireAction("people.edit");
   await assertRecordAccess(scopeAccess, "attendance", id);
   await db.attendance.delete({ where: { id } });
@@ -259,21 +266,26 @@ async function batchSaveAttendance__impl(
     note?: string | null;
   }>
 ) {
+  if (!Array.isArray(items) || items.length > 500) {
+    throw new ActionError("Invalid attendance batch. Expected up to 500 records.");
+  }
   const scopeAccess = await requireAction("people.edit");
   const session = await getSession();
   const markedBy = session?.name || "Supervisor";
 
   for (const item of items) {
     if (!item.driverId) continue;
-    await assertRecordAccess(scopeAccess, "driver", item.driverId);
-    if (item.projectId) await assertRecordAccess(scopeAccess, "project", item.projectId);
+    const driverId = sanitizeId(item.driverId, "Person ID");
+    await assertRecordAccess(scopeAccess, "driver", driverId);
+    const projectId = item.projectId ? sanitizeId(item.projectId, "Project ID") : null;
+    if (projectId) await assertRecordAccess(scopeAccess, "project", projectId);
 
     const status = oneOf(
-      item.status || "PRESENT",
+      sanitizeString(item.status || "PRESENT", "Status"),
       ["PRESENT", "ABSENT", "HALF_DAY", "LEAVE", "REST", "HOLIDAY"],
       "Attendance status"
     );
-    const shift = oneOf(item.shift || "DAY", ["DAY", "NIGHT", "GENERAL"], "Shift");
+    const shift = oneOf(sanitizeString(item.shift || "DAY", "Shift"), ["DAY", "NIGHT", "GENERAL"], "Shift");
 
     if (item.date) {
       safeParseDate(item.date, "Attendance date");
@@ -283,13 +295,13 @@ async function batchSaveAttendance__impl(
 
     const data = {
       status,
-      projectId: item.projectId || null,
+      projectId,
       markedBy,
-      note: item.note || null,
+      note: sanitizeOptionalString(item.note, "Note"),
     };
     await db.attendance.upsert({
-      where: { driverId_date_shift: { driverId: item.driverId, date, shift } },
-      create: { driverId: item.driverId, date, shift, ...data },
+      where: { driverId_date_shift: { driverId, date, shift } },
+      create: { driverId, date, shift, ...data },
       update: data,
     });
   }
@@ -332,10 +344,10 @@ async function savePersonDoc__impl(fd: FormData) {
     data: {
       driverId,
       docType,
-      number: s(fd, "number") || null,
+      number: sOrNull(fd, "number"),
       issueDate,
       expiryDate,
-      notes: s(fd, "notes") || null,
+      notes: sOrNull(fd, "notes"),
       documentUrl,
     },
   });
@@ -343,6 +355,7 @@ async function savePersonDoc__impl(fd: FormData) {
 }
 
 async function deletePersonDoc__impl(id: string) {
+  id = sanitizeId(id, "Document ID");
   const scopeAccess = await requireAction("people.edit");
   await assertRecordAccess(scopeAccess, "personDocument", id);
   await db.personDocument.delete({ where: { id } });
@@ -350,16 +363,20 @@ async function deletePersonDoc__impl(id: string) {
 }
 
 async function savePersonMaster__impl(driverId: string, fd: FormData) {
+  driverId = sanitizeId(driverId, "Person ID");
   const scopeAccess = await requireAction("people.edit");
   await assertRecordAccess(scopeAccess, "driver", driverId);
+  const joinDateRaw = sOrNull(fd, "joinDate");
+  const joinDate = joinDateRaw ? safeParseDate(joinDateRaw, "Join date") : null;
+
   await db.driver.update({
     where: { id: driverId },
     data: {
       employmentType: s(fd, "employmentType") || "OWN",
-      contractorName: s(fd, "contractorName") || null,
-      joinDate: s(fd, "joinDate") ? new Date(s(fd, "joinDate")) : null,
-      bloodGroup: s(fd, "bloodGroup") || null,
-      emergencyContact: s(fd, "emergencyContact") || null,
+      contractorName: sOrNull(fd, "contractorName"),
+      joinDate,
+      bloodGroup: sOrNull(fd, "bloodGroup"),
+      emergencyContact: sOrNull(fd, "emergencyContact"),
     },
   });
   refresh();

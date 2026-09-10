@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { formNumber, oneOf, safeParseDate } from "@/lib/input-validation";
+import { formNumber, nonNegativeNumber, oneOf, safeParseDate, sanitizeString, sanitizeOptionalString } from "@/lib/input-validation";
 import { assertFormAccess, assertRecordAccess } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
@@ -10,7 +10,8 @@ import { requireAction, ActionError, safe } from "@/lib/guard";
 import { uploadPrivateFile } from "@/lib/private-upload";
 import { validateWeighbridgeWeights } from "@/lib/weighbridge";
 
-const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
+const s = (fd: FormData, k: string) => sanitizeString(fd.get(k), k);
+const sOrNull = (fd: FormData, k: string) => sanitizeOptionalString(fd.get(k), k);
 const n = formNumber;
 
 const VALID_TICKET_KINDS = ["DISPATCH", "RECEIPT", "INTERNAL"] as const;
@@ -48,10 +49,27 @@ async function saveTicket__impl(fd: FormData) {
   if (!weightVal.valid) throw new ActionError(weightVal.error!);
   const net = weightVal.computedNetKg;
 
-  const rate = n(fd, "rate");
-  if (rate < 0) throw new ActionError("Rate per tonne cannot be negative.");
-  const billedKg = n(fd, "billedKg");
-  if (billedKg < 0) throw new ActionError("Billed weight cannot be negative.");
+  const rate = nonNegativeNumber(fd.get("rate"), "Rate per tonne", { max: 100_000, fallback: 0 });
+  const billedKg = nonNegativeNumber(fd.get("billedKg"), "Billed weight", { max: 500_000, fallback: 0 });
+  const explicitAmount = nonNegativeNumber(fd.get("amount"), "Amount", { max: 100_000_000, fallback: 0 });
+
+  const assetId = sOrNull(fd, "assetId");
+  if (assetId) {
+    const asset = await db.asset.findUnique({ where: { id: assetId } });
+    if (!asset) throw new ActionError("Selected asset does not exist");
+  }
+
+  const driverId = sOrNull(fd, "driverId");
+  if (driverId) {
+    const driver = await db.driver.findUnique({ where: { id: driverId } });
+    if (!driver) throw new ActionError("Selected driver does not exist");
+  }
+
+  const projectId = sOrNull(fd, "projectId");
+  if (projectId) {
+    const project = await db.project.findUnique({ where: { id: projectId } });
+    if (!project) throw new ActionError("Selected project does not exist");
+  }
 
   const session = await getSession();
 
@@ -69,29 +87,29 @@ async function saveTicket__impl(fd: FormData) {
       ticketNo,
       kind,
       date,
-      assetId: s(fd, "assetId") || null,
-      driverId: s(fd, "driverId") || null,
-      projectId: s(fd, "projectId") || null,
+      assetId,
+      driverId,
+      projectId,
       material: s(fd, "material") || "Other",
       grossKg: gross,
       tareKg: tare,
       netKg: net,
-      fromLocation: s(fd, "fromLocation") || null,
-      toLocation: s(fd, "toLocation") || null,
-      vendor: s(fd, "vendor") || null,
-      pairedTicketNo: s(fd, "pairedTicketNo") || null,
-      billedKg: n(fd, "billedKg"),
+      fromLocation: sOrNull(fd, "fromLocation"),
+      toLocation: sOrNull(fd, "toLocation"),
+      vendor: sOrNull(fd, "vendor"),
+      pairedTicketNo: sOrNull(fd, "pairedTicketNo"),
+      billedKg,
       rate,
-      amount: n(fd, "amount") || (net / 1000) * rate,
+      amount: explicitAmount || (net / 1000) * rate,
       photo,
       recordedBy: session?.name ?? null,
-      notes: s(fd, "notes") || null,
+      notes: sOrNull(fd, "notes"),
     },
   });
 
   await audit({
     action: "CREATE", module: "WEIGHBRIDGE", entity: "WeighbridgeTicket",
-    summary: `${s(fd, "kind")} ticket ${ticketNo} — ${(net / 1000).toFixed(2)} t ${s(fd, "material")}`,
+    summary: `${kind} ticket ${ticketNo} — ${(net / 1000).toFixed(2)} t ${s(fd, "material")}`,
   });
   refresh();
 }
