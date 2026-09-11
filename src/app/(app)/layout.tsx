@@ -3,9 +3,9 @@ import { Topbar } from "@/components/Topbar";
 import { ToastProvider } from "@/components/Toast";
 import { getAccess } from "@/lib/access";
 import { navFor } from "@/lib/navigation";
-import { getNotificationFeed } from "@/lib/notification-feed";
 import { redirect } from "next/navigation";
 import { getLang } from "@/lib/lang-server";
+import { isLang } from "@/lib/i18n";
 import { LanguageProvider } from "@/components/LanguageProvider";
 import { QueryProvider } from "@/components/QueryProvider";
 import { quickActionsFor } from "@/lib/quick-actions";
@@ -26,11 +26,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const items = navFor(access);
   const isDriver = access.group === "DRIVER";
 
-  const notificationFeed = await getNotificationFeed(access);
-
   // Resolved once here and handed down, so thirty client components do not each
   // need their own lookup.
-  const lang = await getLang();
+  // `getAccess` already reads this user's record. Reuse the language selected
+  // in that query instead of issuing a second user lookup on every navigation.
+  // The cookie-backed helper remains the safe fallback for legacy/invalid data.
+  const lang = isLang(access.language) ? access.language : await getLang();
 
   return (
     <LanguageProvider lang={lang}>
@@ -41,8 +42,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className={isDriver ? "" : "lg:pl-64"}>
           <Topbar
             user={access.session}
-            notifCount={notificationFeed.attentionCount}
-            initialNotifications={notificationFeed.items}
             notificationLogHref={access.can("reports.view") ? "/reports/notifications" : null}
             quickActions={quickActionsFor(access)}
             isDriver={isDriver}

@@ -7,6 +7,8 @@ import type { Metadata, Viewport } from "next";
 import "leaflet/dist/leaflet.css";
 import "./globals.css";
 import { PWARegister } from "@/components/PWARegister";
+import { NavigationProgress } from "@/components/NavigationProgress";
+import { Suspense } from "react";
 
 export const metadata: Metadata = {
   title: "FleetView ERP — Mahadev Constructions",
@@ -27,6 +29,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" suppressHydrationWarning>
       <body suppressHydrationWarning>
+        <Suspense fallback={null}>
+          <NavigationProgress />
+        </Suspense>
         {children}
         <PWARegister />
       </body>

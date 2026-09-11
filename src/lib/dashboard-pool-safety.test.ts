@@ -8,12 +8,10 @@ test("dashboard reads do not fan out against the one-connection production pool"
   const dashboard = source("../app/(app)/page.tsx");
   const layout = source("../app/(app)/layout.tsx");
   const fleetUsage = source("./fleet-usage.ts");
-  const notifications = source("./notification-feed.ts");
 
   assert.match(dashboard, /await db\.\$transaction\(\[/);
   assert.doesNotMatch(dashboard, /await Promise\.all\(\[/);
-  assert.match(layout, /await getNotificationFeed\(access\)/);
-  assert.match(notifications, /await db\.\$transaction\(\[/);
+  assert.doesNotMatch(layout, /getNotificationFeed/);
   assert.match(fleetUsage, /await db\.\$transaction\(\[/);
   assert.doesNotMatch(fleetUsage, /await Promise\.all\(\[/);
 });

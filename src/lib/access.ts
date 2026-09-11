@@ -41,6 +41,8 @@ export type Access = {
   can: (code: string) => boolean;
   /** The driver record this login belongs to, when it is a driver. */
   driverId: string | null;
+  /** Saved display language, read alongside the authorization record. */
+  language?: string | null;
   /**
    * Projects this user is limited to. `null` means unrestricted (admins, and
    * supervisors with no scope configured). An empty array means scoped to
@@ -140,6 +142,7 @@ async function resolveAccess(): Promise<Access | null> {
       role: true,
       active: true,
       driverId: true,
+      language: true,
       roleRef: { select: { permissions: true } },
     },
   });
@@ -164,6 +167,7 @@ async function resolveAccess(): Promise<Access | null> {
     codes,
     can: allow,
     driverId: user?.driverId ?? null,
+    language: user.language,
     projectIds,
   };
 }

@@ -107,6 +107,7 @@ interface MemoryCacheEntry<T> {
 export class MemoryCacheStore implements CacheStore {
   readonly type = "memory" as const;
   private store = new Map<string, MemoryCacheEntry<unknown>>();
+  private inFlight = new Map<string, Promise<unknown>>();
 
   async get<T>(key: string): Promise<T | null> {
     const entry = this.store.get(key) as MemoryCacheEntry<T> | undefined;
@@ -146,12 +147,21 @@ export class MemoryCacheStore implements CacheStore {
   }
 
   async wrap<T>(key: string, fn: () => Promise<T>, ttlSeconds?: number): Promise<T> {
-    const cached = await this.get<T>(key);
-    if (cached !== null) return cached;
-
-    const fresh = await fn();
-    await this.set(key, fresh, ttlSeconds);
-    return fresh;
+    const running = this.inFlight.get(key);
+    if (running) return running as Promise<T>;
+    const pending = (async () => {
+      const cached = await this.get<T>(key);
+      if (cached !== null) return cached;
+      const fresh = await fn();
+      await this.set(key, fresh, ttlSeconds);
+      return fresh;
+    })();
+    this.inFlight.set(key, pending);
+    try {
+      return await pending;
+    } finally {
+      if (this.inFlight.get(key) === pending) this.inFlight.delete(key);
+    }
   }
 
   async invalidatePrefix(prefix: string): Promise<number> {
@@ -184,6 +194,7 @@ export class MemoryCacheStore implements CacheStore {
  */
 export class RedisCacheStore implements CacheStore {
   readonly type = "redis" as const;
+  private inFlight = new Map<string, Promise<unknown>>();
 
   // Written out rather than declared as constructor parameter properties: the
   // test runner strips types without compiling them, and that syntax needs a
@@ -257,11 +268,21 @@ export class RedisCacheStore implements CacheStore {
   }
 
   async wrap<T>(key: string, fn: () => Promise<T>, ttlSeconds?: number): Promise<T> {
-    const cached = await this.get<T>(key);
-    if (cached !== null) return cached;
-    const fresh = await fn();
-    await this.set(key, fresh, ttlSeconds);
-    return fresh;
+    const running = this.inFlight.get(key);
+    if (running) return running as Promise<T>;
+    const pending = (async () => {
+      const cached = await this.get<T>(key);
+      if (cached !== null) return cached;
+      const fresh = await fn();
+      await this.set(key, fresh, ttlSeconds);
+      return fresh;
+    })();
+    this.inFlight.set(key, pending);
+    try {
+      return await pending;
+    } finally {
+      if (this.inFlight.get(key) === pending) this.inFlight.delete(key);
+    }
   }
 
   /**

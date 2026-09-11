@@ -5,27 +5,40 @@ import { ROLE_LABEL } from "@/lib/utils";
 import { LogOut, Search, Bell, BellRing, CircleAlert, Fuel, ShieldAlert, Wrench, FileWarning, Truck, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CommandPalette } from "@/components/CommandPalette";
+import dynamic from "next/dynamic";
 import { QuickActionMenu } from "@/components/QuickActionMenu";
 import type { QuickAction } from "@/lib/quick-actions";
-import type { NotificationFeed, NotificationItem } from "@/lib/notification-types";
+import type { NotificationFeed } from "@/lib/notification-types";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+
+// Search is an occasional overlay, not part of the initial app shell. Keeping
+// its search hooks and result UI in an on-demand chunk reduces the JavaScript
+// every office screen has to parse before it can be used.
+const CommandPalette = dynamic(
+  () => import("@/components/CommandPalette").then((module) => module.CommandPalette),
+  {
+    loading: () => (
+      <div className="fixed inset-0 z-50 flex items-start justify-center bg-ink-900/30 p-4 pt-[15vh] backdrop-blur-sm" role="status" aria-live="polite">
+        <div className="flex items-center gap-3 rounded-xl bg-white px-4 py-3 text-sm font-medium text-slate-600 shadow-xl">
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-brand-200 border-t-brand-600" />
+          Opening search…
+        </div>
+      </div>
+    ),
+  },
+);
 
 /**
  * The header adapts to who is looking at it and provides global search.
  */
 export function Topbar({
   user,
-  notifCount = 0,
   isDriver = false,
-  initialNotifications = [],
   notificationLogHref = null,
   quickActions = [],
 }: {
   user: { name: string; role: string };
-  notifCount?: number;
   isDriver?: boolean;
-  initialNotifications?: NotificationItem[];
   notificationLogHref?: string | null;
   quickActions?: QuickAction[];
 }) {
@@ -33,8 +46,8 @@ export function Topbar({
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationFeed, setNotificationFeed] = useState<NotificationFeed>({
-    items: initialNotifications,
-    attentionCount: notifCount,
+    items: [],
+    attentionCount: 0,
   });
   const signOut = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -42,22 +55,38 @@ export function Topbar({
   }, [router]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
+  const notificationRequestRef = useRef<Promise<void> | null>(null);
   const initials = user.name.split(" ").map((p) => p[0]).slice(0, 2).join("");
 
-  const refreshNotifications = useCallback(async () => {
+  const refreshNotifications = useCallback(() => {
+    if (notificationRequestRef.current) return notificationRequestRef.current;
+
     setNotificationsLoading(true);
-    try {
-      const response = await fetch("/api/notifications?take=8", { cache: "no-store" });
-      if (!response.ok) return;
-      const next = await response.json() as NotificationFeed;
-      setNotificationFeed(next);
-    } finally {
-      setNotificationsLoading(false);
-    }
+    const request = (async () => {
+      try {
+        const response = await fetch("/api/notifications?take=8", { cache: "no-store" });
+        if (!response.ok) return;
+        const next = await response.json() as NotificationFeed;
+        setNotificationFeed(next);
+      } finally {
+        notificationRequestRef.current = null;
+        setNotificationsLoading(false);
+      }
+    })();
+    notificationRequestRef.current = request;
+    return request;
   }, []);
 
   const openNotifications = useCallback(() => {
     setNotificationsOpen(true);
+    void refreshNotifications();
+  }, [refreshNotifications]);
+
+  // The notification query used to run in the server layout before every page
+  // navigation, then run again when the bell opened. Start it after the shell
+  // is interactive instead: page content is no longer held behind an unrelated
+  // alert query, while the badge and drawer still receive fresh no-store data.
+  useEffect(() => {
     void refreshNotifications();
   }, [refreshNotifications]);
 

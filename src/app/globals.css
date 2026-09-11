@@ -82,6 +82,13 @@ a,
 }
 .animate-fade-up { animation: fadeUp 0.3s ease both; }
 
+@keyframes navigation-progress {
+  0% { transform: translateX(-100%); width: 28%; }
+  55% { transform: translateX(115%); width: 58%; }
+  100% { transform: translateX(255%); width: 30%; }
+}
+.navigation-progress { animation: navigation-progress 1.35s ease-in-out infinite; }
+
 /* The one surface everything sits on.
    A hairline plus a barely-there shadow: the border does the separating and
    the shadow only lifts the card off the page plane. Two heavy edges stacked

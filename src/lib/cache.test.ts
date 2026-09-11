@@ -35,6 +35,24 @@ describe("Redis-Ready Server Cache Abstraction", () => {
     assert.equal(callCount, 1, "Fetcher should not be called again on cache hit");
   });
 
+  test("coalesces concurrent misses for the same key", async () => {
+    const store = createCacheStore({});
+    let callCount = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const fetcher = async () => {
+      callCount++;
+      await gate;
+      return { count: 7 };
+    };
+
+    const first = store.wrap("test:coalesced", fetcher, 60);
+    const second = store.wrap("test:coalesced", fetcher, 60);
+    release();
+    assert.deepEqual(await Promise.all([first, second]), [{ count: 7 }, { count: 7 }]);
+    assert.equal(callCount, 1, "Concurrent callers should share one origin fetch");
+  });
+
   test("invalidates by prefix pattern", async () => {
     await serverCache.set("fleet:asset:1", "data1");
     await serverCache.set("fleet:asset:2", "data2");
