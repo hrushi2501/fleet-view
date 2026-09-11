@@ -26,7 +26,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Loader2, Mail, Lock, Eye, EyeOff, MapPin, ArrowRight, Truck } from "lucide-react";
+import { Loader2, Mail, Lock, Eye, EyeOff, ArrowRight, Truck } from "lucide-react";
 import { login } from "./actions";
 import { MahadevMark, MahadevLogo } from "./MahadevMark";
 
@@ -95,7 +95,8 @@ export default function OfficeLogin({ onDriverLogin }: { onDriverLogin: () => vo
         <div className="absolute inset-0 bg-gradient-to-t from-ink-900/70 via-transparent to-ink-900/40" />
       </div>
 
-      <div className="relative mx-auto flex min-h-screen w-full max-w-[1600px] flex-col gap-8 px-5 py-8 sm:px-8 lg:flex-row lg:items-center lg:gap-12 lg:px-14 lg:py-12">
+      <div className="relative mx-auto flex min-h-screen w-full max-w-[1600px] flex-col px-5 py-8 sm:px-8 lg:px-14 lg:py-12">
+       <div className="flex flex-1 flex-col gap-8 lg:flex-row lg:items-center lg:gap-12">
         {/* ── Brand side ──────────────────────────────────────────────────── */}
         <section className="flex flex-1 flex-col justify-center text-white lg:min-h-[80vh]">
           <MahadevLogo className="text-white" markClass="h-11 w-11 sm:h-14 sm:w-14" />
@@ -117,11 +118,6 @@ export default function OfficeLogin({ onDriverLogin }: { onDriverLogin: () => vo
 
           <p className="mt-5 max-w-sm text-[11px] font-medium uppercase leading-relaxed tracking-[0.22em] text-white/75 sm:text-sm sm:tracking-[0.28em]">
             Infrastructure for a brighter India
-          </p>
-
-          <p className="mt-8 flex items-center gap-2 text-xs text-white/65 sm:mt-auto sm:pt-12">
-            <MapPin className="h-3.5 w-3.5 text-gold-400" aria-hidden />
-            Udaipur, Rajasthan
           </p>
         </section>
 
@@ -284,6 +280,22 @@ export default function OfficeLogin({ onDriverLogin }: { onDriverLogin: () => vo
             <span className="mx-1 text-gold-400">|</span> Progress
           </p>
         </section>
+       </div>
+
+        {/* ── Page foot ───────────────────────────────────────────────────────
+            Ownership on the left, authorship on the right. They stack on a
+            phone rather than shrinking into two unreadable columns, and the
+            hairline above them keeps the credits from floating loose over the
+            photograph. */}
+        <footer className="mt-10 flex flex-col gap-2 border-t border-white/15 pt-5 text-[10px] font-medium uppercase tracking-[0.18em] text-white/55 sm:flex-row sm:items-center sm:justify-between sm:text-[11px] sm:tracking-[0.22em]">
+          <p>
+            &copy; {new Date().getFullYear()} All rights reserved to{" "}
+            <span className="text-white/80">Mahadev Constructions</span>
+          </p>
+          <p>
+            Made by <span className="text-gold-400">Pitbull Corporations</span>
+          </p>
+        </footer>
       </div>
 
       {/* Marks the page as Mahadev's without competing with the card on a phone. */}
