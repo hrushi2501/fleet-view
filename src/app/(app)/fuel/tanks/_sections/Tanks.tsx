@@ -119,10 +119,17 @@ export async function Tanks() {
             </div>
 
             <div className="grid gap-5 p-5 lg:grid-cols-4">
-              <div className="lg:col-span-1">
-                <div className="mb-1 flex justify-between text-sm">
+              {/* `min-w-0` because a grid column defaults to min-content width:
+                  without it a long unbroken figure widens the column instead of
+                  being contained by it, and pushes the ledger beside it off the
+                  card. The formatter now keeps figures short, but a column that
+                  cannot be overflowed is the guarantee. */}
+              <div className="min-w-0 lg:col-span-1">
+                <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-2 text-sm">
                   <span className="font-medium text-ink-900">Current stock</span>
-                  <span className="text-slate-500">{num(t.currentLevel)} / {num(t.capacity)} L</span>
+                  <span className="min-w-0 break-words text-slate-500 tabular-nums">
+                    {num(t.currentLevel)} / {num(t.capacity)} L
+                  </span>
                 </div>
                 <Progress value={pct} />
                 <dl className="mt-4 space-y-2 text-sm">

@@ -27,6 +27,36 @@ export function calendarDaysUntil(target: Date, now: Date = new Date()): number 
   return Math.round((midnightUtc(target) - midnightUtc(now)) / 86400000);
 }
 
+/**
+ * The longest a formatted figure may get before it is rendered another way.
+ *
+ * A grouped Indian number has no spaces in it, so the browser cannot break it:
+ * it is one token, and a long one pushes its container apart and spills across
+ * whatever sits beside it. A tank saved with a capacity of 1e142 litres — which
+ * the form accepted before capacity was bounded — formats to 213 characters and
+ * tore the Site Tanks page in half.
+ *
+ * Eighteen characters is "10,00,00,00,00,00,000", a lakh crore. Nothing real in
+ * this business is wider than that, so anything past it is a data fault, and the
+ * screen's job is to stay readable while showing that something is wrong.
+ */
+const MAX_FIGURE_CHARS = 18;
+
+/**
+ * Scientific notation, used only as the escape hatch above.
+ *
+ * Compact notation is not a way out: 1e142 in Indian compact form is still
+ * "10,00,…,000LCr" at 190 characters, because the lakh-crore unit runs out long
+ * before the number does. "1E142" is five, and reads unmistakably as a wrong
+ * number rather than as a real quantity.
+ */
+function scientific(n: number): string {
+  return new Intl.NumberFormat("en-IN", {
+    notation: "scientific",
+    maximumFractionDigits: 1,
+  }).format(n);
+}
+
 /** Indian currency formatting with lakh/crore abbreviation */
 export function inr(n: number, opts: { compact?: boolean } = {}): string {
   // A division that produced NaN or Infinity is a failed calculation, not a
@@ -34,20 +64,32 @@ export function inr(n: number, opts: { compact?: boolean } = {}): string {
   // real figure before. Render neither as money.
   if (!Number.isFinite(n)) return "—";
   if (opts.compact) {
-    if (Math.abs(n) >= 1e7) return `₹${(n / 1e7).toFixed(2)} Cr`;
+    // Dividing by a crore does not shorten 1e142 enough to matter, so the
+    // length guard has to sit in front of these too, not only after them.
+    if (Math.abs(n) >= 1e7) {
+      const crores = (n / 1e7).toFixed(2);
+      // `toFixed` silently falls back to JS exponential past 1e21, which is both
+      // short enough to pass a length check and wrong to pair with "Cr" — the
+      // result reads "₹1e+22 Cr", two notations in one figure. Reject anything
+      // carrying an exponent, not merely anything long.
+      const usable = crores.length <= MAX_FIGURE_CHARS && !crores.includes("e");
+      return usable ? `₹${crores} Cr` : `₹${scientific(n)}`;
+    }
     if (Math.abs(n) >= 1e5) return `₹${(n / 1e5).toFixed(2)} L`;
     if (Math.abs(n) >= 1e3) return `₹${(n / 1e3).toFixed(1)} K`;
   }
-  return new Intl.NumberFormat("en-IN", {
+  const formatted = new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
     maximumFractionDigits: 0,
   }).format(n);
+  return formatted.length <= MAX_FIGURE_CHARS + 1 ? formatted : `₹${scientific(n)}`;
 }
 
 export function num(n: number): string {
   if (!Number.isFinite(n)) return "—";
-  return new Intl.NumberFormat("en-IN").format(Math.round(n));
+  const formatted = new Intl.NumberFormat("en-IN").format(Math.round(n));
+  return formatted.length <= MAX_FIGURE_CHARS ? formatted : scientific(n);
 }
 
 export function timeAgo(date: Date | string): string {
