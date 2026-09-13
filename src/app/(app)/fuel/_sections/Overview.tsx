@@ -10,11 +10,12 @@ import { Fuel, TriangleAlert, Droplets, Gauge, ShieldAlert, IndianRupee, Trendin
 import Link from "next/link";
 
 import { businessMonth } from "@/lib/business-time";
-import { requirePage, assetScope } from "@/lib/access";
-import { detectFills } from "@/lib/fuel-fill-reconcile";
+import { assetScope, projectScope, type Access } from "@/lib/access";
+import { getDetectedFills } from "@/lib/fuel-fill-reconcile";
 import { dailyFillsByVehicle } from "@/lib/fuel-daily-fills";
 import { lastTheftScan } from "@/lib/theft-scan-status";
 import { Txt } from "@/components/Txt";
+import { fuelAnomalyScope, recordScope } from "@/lib/record-access";
 
 /**
  * Diesel in, diesel out, and what it bought — the module's front page.
@@ -24,21 +25,44 @@ import { Txt } from "@/components/Txt";
  * are we burning" and "show me the actual fills" are the same conversation two
  * minutes apart.
  */
-export async function Overview() {
-  const access = await requirePage("fuel.view");
+export async function Overview({ access }: { access: Access }) {
   // Rows, not just the page: a scoped supervisor sees their own sites.
   const visible = assetScope(access);
-  const [issues, _receipts, tanks, assets, projects] = await Promise.all([
-    db.fuelTransaction.findMany({
+  const dieselRatePromise = getDieselRate();
+  const detectedPromise = dieselRatePromise.then((rate) => getDetectedFills(visible, rate, 14));
+  const dailyPromise = dieselRatePromise.then((rate) =>
+    dailyFillsByVehicle(visible, rate, 14, detectedPromise),
+  );
+  const anomalyPromise = fuelAnomalyScope(access).then((scope) =>
+    db.fuelAnomaly.findMany({
+      where: { status: "OPEN", ...scope },
+      select: { litres: true, valueAtRisk: true, severity: true },
+    }),
+  );
+
+  // Start every independent read together. The old page completed the first
+  // batch and then waited through telemetry, anomalies, settings, two complete
+  // fill scans, the daily roll-up and scan status in sequence. On a remote
+  // transaction pooler, those waits accumulated into several seconds.
+  const [base, telemetry, openAnomalies, dieselRate, detected14, daily, scan] = await Promise.all([
+    db.$transaction([
+      db.fuelTransaction.findMany({
       where: { type: "ISSUE", asset: visible },
       include: { asset: true, session: { select: { driver: { select: { name: true, empCode: true } } } } },
       orderBy: { date: "asc" },
-    }),
-    db.fuelTransaction.findMany({ where: { type: "RECEIPT" } }),
-    db.fuelTank.findMany(),
-    db.asset.findMany({ orderBy: { code: "asc" } }),
-    db.project.findMany({ orderBy: { code: "asc" } }),
+      }),
+      db.fuelTank.findMany({ where: recordScope("fuelTank", access) }),
+      db.asset.findMany({ where: visible, orderBy: { code: "asc" } }),
+      db.project.findMany({ where: projectScope(access), orderBy: { code: "asc" } }),
+    ]),
+    fleetUsage(30, visible),
+    anomalyPromise,
+    dieselRatePromise,
+    detectedPromise,
+    dailyPromise,
+    lastTheftScan(),
   ]);
+  const [issues, tanks, assets, projects] = base;
 
   const assetOpts = assets.map((a) => ({ id: a.id, label: `${a.code} — ${a.registrationNo ?? a.name}` }));
   const projOpts = projects.map((p) => ({ id: p.id, label: `${p.code} — ${p.name}` }));
@@ -51,11 +75,6 @@ export async function Overview() {
   // Measured from the OEM feed. Manual fuel entries answer "what did we buy";
   // telemetry answers "what actually moved and what actually burned", and the
   // second is available before anyone has typed a single fuel slip.
-  const telemetry = await fleetUsage(30);
-  const openAnomalies = await db.fuelAnomaly.findMany({
-    where: { status: "OPEN" },
-    select: { litres: true, valueAtRisk: true, severity: true },
-  });
   const anomalyLitres = openAnomalies.reduce((s, a) => s + a.litres, 0);
   const anomalyValue = openAnomalies.reduce((s, a) => s + a.valueAtRisk, 0);
   const highFlagCount = fleet.highFlags.length + openAnomalies.filter((a) => a.severity === "HIGH").length;
@@ -76,25 +95,23 @@ export async function Overview() {
   const telBest = [...rankable].sort((a, b) => b.usage.avgKmPerL! - a.usage.avgKmPerL!).slice(0, 5);
   const telWorst = [...rankable].sort((a, b) => a.usage.avgKmPerL! - b.usage.avgKmPerL!).slice(0, 5);
 
-  const dieselRate = await getDieselRate();
-
   // Fuel the tank saw arrive with no entry behind it. Kept separate from the
   // theft figures on purpose: an unlogged fill is usually a receipt not yet
   // entered, and folding it into "at risk" would call ordinary paperwork lag a
   // loss. But it cannot sit only on the other tab either — this page reported
   // "Theft Alerts 0 · ₹0 at risk" while ₹21.7 K of diesel stood unaccounted one
   // click away, which reads as all-clear.
-  const { fills: detectedFills, unreliable: unreliableSenders } = await detectFills(visible, dieselRate, 7);
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const detectedFills = detected14.fills.filter((fill) => fill.at >= sevenDaysAgo);
+  const unreliableSenders = detected14.unreliable;
 
   // Filling, day by day, across every vehicle rather than only the ones with
   // paperwork. The per-vehicle table further down is built from
   // `FuelTransaction` and so is blank for eleven trucks whose sender watched
   // the diesel go in.
-  const daily = await dailyFillsByVehicle(visible, dieselRate, 14);
-
   // Whether anything is actually watching for theft, so an empty list of
   // findings cannot be mistaken for a clean fleet.
-  const scan = await lastTheftScan();
   const unloggedFills = detectedFills.filter((f) => !f.logged);
   const unloggedLitres = unloggedFills.reduce((s, f) => s + f.litresAdded, 0);
   const unloggedValue = unloggedFills.reduce((s, f) => s + f.estimatedValue, 0);

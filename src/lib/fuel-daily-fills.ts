@@ -33,7 +33,7 @@
  */
 import { db } from "@/lib/db";
 import { businessDay } from "@/lib/business-time";
-import { detectFills } from "@/lib/fuel-fill-reconcile";
+import { detectFills, type DetectFillsResult } from "@/lib/fuel-fill-reconcile";
 
 export type FillSource = "LOGGED" | "SENSOR";
 
@@ -77,11 +77,12 @@ export async function dailyFillsByVehicle(
   assetWhere: Record<string, unknown>,
   dieselRate: number,
   days = 14,
+  detectedResult?: DetectFillsResult | Promise<DetectFillsResult>,
 ): Promise<DailyFillsResult> {
   const since = new Date(Date.now() - days * 86_400_000);
 
   const [{ fills: detected, unreliable }, logged] = await Promise.all([
-    detectFills(assetWhere, dieselRate, days),
+    detectedResult ?? detectFills(assetWhere, dieselRate, days),
     db.fuelTransaction.findMany({
       where: { type: "ISSUE", asset: assetWhere, date: { gte: since } },
       select: {

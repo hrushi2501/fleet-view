@@ -6,6 +6,8 @@ import { getTataSyncStatus } from "@/lib/tata-fleet-edge";
 import { FleetEdgeConsole } from "@/components/FleetEdgeConsole";
 import { getLiveFleet } from "@/lib/fleet-edge-live";
 import { Txt } from "@/components/Txt";
+import { LiveTrackingLoading, StatusLoading } from "@/components/ModuleLoading";
+import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
 
@@ -34,8 +36,6 @@ export default async function VehicleTrackingPage({
 }) {
   const access = await requirePage("fleet.view");
   const tab = resolveTab((await searchParams).tab, TABS);
-  const syncStatus = await getTataSyncStatus();
-
   return (
     <div className="space-y-5">
       <div>
@@ -45,7 +45,9 @@ export default async function VehicleTrackingPage({
         </p>
       </div>
 
-      <TelematicsSyncBanner status={syncStatus} />
+      <Suspense fallback={<StatusLoading label="Checking live connection" />}>
+        <SyncStatusSection />
+      </Suspense>
 
       <div className="print:hidden">
         <PageTabs tabs={TABS} active={tab} basePath="/fleet/tracking" />
@@ -54,9 +56,16 @@ export default async function VehicleTrackingPage({
       {/* Only the open tab queries. The map pulls the whole fleet and the
           sticker sheet renders a QR image per vehicle — running both on every
           visit would double the cost of a screen people leave open all day. */}
-      {tab === "map" ? <LiveMapSection access={access} /> : <QrStickers />}
+      <Suspense key={tab} fallback={tab === "map" ? <LiveTrackingLoading /> : <StatusLoading label="Preparing QR stickers" />}>
+        {tab === "map" ? <LiveMapSection access={access} /> : <QrStickers />}
+      </Suspense>
     </div>
   );
+}
+
+async function SyncStatusSection() {
+  const syncStatus = await getTataSyncStatus();
+  return <TelematicsSyncBanner status={syncStatus} />;
 }
 
 /**

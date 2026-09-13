@@ -5,9 +5,10 @@ import { getDieselRate } from "@/lib/settings";
 import { Fuel, Truck, MapPin, IndianRupee, Clock, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 
-import { requirePage, assetScope } from "@/lib/access";
-import { detectFills } from "@/lib/fuel-fill-reconcile";
+import { assetScope, type Access } from "@/lib/access";
+import { getDetectedFills } from "@/lib/fuel-fill-reconcile";
 import { Txt } from "@/components/Txt";
+import { recordScope } from "@/lib/record-access";
 
 /**
  * Every fill, with its time, place and photographs.
@@ -16,11 +17,14 @@ import { Txt } from "@/components/Txt";
  * executive summary; what they asked for was "show me the actual entries with
  * the pump photo", which is what this is.
  */
-export async function FuelRecords() {
-  const access = await requirePage("fuel.view");
+export async function FuelRecords({ access }: { access: Access }) {
   // Rows, not just the page: a scoped supervisor sees their own sites.
   const visible = assetScope(access);
-  const [issues, assets, tanks, dieselRate] = await Promise.all([
+  const dieselRatePromise = getDieselRate();
+  // Share the overview's 14-day cached detector result. Filtering a small
+  // derived list is much cheaper than scanning telemetry again for seven days.
+  const detectedPromise = dieselRatePromise.then((rate) => getDetectedFills(visible, rate, 14));
+  const [issues, assets, tanks, detectedResult] = await Promise.all([
     db.fuelTransaction.findMany({
       where: { type: "ISSUE", asset: visible },
       include: {
@@ -32,14 +36,17 @@ export async function FuelRecords() {
       take: 100,
     }),
     db.asset.findMany({ where: visible, orderBy: { code: "asc" } }),
-    db.fuelTank.findMany(),
-    getDieselRate(),
+    db.fuelTank.findMany({ where: recordScope("fuelTank", access) }),
+    detectedPromise,
   ]);
 
   // What the tanks actually saw, matched against what was written down. The
   // screen claimed to show "every fill" while reading only the keyed table, so
   // a fill nobody entered could not appear on it at all.
-  const { fills: detected, unreliable: unreliableSenders } = await detectFills(visible, dieselRate, 7);
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const detected = detectedResult.fills.filter((fill) => fill.at >= sevenDaysAgo);
+  const unreliableSenders = detectedResult.unreliable;
   const unlogged = detected.filter((f) => !f.logged);
   const unloggedValue = unlogged.reduce((s, f) => s + f.estimatedValue, 0);
   // Litres the tanks received with no entry behind them. Added to the headline

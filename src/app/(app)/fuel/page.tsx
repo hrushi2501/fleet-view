@@ -3,6 +3,8 @@ import { PageTabs, resolveTab, type Tab } from "@/components/PageTabs";
 import { Overview } from "./_sections/Overview";
 import { FuelRecords } from "./_sections/FuelRecords";
 import { Txt } from "@/components/Txt";
+import { FuelSectionLoading } from "@/components/ModuleLoading";
+import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +27,7 @@ export default async function FuelPage({
 }: {
   searchParams: Promise<{ tab?: string }>;
 }) {
-  await requirePage("fuel.view");
+  const access = await requirePage("fuel.view");
   const tab = resolveTab((await searchParams).tab, TABS);
 
   return (
@@ -37,7 +39,9 @@ export default async function FuelPage({
 
       <PageTabs tabs={TABS} active={tab} basePath="/fuel" />
 
-      {tab === "overview" ? <Overview /> : <FuelRecords />}
+      <Suspense key={tab} fallback={<FuelSectionLoading compact={tab === "records"} />}>
+        {tab === "overview" ? <Overview access={access} /> : <FuelRecords access={access} />}
+      </Suspense>
     </div>
   );
 }

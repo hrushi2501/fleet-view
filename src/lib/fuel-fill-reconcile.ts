@@ -38,6 +38,8 @@
 import { db } from "@/lib/db";
 import { analyseUsage, type AnalyticsReading } from "@/lib/fleet-analytics";
 import { senderContradictsItself } from "@/lib/fuel-cache";
+import { serverCache } from "@/lib/cache";
+import { createHash } from "node:crypto";
 
 /**
  * How far apart a sensor event and a keyed entry may be and still be the same
@@ -49,6 +51,79 @@ const MATCH_WINDOW_HOURS = 12;
 
 /** Below this a rise is sender noise or slosh, not a fill worth chasing. */
 const MIN_FILL_LITRES = 20;
+
+/**
+ * The detector reads up to two weeks of the largest table in the application.
+ * A short cache is long enough to make navigation between Fuel tabs cheap but
+ * short enough that a newly arrived Fleet Edge reading appears on its next
+ * normal polling cycle. The access scope and diesel rate are part of the key,
+ * so neither rows nor estimated money can leak between users or go stale after
+ * a rate change.
+ */
+const DETECTED_FILLS_CACHE_SECONDS = 60;
+
+function stableJson(value: unknown): string {
+  if (value instanceof Date) return JSON.stringify(value.toISOString());
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "undefined";
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(",")}}`;
+}
+
+export function detectedFillsCacheKey(
+  assetWhere: Record<string, unknown>,
+  dieselRate: number,
+  sinceDays: number,
+): string {
+  const scope = createHash("sha256").update(stableJson(assetWhere)).digest("hex");
+  return `fuel:detected-fills:${sinceDays}:${dieselRate.toFixed(2)}:${scope}`;
+}
+
+type CachedDetectedFill = Omit<DetectedFill, "at" | "logged"> & {
+  at: string;
+  logged: (Omit<NonNullable<DetectedFill["logged"]>, "date"> & { date: string }) | null;
+};
+
+type CachedDetectFillsResult = {
+  fills: CachedDetectedFill[];
+  unreliable: UnreliableSender[];
+};
+
+function serializeDetectedFills(result: DetectFillsResult): CachedDetectFillsResult {
+  return {
+    unreliable: result.unreliable,
+    fills: result.fills.map((fill) => ({
+      ...fill,
+      at: fill.at.toISOString(),
+      logged: fill.logged ? { ...fill.logged, date: fill.logged.date.toISOString() } : null,
+    })),
+  };
+}
+
+function deserializeDetectedFills(result: CachedDetectFillsResult): DetectFillsResult {
+  return {
+    unreliable: result.unreliable,
+    fills: result.fills.map((fill) => ({
+      ...fill,
+      at: new Date(fill.at),
+      logged: fill.logged ? { ...fill.logged, date: new Date(fill.logged.date) } : null,
+    })),
+  };
+}
+
+export async function getDetectedFills(
+  assetWhere: Record<string, unknown>,
+  dieselRate: number,
+  sinceDays = 7,
+): Promise<DetectFillsResult> {
+  const key = detectedFillsCacheKey(assetWhere, dieselRate, sinceDays);
+  const cached = await serverCache.wrap(
+    key,
+    async () => serializeDetectedFills(await detectFills(assetWhere, dieselRate, sinceDays)),
+    DETECTED_FILLS_CACHE_SECONDS,
+  );
+  return deserializeDetectedFills(cached);
+}
 
 /** A vehicle whose sender cannot be believed, so no fill is claimed for it. */
 export type UnreliableSender = {

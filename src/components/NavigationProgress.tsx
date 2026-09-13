@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
+import { Txt } from "@/components/Txt";
 
 /**
  * Immediate feedback for an App Router navigation.
@@ -64,7 +65,7 @@ export function NavigationProgress() {
 
   return (
     <div className="pointer-events-none fixed inset-x-0 top-0 z-[100]" role="status" aria-live="polite">
-      <span className="sr-only">Opening page</span>
+      <span className="sr-only"><Txt text="Opening page" /></span>
       <div className="h-1 overflow-hidden bg-brand-100/80">
         <div className="navigation-progress h-full bg-brand-500 shadow-[0_0_10px_rgba(51,102,255,0.8)]" />
       </div>
