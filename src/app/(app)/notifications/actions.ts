@@ -7,10 +7,8 @@ import { raiseWoFromSchedule } from "@/app/(app)/maintenance/actions";
 import { requireAction, ActionError, safe, isActionError } from "@/lib/guard";
 import { assertRecordAccess } from "@/lib/record-access";
 import {
-  formNumber,
   boundedNumber,
   sanitizeString,
-  sanitizeOptionalString,
   sanitizeId,
 } from "@/lib/input-validation";
 
@@ -21,7 +19,6 @@ function refresh() {
 }
 
 const s = (fd: FormData, key: string) => sanitizeString(fd.get(key), key);
-const n = formNumber;
 
 /** Acknowledge an alert / reminder */
 async function acknowledgeAlert__impl(rawAlertId: string) {

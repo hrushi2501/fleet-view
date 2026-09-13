@@ -30,7 +30,7 @@ export function MahadevLogo({
   const centered = align === "center";
   return (
     <div className={`flex ${centered ? "flex-col items-center" : "items-center gap-4"} ${className ?? ""}`}>
-      <MahadevMark className={`${markClass} text-gold-500`} />
+      <MahadevMark className={`${markClass} text-brand-600`} />
       <div className={centered ? "mt-3 text-center" : ""}>
         <p className="text-xl font-semibold uppercase leading-none tracking-[0.18em] sm:text-2xl">
           Mahadev

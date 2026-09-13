@@ -4,13 +4,12 @@ import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
-import { checkReading, type MeterType, type ReadingLite } from "@/lib/master";
+import { checkReading, type ReadingLite } from "@/lib/master";
 import { parseBusinessDay } from "@/lib/business-time";
 import { requireAction, ActionError, safe } from "@/lib/guard";
 import { uploadPrivateFile } from "@/lib/private-upload";
 import { assertFormAccess, assertRecordAccess } from "@/lib/record-access";
 import {
-  formNumber,
   boundedNumber,
   nonNegativeNumber,
   oneOf,
@@ -23,7 +22,6 @@ import {
 
 const s = (fd: FormData, k: string) => sanitizeString(fd.get(k), k);
 const sOrNull = (fd: FormData, k: string) => sanitizeOptionalString(fd.get(k), k);
-const n = (fd: FormData, k: string) => formNumber(fd, k);
 
 const VALID_LIFECYCLE_KINDS = [
   "COMMISSIONED", "TRANSFERRED", "STATUS_CHANGE", "OFF_HIRED", "DECOMMISSIONED", "DISPOSED",

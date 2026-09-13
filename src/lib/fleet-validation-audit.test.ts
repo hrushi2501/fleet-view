@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  finiteNumber,
-  formNumber,
-  positiveNumber,
   nonNegativeNumber,
   boundedNumber,
   percentageNumber,
@@ -12,7 +9,7 @@ import {
   oneOf,
   safeParseDate,
 } from "./input-validation";
-import { checkReading, type MeterType, type ReadingLite } from "./master";
+import { checkReading, type ReadingLite } from "./master";
 import { ActionError } from "./action-error";
 
 describe("Fleet Input Validation: Identification & Classifications", () => {

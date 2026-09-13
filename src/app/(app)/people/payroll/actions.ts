@@ -31,7 +31,6 @@ import {
 } from "@/lib/payroll";
 import {
   safeParseDate,
-  sanitizeString,
   sanitizeOptionalString,
   sanitizeId,
   oneOf,
@@ -74,7 +73,7 @@ async function setWage__impl(input: {
   await db.wageRate.create({
     data: {
       driverId: driver.id,
-      kind: input.kind,
+      kind,
       amount: input.amount,
       otHourly: input.otHourly,
       effectiveFrom,

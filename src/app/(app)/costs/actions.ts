@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { formNumber, positiveNumber, boundedNumber, oneOf, safeParseDate, sanitizeString, sanitizeOptionalString } from "@/lib/input-validation";
+import { positiveNumber, boundedNumber, oneOf, safeParseDate, sanitizeString, sanitizeOptionalString } from "@/lib/input-validation";
 import { assertFormAccess, assertRecordAccess } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
@@ -10,7 +10,6 @@ import { requireAction, ActionError, safe } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => sanitizeString(fd.get(k), k);
 const sOrNull = (fd: FormData, k: string) => sanitizeOptionalString(fd.get(k), k);
-const n = formNumber;
 
 function refresh() {
   revalidatePath("/costs");

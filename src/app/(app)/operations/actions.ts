@@ -3,7 +3,6 @@
 import { db } from "@/lib/db";
 import { businessTransaction } from "@/lib/business-transaction";
 import {
-  formNumber,
   boundedNumber,
   nonNegativeNumber,
   coordinatePair,
@@ -22,7 +21,6 @@ import { requireAction, ActionError, safe } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => sanitizeString(fd.get(k), k);
 const sOrNull = (fd: FormData, k: string) => sanitizeOptionalString(fd.get(k), k);
-const n = formNumber;
 
 /**
  * Revalidate every page that reads project / site / allocation / mob data.

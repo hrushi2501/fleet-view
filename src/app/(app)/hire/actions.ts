@@ -3,7 +3,6 @@
 import { db } from "@/lib/db";
 import { businessTransaction } from "@/lib/business-transaction";
 import {
-  formNumber,
   boundedNumber,
   nonNegativeNumber,
   positiveNumber,
@@ -21,7 +20,6 @@ import { requireAction, ActionError, safe } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => sanitizeString(fd.get(k), k);
 const sOrNull = (fd: FormData, k: string) => sanitizeOptionalString(fd.get(k), k);
-const n = formNumber;
 const b = (fd: FormData, k: string) => fd.get(k) === "on" || fd.get(k) === "true";
 const dt = (fd: FormData, k: string) => {
   const val = s(fd, k);

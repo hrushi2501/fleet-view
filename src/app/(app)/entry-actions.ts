@@ -40,20 +40,6 @@ async function uploadPhoto(file: FormDataEntryValue | null, prefix: string): Pro
 const s = (fd: FormData, k: string) => sanitizeString(fd.get(k), k);
 const n = formNumber;
 
-/**
- * A number field that may legitimately be blank.
- *
- * `n` returns 0 for an empty input, which is right for a meter reading and
- * wrong for a specification: a laden weight of 0 kg is not a lighter truck, it
- * is a truck nobody has measured. Blank must stay null so the page can say
- * "not recorded" instead of printing a zero.
- */
-const nOrNull = (fd: FormData, k: string) => {
-  const raw = String(fd.get(k) ?? "").trim();
-  if (!raw) return null;
-  const v = Number(raw);
-  return Number.isFinite(v) ? v : null;
-};
 
 /** A text field that may be blank; empty becomes null rather than "". */
 const sOrNull = (fd: FormData, k: string) => sanitizeOptionalString(fd.get(k), k);

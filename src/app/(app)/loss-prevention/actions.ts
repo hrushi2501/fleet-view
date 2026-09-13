@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { formNumber, boundedNumber, nonNegativeNumber, oneOf, safeParseDate, sanitizeString, sanitizeOptionalString } from "@/lib/input-validation";
+import { boundedNumber, nonNegativeNumber, oneOf, safeParseDate, sanitizeString, sanitizeOptionalString } from "@/lib/input-validation";
 import { fuelAnomalyScope, recordScope, assertGlobalAccess, assertFormAccess, assertRecordAccess } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
@@ -12,7 +12,6 @@ import { transition } from "@/lib/transition";
 
 const s = (fd: FormData, k: string) => sanitizeString(fd.get(k), k);
 const sOrNull = (fd: FormData, k: string) => sanitizeOptionalString(fd.get(k), k);
-const n = formNumber;
 
 function refresh(id?: string) {
   revalidatePath("/loss-prevention");

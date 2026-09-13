@@ -8,18 +8,16 @@ import { sweepAlerts, dueForEscalation, DEFAULT_ALERT_RULES, type AlertRuleLite,
 import { pmDue, type ScheduleLite } from "@/lib/maintenance";
 import { allocationConflicts, mobilizationStats, type AllocationLite, type MobLite } from "@/lib/operations";
 import {
-  formNumber,
   boundedNumber,
   nonNegativeNumber,
   oneOf,
   sanitizeString,
   sanitizeId,
 } from "@/lib/input-validation";
-import { ActionError, requireAction, safe } from "@/lib/guard";
+import { requireAction, safe } from "@/lib/guard";
 import { assertRecordAccess } from "@/lib/record-access";
 
 const s = (fd: FormData, k: string) => sanitizeString(fd.get(k), k);
-const n = formNumber;
 
 function refresh() {
   revalidatePath("/alerts");

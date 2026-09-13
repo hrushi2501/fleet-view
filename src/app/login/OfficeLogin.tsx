@@ -1,38 +1,38 @@
 "use client";
 
 /**
- * The sign-in screen, to Mahadev Constructions' own artwork.
+ * Minimal, modern sign-in screen for FleetView ERP at Mahadev Constructions.
  *
- * ─────────────────────────────────────────────────────────────────────────────
- * THREE CONTROLS IN THE DESIGN HAVE NO BACKEND, AND ARE HANDLED HONESTLY
- *
- * A sign-in screen is the first thing a client sees, so a control that looks
- * real and does nothing costs more trust here than anywhere else in the product.
- *
- *   "Email or Mobile Number"  The sign-in action matches on email only; `User`
- *                             holds no phone number. The field says Email.
- *   Remember me               A real one would lengthen the session, which is a
- *                             security decision for the client to take, not a
- *                             styling detail — and a long session on a shared
- *                             site laptop is exactly the wrong default. This
- *                             remembers the address instead, so the next person
- *                             at that desk types a password and not an email.
- *   Forgot password?          There is no reset route and no mail service behind
- *                             one. Rather than link to a 404, it says who can
- *                             actually reset it.
- * ─────────────────────────────────────────────────────────────────────────────
+ * Preserves all functionality:
+ * - Credentials sign-in with server-side validation and lockout protection
+ * - Hydration-safe localStorage persistence for remembered email
+ * - Password visibility toggle
+ * - Admin password reset guidance note
+ * - Seamless toggle to Driver login flow
+ * - Phone app installation link (/install)
+ * - Required company attribution for Mahadev Constructions and Pitbull Corporations
  */
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Loader2, Mail, Lock, Eye, EyeOff, ArrowRight, Truck } from "lucide-react";
+import {
+  Loader2,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  ArrowRight,
+  Truck,
+  Info,
+  Smartphone,
+} from "lucide-react";
 import { login } from "./actions";
-import { MahadevMark, MahadevLogo } from "./MahadevMark";
+import { MahadevMark } from "./MahadevMark";
 
 type LoginState = { error?: string } | null;
 
-/** Where the remembered address is kept. Per browser, never sent anywhere. */
+/** LocalStorage key for remembered address (per-browser, never transmitted). */
 const REMEMBERED_EMAIL = "mahadev:last-email";
 
 export default function OfficeLogin({ onDriverLogin }: { onDriverLogin: () => void }) {
@@ -42,15 +42,7 @@ export default function OfficeLogin({ onDriverLogin }: { onDriverLogin: () => vo
   const emailRef = useRef<HTMLInputElement>(null);
   const rememberRef = useRef<HTMLInputElement>(null);
 
-  // The remembered address is filled straight into the inputs rather than held
-  // in state. The server renders this form with an empty field and only the
-  // browser knows what was saved, so putting it in state would either mismatch
-  // hydration or need an effect that sets state — this writes the DOM once and
-  // avoids both.
-  //
-  // Wrapped because a private window, cleared site data, or a browser set to
-  // block storage all throw on access, and none of them is a reason to fail to
-  // render a sign-in form.
+  // Restore remembered email on mount without hydration mismatch.
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(REMEMBERED_EMAIL);
@@ -58,7 +50,7 @@ export default function OfficeLogin({ onDriverLogin }: { onDriverLogin: () => vo
       if (emailRef.current) emailRef.current.value = saved;
       if (rememberRef.current) rememberRef.current.checked = true;
     } catch {
-      /* storage unavailable — the form simply starts empty */
+      /* storage unavailable in private browsing or restricted settings */
     }
   }, []);
 
@@ -71,235 +63,252 @@ export default function OfficeLogin({ onDriverLogin }: { onDriverLogin: () => vo
         window.localStorage.removeItem(REMEMBERED_EMAIL);
       }
     } catch {
-      /* nothing to do; the sign-in itself is unaffected */
+      /* storage write failure does not affect sign-in */
     }
   }
 
   return (
-    <main className="relative min-h-screen w-full overflow-hidden bg-ink-900">
-      {/* ── The site photograph ──────────────────────────────────────────────
-          Fixed and behind everything, so on a phone the card floats over the
-          same picture instead of pushing it off the top of the screen. */}
+    <main className="relative min-h-screen w-full overflow-hidden bg-ink-900 text-white">
+      {/* ── Mahadev Fleet Truck Screen Backdrop ──────────────────────────── */}
       <div className="absolute inset-0">
         <Image
           src="/brand/login-hero.jpg"
-          alt=""
+          alt="Mahadev Constructions Fleet"
           fill
           priority
           sizes="100vw"
-          className="object-cover object-center"
+          className="object-cover object-center lg:object-left"
         />
-        {/* Left-weighted wash: enough contrast for white type over a bright sky,
-            without flattening the photograph into a grey rectangle. */}
-        <div className="absolute inset-0 bg-gradient-to-r from-ink-900/85 via-ink-900/55 to-ink-900/25" />
-        <div className="absolute inset-0 bg-gradient-to-t from-ink-900/70 via-transparent to-ink-900/40" />
+        {/* Blue-shaded cinematic gradient grading - no yellow, no muddy wash */}
+        <div className="absolute inset-0 bg-linear-to-r from-ink-900/95 via-ink-900/65 to-ink-900/90 lg:from-ink-900/80 lg:via-ink-900/35 lg:to-ink-900/95" />
+        <div className="absolute inset-0 bg-linear-to-t from-ink-900 via-transparent to-ink-900/75" />
+        <div className="pointer-events-none absolute inset-0 bg-brand-950/20 mix-blend-multiply" />
       </div>
 
-      <div className="relative mx-auto flex min-h-screen w-full max-w-[1600px] flex-col px-5 py-8 sm:px-8 lg:px-14 lg:py-12">
-       <div className="flex flex-1 flex-col gap-8 lg:flex-row lg:items-center lg:gap-12">
-        {/* ── Brand side ──────────────────────────────────────────────────── */}
-        <section className="flex flex-1 flex-col justify-center text-white lg:min-h-[80vh]">
-          <MahadevLogo className="text-white" markClass="h-11 w-11 sm:h-14 sm:w-14" />
-
-          <p className="mt-6 text-[10px] font-medium uppercase tracking-[0.3em] text-white/70 sm:mt-8 sm:text-xs sm:tracking-[0.42em]">
-            People <span className="mx-1.5 text-gold-400">|</span> Machines
-            <span className="mx-1.5 text-gold-400">|</span> Projects
-          </p>
-
-          <h1 className="mt-5 text-3xl font-bold uppercase leading-[1.08] tracking-tight sm:mt-7 sm:text-5xl lg:text-[3.4rem]">
-            Building
-            <br />
-            <span className="text-gold-400">A Stronger</span>
-            <br />
-            Tomorrow
-          </h1>
-
-          <span className="mt-6 block h-px w-16 bg-gold-400/80 sm:mt-8" />
-
-          <p className="mt-5 max-w-sm text-[11px] font-medium uppercase leading-relaxed tracking-[0.22em] text-white/75 sm:text-sm sm:tracking-[0.28em]">
-            Infrastructure for a brighter India
-          </p>
-        </section>
-
-        {/* ── Sign-in card ────────────────────────────────────────────────── */}
-        <section className="w-full lg:w-[27rem] lg:shrink-0">
-          <div className="rounded-3xl bg-white/95 p-6 shadow-2xl shadow-ink-900/40 ring-1 ring-white/40 backdrop-blur-sm sm:p-8">
-            <MahadevLogo align="center" markClass="h-11 w-11" className="text-ink-900" />
-
-            <h2 className="mt-7 text-2xl font-bold tracking-tight text-ink-900">Welcome Back</h2>
-            <p className="mt-1 text-sm text-slate-500">Sign in to your account</p>
-
-            <form
-              action={formAction}
-              onSubmit={persistEmailChoice}
-              className="mt-6 space-y-3.5"
-            >
-              <div>
-                <label htmlFor="email" className="sr-only">
-                  Email
-                </label>
-                <div className="relative">
-                  <Mail
-                    className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-                    aria-hidden
-                  />
-                  <input
-                    id="email"
-                    name="email"
-                    type="email"
-                    autoComplete="username"
-                    inputMode="email"
-                    required
-                    ref={emailRef}
-                    defaultValue=""
-                    placeholder="Email"
-                    className="min-h-13 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-sm text-ink-900 outline-none transition-colors placeholder:text-slate-400 focus:border-gold-400 focus:ring-4 focus:ring-gold-100"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="password" className="sr-only">
-                  Password
-                </label>
-                <div className="relative">
-                  <Lock
-                    className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-                    aria-hidden
-                  />
-                  <input
-                    id="password"
-                    name="password"
-                    type={showPassword ? "text" : "password"}
-                    autoComplete="current-password"
-                    required
-                    placeholder="Password"
-                    className="min-h-13 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-12 text-sm text-ink-900 outline-none transition-colors placeholder:text-slate-400 focus:border-gold-400 focus:ring-4 focus:ring-gold-100"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((v) => !v)}
-                    aria-label={showPassword ? "Hide password" : "Show password"}
-                    className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-                <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-600">
-                  <input
-                    type="checkbox"
-                    ref={rememberRef}
-                    defaultChecked={false}
-                    className="h-4 w-4 rounded border-slate-300 accent-gold-500"
-                  />
-                  Remember my email
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setAskedAboutReset(true)}
-                  className="text-xs font-semibold text-gold-600 underline-offset-2 hover:underline"
-                >
-                  Forgot password?
-                </button>
-              </div>
-
-              {askedAboutReset && (
-                <p className="rounded-xl bg-gold-50 px-3.5 py-2.5 text-xs leading-relaxed text-gold-800 ring-1 ring-gold-200">
-                  Passwords are reset by an administrator from{" "}
-                  <b>Users</b> inside the app — there is no self-service reset. Ask
-                  whoever set up your account.
-                </p>
-              )}
-
-              {state?.error && (
-                <p
-                  role="alert"
-                  className="rounded-xl bg-rose-50 px-3.5 py-2.5 text-sm font-medium text-rose-700 ring-1 ring-rose-200"
-                >
-                  {state.error}
-                </p>
-              )}
-
-              <button
-                disabled={pending}
-                className="flex min-h-13 w-full items-center justify-center gap-2 rounded-xl bg-gold-500 text-sm font-bold text-white shadow-lg shadow-gold-500/30 transition-colors hover:bg-gold-600 disabled:opacity-60"
-              >
-                {pending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                    Signing in…
-                  </>
-                ) : (
-                  <>
-                    Login
-                    <ArrowRight className="h-4 w-4" aria-hidden />
-                  </>
-                )}
-              </button>
-            </form>
-
-            <div className="mt-6 flex items-center gap-3">
-              <span className="h-px flex-1 bg-slate-200" />
-              <span className="text-[9px] font-medium uppercase tracking-[0.2em] text-slate-400">
-                Same ground, a brighter tomorrow
-              </span>
-              <span className="h-px flex-1 bg-slate-200" />
+      <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col justify-between px-5 py-6 sm:px-8 lg:px-12 lg:py-8">
+        {/* Header with Mahadev Brand Mark */}
+        <header className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-600 text-white shadow-lg shadow-brand-500/30 ring-1 ring-white/10">
+              <MahadevMark className="h-6 w-6 text-white" />
             </div>
+            <div>
+              <p className="text-base font-bold tracking-tight text-white">FleetView ERP</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-brand-300">
+                Mahadev Constructions
+              </p>
+            </div>
+          </div>
+          <div className="hidden sm:flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-3.5 py-1 backdrop-blur-md text-[11px] text-slate-300">
+            <span className="h-1.5 w-1.5 rounded-full bg-brand-400 animate-pulse" />
+            Heavy Fleet &amp; Logistics
+          </div>
+        </header>
 
-            {/* The driver flow is a different screen, not a different password.
-                It stays reachable from here because a driver handed a phone has
-                nowhere else to start. */}
-            <button
-              type="button"
-              onClick={onDriverLogin}
-              className="mt-5 flex min-h-13 w-full items-center justify-between rounded-xl border border-gold-200 bg-gold-50/70 px-4 text-left text-gold-800 transition-colors hover:bg-gold-100"
-            >
-              <span className="flex items-center gap-3">
-                <Truck className="h-5 w-5" aria-hidden />
-                <span>
-                  <span className="block text-sm font-bold">Driver sign in</span>
-                  <span className="block text-xs font-medium text-gold-600">ड्राइवर लॉग इन</span>
-                </span>
-              </span>
-              <ArrowRight className="h-4 w-4" aria-hidden />
-            </button>
+        {/* Center section: Left side clean fleet info, Right side sign-in card */}
+        <div className="my-auto flex flex-col gap-8 py-8 lg:flex-row lg:items-center lg:justify-between lg:gap-12">
+          {/* Left side: minimal, clean typography letting the trucks be seen */}
+          <div className="hidden flex-1 flex-col justify-center text-white lg:flex max-w-lg">
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-brand-400/30 bg-brand-500/10 px-3.5 py-1 text-xs font-semibold text-brand-300 backdrop-blur-md">
+              <Truck className="h-3.5 w-3.5" />
+              Telematics-Native Fleet Operations
+            </div>
+            <h1 className="mt-4 text-3xl font-bold tracking-tight text-white lg:text-4xl">
+              Connected machines. Clear operations.
+            </h1>
+            <p className="mt-3 text-sm leading-relaxed text-slate-300">
+              Live vehicle telemetry, tank-level fuel tracking, predictive maintenance, and site logistics across Rajasthan.
+            </p>
 
-            <Link
-              href="/install"
-              className="mt-3 flex min-h-11 items-center justify-center rounded-xl text-xs font-semibold text-slate-500 transition-colors hover:text-gold-700"
-            >
-              📲 Install this app on your phone
-            </Link>
+            <div className="mt-6 flex items-center gap-3 text-xs font-medium text-slate-300">
+              <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 backdrop-blur-sm">
+                <span className="h-2 w-2 rounded-full bg-brand-400" />
+                Live Telemetry
+              </div>
+              <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 backdrop-blur-sm">
+                <span className="h-2 w-2 rounded-full bg-brand-400" />
+                Fuel Security
+              </div>
+              <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 backdrop-blur-sm">
+                <span className="h-2 w-2 rounded-full bg-brand-400" />
+                Asset Utilisation
+              </div>
+            </div>
           </div>
 
-          <p className="mt-5 text-center text-[9px] font-medium uppercase tracking-[0.28em] text-white/55">
-            Infrastructure <span className="mx-1 text-gold-400">|</span> Trust
-            <span className="mx-1 text-gold-400">|</span> Progress
-          </p>
-        </section>
-       </div>
+          {/* Right side: Modern glass sign-in card */}
+          <div className="w-full lg:w-98 lg:shrink-0 mx-auto lg:mx-0">
+            <div className="rounded-2xl border border-white/15 bg-ink-900/85 p-6 shadow-2xl shadow-black/70 backdrop-blur-xl sm:p-7">
+              <div className="mb-6">
+                <h2 className="text-xl font-bold tracking-tight text-white">Sign in</h2>
+                <p className="mt-1 text-xs text-slate-400">Access your fleet command center</p>
+              </div>
 
-        {/* ── Page foot ───────────────────────────────────────────────────────
-            Ownership on the left, authorship on the right. They stack on a
-            phone rather than shrinking into two unreadable columns, and the
-            hairline above them keeps the credits from floating loose over the
-            photograph. */}
-        <footer className="mt-10 flex flex-col gap-2 border-t border-white/15 pt-5 text-[10px] font-medium uppercase tracking-[0.18em] text-white/55 sm:flex-row sm:items-center sm:justify-between sm:text-[11px] sm:tracking-[0.22em]">
+              <form
+                action={formAction}
+                onSubmit={persistEmailChoice}
+                className="space-y-4"
+              >
+                <div>
+                  <label htmlFor="email" className="mb-1.5 block text-xs font-semibold text-slate-300">
+                    Email
+                  </label>
+                  <div className="relative">
+                    <Mail
+                      className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                      aria-hidden
+                    />
+                    <input
+                      id="email"
+                      name="email"
+                      type="email"
+                      autoComplete="username"
+                      inputMode="email"
+                      required
+                      ref={emailRef}
+                      defaultValue=""
+                      placeholder="name@mahadev.com"
+                      className="min-h-11 w-full rounded-xl border border-white/15 bg-white/5 pl-10 pr-4 text-sm text-white placeholder:text-slate-500 outline-none transition-colors focus:border-brand-400 focus:bg-white/10 focus:ring-2 focus:ring-brand-500/25"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <label htmlFor="password" className="block text-xs font-semibold text-slate-300">
+                      Password
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setAskedAboutReset((prev) => !prev)}
+                      className="text-xs font-medium text-brand-400 transition-colors hover:text-brand-300 hover:underline"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <Lock
+                      className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                      aria-hidden
+                    />
+                    <input
+                      id="password"
+                      name="password"
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="current-password"
+                      required
+                      placeholder="••••••••"
+                      className="min-h-11 w-full rounded-xl border border-white/15 bg-white/5 pl-10 pr-11 text-sm text-white placeholder:text-slate-500 outline-none transition-colors focus:border-brand-400 focus:bg-white/10 focus:ring-2 focus:ring-brand-500/25"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition-colors hover:text-white"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {askedAboutReset && (
+                  <div className="flex items-start gap-2.5 rounded-xl border border-brand-500/30 bg-brand-950/70 p-3 text-xs leading-relaxed text-brand-200 animate-fade-up">
+                    <Info className="h-4 w-4 shrink-0 text-brand-400 mt-0.5" aria-hidden />
+                    <div>
+                      <p className="font-semibold text-white">Need a password reset?</p>
+                      <p className="mt-0.5 text-slate-300">
+                        Passwords are reset by an administrator in <b>Users</b>. Please contact your supervisor or account administrator.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between pt-0.5">
+                  <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-300 select-none">
+                    <input
+                      type="checkbox"
+                      ref={rememberRef}
+                      defaultChecked={false}
+                      className="h-4 w-4 rounded border-slate-600 accent-brand-500 bg-white/5"
+                    />
+                    Remember my email
+                  </label>
+                </div>
+
+                {state?.error && (
+                  <p
+                    role="alert"
+                    className="rounded-xl border border-rose-500/30 bg-rose-950/60 px-3.5 py-2.5 text-xs font-medium text-rose-300 animate-fade-up"
+                  >
+                    {state.error}
+                  </p>
+                )}
+
+                <button
+                  disabled={pending}
+                  type="submit"
+                  className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 text-sm font-semibold text-white shadow-lg shadow-brand-600/30 transition-all hover:bg-brand-500 active:scale-[0.99] disabled:opacity-60"
+                >
+                  {pending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                      Signing in…
+                    </>
+                  ) : (
+                    <>
+                      Sign in
+                      <ArrowRight className="h-4 w-4" aria-hidden />
+                    </>
+                  )}
+                </button>
+              </form>
+
+              {/* Driver sign in switch & App install */}
+              <div className="mt-5 space-y-2.5 border-t border-white/10 pt-4">
+                <button
+                  type="button"
+                  onClick={onDriverLogin}
+                  className="group flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/5 p-2.5 text-left transition-all hover:border-brand-400/40 hover:bg-brand-500/10"
+                >
+                  <span className="flex items-center gap-3">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-brand-400/20 bg-brand-500/20 text-brand-300 transition-colors group-hover:bg-brand-500 group-hover:text-white">
+                      <Truck className="h-4 w-4" aria-hidden />
+                    </span>
+                    <span>
+                      <span className="block text-xs font-bold text-white">Driver sign in</span>
+                      <span className="block text-[10px] font-medium text-brand-300">ड्राइवर लॉग इन</span>
+                    </span>
+                  </span>
+                  <ArrowRight
+                    className="h-4 w-4 text-slate-400 transition-all group-hover:translate-x-0.5 group-hover:text-brand-300"
+                    aria-hidden
+                  />
+                </button>
+
+                <Link
+                  href="/install"
+                  className="flex items-center justify-center gap-1.5 py-1 text-xs font-medium text-slate-400 transition-colors hover:text-brand-300"
+                >
+                  <Smartphone className="h-3.5 w-3.5" aria-hidden />
+                  Install app on phone
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Minimal Footer Credits */}
+        <footer className="flex flex-col gap-1 border-t border-white/10 pt-4 text-[11px] text-slate-400 sm:flex-row sm:items-center sm:justify-between">
           <p>
             &copy; {new Date().getFullYear()} All rights reserved to{" "}
-            <span className="text-white/80">Mahadev Constructions</span>
+            <span className="font-semibold text-slate-200">Mahadev Constructions</span>
           </p>
           <p>
-            Made by <span className="text-gold-400">Pitbull Corporations</span>
+            Made by <span className="font-semibold text-brand-400">Pitbull Corporations</span>
           </p>
         </footer>
       </div>
-
-      {/* Marks the page as Mahadev's without competing with the card on a phone. */}
-      <MahadevMark className="pointer-events-none absolute -bottom-8 -right-6 hidden h-56 w-56 text-white/[0.04] lg:block" />
     </main>
   );
 }
+

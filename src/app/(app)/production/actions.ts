@@ -2,7 +2,6 @@
 
 import { db } from "@/lib/db";
 import {
-  formNumber,
   boundedNumber,
   nonNegativeNumber,
   safeParseDate,
@@ -20,7 +19,6 @@ import { requireAction, ActionError, safe } from "@/lib/guard";
 
 const s = (fd: FormData, k: string) => sanitizeString(fd.get(k), k);
 const sOrNull = (fd: FormData, k: string) => sanitizeOptionalString(fd.get(k), k);
-const n = formNumber;
 
 function refresh() {
   revalidatePath("/production");
