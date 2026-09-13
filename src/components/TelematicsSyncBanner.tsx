@@ -38,6 +38,7 @@ export function TelematicsSyncBanner({ status, className }: TelematicsSyncBanner
 
   const isConfigured = status.configured && status.enabled;
   const syncStatus = lastStatus ?? (isConfigured ? "OK" : "DISABLED");
+  const [mountedNow] = useState(() => Date.now());
 
   const handleSyncNow = () => {
     startTransition(async () => {
@@ -94,7 +95,7 @@ export function TelematicsSyncBanner({ status, className }: TelematicsSyncBanner
     }
     if (syncStatus === "ERROR") {
       const recentPushReading =
-        status.lastReadingAt && Date.now() - new Date(status.lastReadingAt).getTime() < 30 * 60_000;
+        status.lastReadingAt && mountedNow - new Date(status.lastReadingAt).getTime() < 30 * 60_000;
       if (recentPushReading && status.lastReadingAt) {
         return {
           cls: "bg-emerald-100 text-emerald-800 ring-emerald-300",

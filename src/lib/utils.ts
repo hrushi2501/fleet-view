@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { BUSINESS_TIMEZONE, businessDay } from "./business-time";
+import { businessDay } from "./business-time";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
