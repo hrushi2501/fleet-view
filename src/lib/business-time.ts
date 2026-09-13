@@ -72,6 +72,27 @@ export function businessDayShort(d: Date): string {
   return businessDay(d).slice(5);
 }
 
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
+/**
+ * `DD Mon YYYY, H:MM AM/PM` formatted in the business timezone.
+ *
+ * Deterministic and engine-independent: avoids Node vs browser ICU mismatches
+ * (e.g. Node producing "Sept" and "7:40 pm" while browsers produce "Sep" and "7:40 PM"
+ * under `en-IN`, which causes React hydration failures).
+ */
+export function businessClock(d: Date | string): string {
+  const date = typeof d === "string" ? new Date(d) : d;
+  if (Number.isNaN(date.getTime())) return "—";
+  const p = parts(date);
+  const day = String(p.day).padStart(2, "0");
+  const month = SHORT_MONTHS[p.month - 1] ?? String(p.month).padStart(2, "0");
+  const hour12 = p.hour % 12 || 12;
+  const minute = String(p.minute).padStart(2, "0");
+  const ampm = p.hour >= 12 ? "PM" : "AM";
+  return `${day} ${month} ${p.year}, ${hour12}:${minute} ${ampm}`;
+}
+
 /**
  * The instant that a business day starts, as a UTC Date.
  *

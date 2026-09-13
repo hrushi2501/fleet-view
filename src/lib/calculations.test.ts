@@ -18,7 +18,7 @@ import assert from "node:assert/strict";
 import { pmDue, reliability, type ScheduleLite, type WoLite } from "./maintenance.ts";
 import { attendanceSummary } from "./master.ts";
 import { projectPnL, replaceVsRepair, depreciation } from "./costing.ts";
-import { scorecard } from "./loss-prevention.ts";
+import { scorecard, scanSignals, DEFAULT_RULES } from "./loss-prevention.ts";
 import { calendarDaysUntil } from "./utils.ts";
 
 const now = new Date("2026-08-12T09:00:00.000Z");
@@ -233,3 +233,76 @@ describe("loss-prevention scorecard", () => {
     assert.equal(sc.avgDaysToResolve, null);
   });
 });
+
+describe("loss-prevention signal scanning", () => {
+  test("categorizes ASSET_EFFICIENCY as FUEL_EFFICIENCY_DROP", () => {
+    const rules = DEFAULT_RULES.map((r) => ({
+      code: r.code,
+      enabled: true,
+      threshold: r.threshold,
+      severity: r.severity,
+      autoCase: true,
+    }));
+
+    const signals = scanSignals({
+      rules,
+      dieselRate: 90,
+      fuelAnomalies: [
+        {
+          id: "anom_eff_1",
+          source: "ASSET_EFFICIENCY",
+          severity: "MEDIUM",
+          score: 65,
+          litres: 45,
+          valueAtRisk: 4050,
+          reasons: "Burn rate 38% above norm",
+          status: "OPEN",
+          tankId: null,
+          assetId: "ast_1",
+        },
+        {
+          id: "anom_rec_1",
+          source: "RECEIPT",
+          severity: "HIGH",
+          score: 80,
+          litres: 60,
+          valueAtRisk: 5400,
+          reasons: "Short delivery detected",
+          status: "OPEN",
+          tankId: "tank_1",
+          assetId: null,
+        },
+        {
+          id: "anom_tank_1",
+          source: "TANK_RECON",
+          severity: "HIGH",
+          score: 75,
+          litres: 50,
+          valueAtRisk: 4500,
+          reasons: "Unaccounted dip drop",
+          status: "OPEN",
+          tankId: "tank_1",
+          assetId: null,
+        },
+      ],
+      uncontractedHired: [],
+      meterRollbacks: [],
+      noEvidenceFuel: [],
+      expiredRunning: [],
+    });
+
+    const effSig = signals.find((s) => s.signalKey === "FUEL_ANOMALY:anom_eff_1");
+    assert.ok(effSig, "Efficiency signal should be generated");
+    assert.equal(effSig.ruleCode, "FUEL_EFFICIENCY_DROP");
+    assert.ok(effSig.title.includes("Abnormal fuel consumption"));
+
+    const recSig = signals.find((s) => s.signalKey === "FUEL_ANOMALY:anom_rec_1");
+    assert.ok(recSig);
+    assert.equal(recSig.ruleCode, "FUEL_SHORT_DELIVERY");
+
+    const tankSig = signals.find((s) => s.signalKey === "FUEL_ANOMALY:anom_tank_1");
+    assert.ok(tankSig);
+    assert.equal(tankSig.ruleCode, "FUEL_TANK_GAP");
+  });
+});
+

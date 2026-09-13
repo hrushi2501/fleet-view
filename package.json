@@ -35,6 +35,7 @@
     "worker:telematics": "node --env-file=.env.local --import ./scripts/test-setup.mjs scripts/telematics-worker.mjs",
     "worker:telematics:once": "node --env-file=.env.local --import ./scripts/test-setup.mjs scripts/telematics-worker.mjs --once",
     "db:clean-and-sync": "node --env-file=.env.local --import ./scripts/test-setup.mjs scripts/clean-and-sync-tata.mjs",
+    "db:remove-site-tanks": "node --env-file=.env.local prisma/remove-site-tanks.mjs",
     "audit:confidence": "node --env-file=.env.local --import ./scripts/test-setup.mjs scripts/confidence-audit.mjs"
   },
   "dependencies": {

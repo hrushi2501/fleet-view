@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { BUSINESS_TIMEZONE, businessDay } from "./business-time";
+import { businessDay } from "./business-time";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -104,15 +104,20 @@ export function timeAgo(date: Date | string): string {
   return `${days}d ago`;
 }
 
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
 export function fmtDate(date: Date | string): string {
   const d = typeof date === "string" ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return "—";
   // Without an explicit zone this renders in the server's timezone — UTC on
   // Vercel — so anything logged between midnight and 05:30 IST prints as the
   // previous day. Fuel issued at 01:00 on the 1st would show as the 31st.
-  return d.toLocaleDateString("en-IN", {
-    timeZone: BUSINESS_TIMEZONE,
-    day: "2-digit", month: "short", year: "numeric",
-  });
+  //
+  // Formatted deterministically without Intl locale discrepancies between
+  // Node.js (which outputs "Sept" for en-IN) and browsers (which output "Sep").
+  const [y, m, day] = businessDay(d).split("-").map(Number);
+  const month = SHORT_MONTHS[m - 1] ?? String(m).padStart(2, "0");
+  return `${String(day).padStart(2, "0")} ${month} ${y}`;
 }
 
 export const ASSET_CLASS_LABEL: Record<string, string> = {

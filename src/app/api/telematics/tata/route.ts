@@ -529,7 +529,17 @@ async function handlePOST(req: Request) {
     });
   }
 
-  if (accepted > 0) await invalidateLiveFleetCache();
+  if (accepted > 0 || duplicates > 0) {
+    await invalidateLiveFleetCache();
+    await db.telematicsProvider.updateMany({
+      where: { code: "TATA_FLEET_EDGE" },
+      data: {
+        lastSyncAt: new Date(),
+        lastSyncStatus: "OK",
+        lastSyncError: null,
+      },
+    });
+  }
   return NextResponse.json({ ok: true, accepted, duplicates, unmatched });
 }
 

@@ -38,6 +38,7 @@ export function TelematicsSyncBanner({ status, className }: TelematicsSyncBanner
 
   const isConfigured = status.configured && status.enabled;
   const syncStatus = lastStatus ?? (isConfigured ? "OK" : "DISABLED");
+  const [mountedNow] = useState(() => Date.now());
 
   const handleSyncNow = () => {
     startTransition(async () => {
@@ -68,6 +69,18 @@ export function TelematicsSyncBanner({ status, className }: TelematicsSyncBanner
   };
 
   const getStatusBadge = () => {
+    const readingAge = status.lastReadingAt
+      ? Math.abs(mountedNow - new Date(status.lastReadingAt).getTime())
+      : Infinity;
+    const recentPushReading = readingAge < 30 * 60_000;
+    if (recentPushReading && status.lastReadingAt) {
+      return {
+        cls: "bg-emerald-100 text-emerald-800 ring-emerald-300",
+        icon: CheckCircle2,
+        label: "Live Webhook Connected",
+        sub: `Streaming live telemetry (last reading ${timeAgo(status.lastReadingAt)})`,
+      };
+    }
     if (!status.enabled) {
       return {
         cls: "bg-slate-100 text-slate-700 ring-slate-300",
@@ -147,9 +160,10 @@ export function TelematicsSyncBanner({ status, className }: TelematicsSyncBanner
 
           <p className="mt-0.5 text-xs text-slate-500">
             {badge.sub}
-            {lastSynced && (
-              <span className="ml-1.5 font-medium text-slate-600">
-                · Last synced {timeAgo(lastSynced)} ({fmtDate(lastSynced)})
+            {lastSynced && badge.label !== "Live Webhook Connected" && (
+              <span className="ml-1.5 font-medium text-slate-600" suppressHydrationWarning>
+                {"· "}
+                {syncStatus === "OK" ? "Last synced" : "Last attempt"} {timeAgo(lastSynced)} ({fmtDate(lastSynced)})
               </span>
             )}
           </p>
