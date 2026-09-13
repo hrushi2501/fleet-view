@@ -62,7 +62,10 @@ import { getDieselRate } from "@/lib/settings";
 import { withPollLock } from "@/lib/poll-lock";
 import { reserveCall, budgetStatus, startCooldown, cooldownRemaining, TATA_CALLS_PER_HOUR } from "@/lib/api-budget";
 import { TataFleetEdgeAdapter, type TelemetryPing } from "@/lib/telematics-adapters";
-import { analyseSegment, riskScore, severityFor, type AnalyticsReading } from "@/lib/fleet-analytics";
+import {
+  analyseSegment, confirmSensorRefuel, riskScore, severityFor,
+  type AnalyticsReading,
+} from "@/lib/fleet-analytics";
 import {
   normaliseReading, assetCacheUpdate, detectSchemaDrift, describeDrift,
 } from "@/lib/telemetry-normalization";
@@ -444,6 +447,7 @@ export async function recordTelemetryFuelAnomaly(
   current: AnalyticsReading,
   readingId: string,
   tankCapacityL: number | null,
+  recentReadings: AnalyticsReading[] = [],
 ): Promise<boolean> {
   const norm =
     (await db.consumptionNorm.findFirst({ where: { assetId: asset.id, unit: "KMPL" } })) ??
@@ -456,12 +460,12 @@ export async function recordTelemetryFuelAnomaly(
 
   const segment = analyseSegment(previous, current, norm, tankCapacityL, idle?.normHigh ?? null);
 
-  // A tank that rises was filled. Record it as a fuel issue so it appears in
-  // Fuel Management, Reconciliation and the cost reports like any other fill —
-  // the fact that a sensor noticed it rather than a clerk typing it is a
-  // provenance detail, not a reason to keep it in a separate silo.
-  if (segment.event === "REFUEL" && segment.fuelDeltaL && segment.fuelDeltaL > 0) {
-    await recordSensorRefuel(asset, current, segment.fuelDeltaL, segment.hours);
+  // A tank that rises was filled only when the rise persists across multiple
+  // stationary telemetry samples. This is deliberately independent of image
+  // capture or paperwork; those are merely optional reconciliation evidence.
+  const confirmed = confirmSensorRefuel([...recentReadings, current], tankCapacityL);
+  if (confirmed && (segment.fuelDeltaL ?? 0) >= 0) {
+    await recordSensorRefuel(asset, current, confirmed.litresAdded, segment.hours);
     return false;
   }
 
@@ -543,6 +547,19 @@ async function recordSensorRefuel(
   const rate = await dieselRate();
   const rounded = Math.round(litres * 10) / 10;
 
+  // A truck cannot be refuelled repeatedly every few seconds. This cooldown
+  // also makes replayed snapshots harmless and prevents a sustained slosh
+  // wave from creating one row per poll.
+  const recentSensor = await db.fuelTransaction.findFirst({
+    where: {
+      assetId: asset.id,
+      captureMethod: "SENSOR",
+      date: { gte: new Date(at.getTime() - 3 * 60 * 60_000), lte: at },
+    },
+    select: { id: true },
+  });
+  if (recentSensor) return;
+
   const claimed = await db.fuelTransaction.findFirst({
     where: {
       assetId: asset.id,
@@ -571,14 +588,19 @@ async function recordSensorRefuel(
   }
 
   // Guard against re-recording the same fill if a sync is replayed.
-  const already = await db.fuelTransaction.findFirst({
-    where: { assetId: asset.id, date: at, captureMethod: "SENSOR" },
-    select: { id: true },
-  });
-  if (already) return;
+  await db.$transaction(async (tx) => {
+    // Serialize replayed webhook/poll writes for this asset and timestamp.
+    // The exact-date check then remains safe even when two requests arrive
+    // concurrently on different serverless instances.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`fleet-fuel:${asset.id}:${at.toISOString()}`}))`;
+    const already = await tx.fuelTransaction.findFirst({
+      where: { assetId: asset.id, date: at, captureMethod: "SENSOR" },
+      select: { id: true },
+    });
+    if (already) return;
 
-  await db.fuelTransaction.create({
-    data: {
+    await tx.fuelTransaction.create({
+      data: {
       type: "ISSUE",
       assetId: asset.id,
       quantity: rounded,
@@ -600,7 +622,8 @@ async function recordSensorRefuel(
       // inferred across hours could be two fills, or a fill and a siphon.
       captureConfidence: windowHours <= 0.5 ? 0.9 : windowHours <= 2 ? 0.6 : 0.3,
       source: "RETAIL",
-    },
+      },
+    });
   });
 }
 
@@ -777,7 +800,7 @@ async function runTataSync(base: TataSyncResult): Promise<TataSyncResult> {
       // Issued in sequence they were three round trips to Mumbai per vehicle,
       // repeated for every vehicle, on a job that runs once a minute — the same
       // avoidable latency already removed from the push handler.
-      const [alreadyStored, session, previous] = await Promise.all([
+      const [alreadyStored, session, previousRows] = await Promise.all([
         db.telemetryReading.findFirst({
           where: { assetId: asset.id, recordedAt: ping.timestamp, source: "GPS_API" },
           select: { id: true },
@@ -789,17 +812,22 @@ async function runTataSync(base: TataSyncResult): Promise<TataSyncResult> {
           orderBy: { startedAt: "desc" },
           select: { id: true },
         }),
-        // The immediately preceding sample is what turns a snapshot into a
-        // measurement — distance covered, fuel burned, and whether those agree.
-        db.telemetryReading.findFirst({
-        where: { assetId: asset.id, recordedAt: { lt: ping.timestamp } },
-        orderBy: { recordedAt: "desc" },
-        select: {
-          recordedAt: true, lat: true, lng: true, speedKph: true,
-          odometerKm: true, fuelLevelL: true, fuelLevelPct: true, ignitionOn: true,
+        // The recent history turns a snapshot into a measurement — distance
+        // covered, fuel burned, and whether a fuel rise actually settled.
+        db.telemetryReading.findMany({
+          where: { assetId: asset.id, recordedAt: { lt: ping.timestamp } },
+          orderBy: { recordedAt: "desc" },
+          // Keep a look-back window wide enough to see the low baseline before
+          // a fill and the subsequent stable readings. Fleet Edge can report
+          // every few seconds, so five rows is not enough for that baseline.
+          take: 100,
+          select: {
+            recordedAt: true, lat: true, lng: true, speedKph: true,
+            odometerKm: true, fuelLevelL: true, fuelLevelPct: true, ignitionOn: true,
           },
         }),
       ]);
+      const previous = previousRows[0] ?? null;
 
       // The duplicate check still short-circuits, just after the reads rather
       // than before them: a wasted pair of cheap lookups on a parked vehicle is
@@ -896,6 +924,7 @@ async function runTataSync(base: TataSyncResult): Promise<TataSyncResult> {
           },
           created.id,
           reportedCapacity,
+          [...previousRows].reverse() as AnalyticsReading[],
         );
         if (raised) anomaliesRaised++;
       }

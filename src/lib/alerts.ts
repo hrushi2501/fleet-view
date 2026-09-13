@@ -167,7 +167,7 @@ export function sweepAlerts(input: SweepInput, now = new Date()): Candidate[] {
         severity: sev(rules, "FUEL_ANOMALY_OPEN", "Critical"),
         title: `${Math.round(a.litres)} L unaccounted for`,
         message: a.reasons.split("\n")[0] ?? "Fuel gap still open.",
-        actionUrl: "/fuel/anomalies",
+        actionUrl: "/fuel/problems",
       });
     }
   }

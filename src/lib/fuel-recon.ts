@@ -96,7 +96,9 @@ export function reconcileTank(
     );
   } else {
     const missing = -varianceL; // positive when fuel is unaccounted for
-    if (missing > DIP_TOLERANCE_L && Math.abs(variancePct) > NORMAL_SHRINKAGE_PCT) {
+    const materialLoss = missing > DIP_TOLERANCE_L &&
+      (throughput === 0 || Math.abs(variancePct) > NORMAL_SHRINKAGE_PCT);
+    if (materialLoss) {
       status = missing > DIP_TOLERANCE_L * 4 || Math.abs(variancePct) > 3 ? "critical" : "watch";
       reasons.push(`${missing.toFixed(0)} L unaccounted for (${Math.abs(variancePct).toFixed(2)}% of throughput).`);
     } else if (varianceL > DIP_TOLERANCE_L) {

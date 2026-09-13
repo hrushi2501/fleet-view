@@ -208,8 +208,9 @@ export async function scanForFuelTheft(sinceHours = 30): Promise<ScanOutcome> {
           ? `\nTank went ${seg.fuelBeforeL} L → ${seg.fuelAfterL} L over ${seg.hours} h.`
           : "";
 
-      await db.fuelAnomaly.create({
-        data: {
+      try {
+        await db.fuelAnomaly.create({
+          data: {
           source: "ASSET_EFFICIENCY",
           refId,
           assetId: asset.id,
@@ -223,8 +224,15 @@ export async function scanForFuelTheft(sinceHours = 30): Promise<ScanOutcome> {
             where +
             `\n${seg.reasons.join("\n")}` +
             `\nRaised by the nightly scan; ${seg.confidence.toLowerCase()} confidence.`,
-        },
-      });
+          },
+        });
+      } catch (error) {
+        if (typeof error === "object" && error !== null && (error as { code?: string }).code === "P2002") {
+          out.duplicates++;
+          continue;
+        }
+        throw error;
+      }
 
       out.raised++;
       out.findings.push({

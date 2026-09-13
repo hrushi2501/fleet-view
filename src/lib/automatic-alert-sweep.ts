@@ -73,7 +73,11 @@ export async function runAutomaticAlertSweep() {
       lastDoneDate: schedule.lastDoneDate,
       estimatedCost: schedule.estimatedCost,
     };
-    const due = pmDue(lite, schedule.asset!.meterValue, schedule.asset!.primaryMeter === "SMU", now);
+    const isSmu = schedule.asset!.primaryMeter === "SMU";
+    const currentMeter = isSmu
+      ? (schedule.asset!.hourMeterValue || schedule.asset!.meterValue)
+      : schedule.asset!.meterValue;
+    const due = pmDue(lite, currentMeter, isSmu, now);
     return {
       scheduleId: schedule.id,
       assetId: schedule.assetId!,
@@ -181,4 +185,3 @@ export async function runAutomaticAlertSweep() {
 
   return { found: candidates.length, created, updated, escalated: escalations.length, dbAudit };
 }
-

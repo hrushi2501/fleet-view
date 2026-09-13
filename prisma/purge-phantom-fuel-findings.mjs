@@ -18,7 +18,8 @@
  *     time into the fuel ledger and the cost reports.
  *
  * The fixed code cannot produce either — impossible rates are flagged as
- * sensor faults rather than thefts, and a fill must clear 15 L and persist —
+ * sensor faults rather than thefts, and a fill must clear the configured
+ * threshold, persist across stationary samples, and respect a cooldown —
  * but the rows already written stay until they are removed.
  *
  * WHAT THIS TOUCHES
@@ -39,8 +40,6 @@ const APPLY = process.argv.includes("--apply");
 
 /** Matches the fixed analytics: above this, a fall cannot be combustion. */
 const MAX_BURN_RATE_LPH = 120;
-/** Matches the fixed analytics: a fill below this is slosh, not diesel. */
-const MIN_CREDIBLE_FILL_L = 15;
 
 async function main() {
   const suspectAnomalies = [];
@@ -64,8 +63,12 @@ async function main() {
     if (rate > MAX_BURN_RATE_LPH) suspectAnomalies.push({ a, hours, rate });
   }
 
+  // Every SENSOR row is derived from the old adjacent-sample detector. Human
+  // slips use another capture method and are intentionally excluded. The old
+  // cleanup only looked below 15 L, but the Fleet Edge sender was producing
+  // 30–120 L slosh spikes, so that filter missed the entire affected ledger.
   const suspectFills = await db.fuelTransaction.findMany({
-    where: { captureMethod: "SENSOR", quantity: { lt: MIN_CREDIBLE_FILL_L } },
+    where: { captureMethod: "SENSOR", type: "ISSUE" },
     select: { id: true, date: true, quantity: true, assetId: true, amount: true },
   });
 
@@ -77,7 +80,7 @@ async function main() {
     );
   }
 
-  console.log(`\nSensor-detected fills below ${MIN_CREDIBLE_FILL_L} L: ${suspectFills.length}`);
+  console.log(`\nSensor-derived fuel issues (old detector): ${suspectFills.length}`);
   for (const f of suspectFills) {
     console.log(`  ${f.id}  ${f.date.toISOString()}  ${f.quantity} L  ₹${f.amount}`);
   }

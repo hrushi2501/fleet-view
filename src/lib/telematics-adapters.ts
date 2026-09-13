@@ -308,6 +308,7 @@ export function interpretFleetEdgeFuel(e: RawPingItem): FuelInterpretation {
  * lifetime average below 2 km/h and cannot be a real hour meter.
  */
 const ENGINE_HOUR_ECHO_RATIO = 0.5;
+const MAX_REASONABLE_ENGINE_HOURS = 35_000;
 
 export class TataFleetEdgeAdapter implements ITelemetryProviderAdapter {
   readonly providerCode = "TATA_FLEET_EDGE";
@@ -371,10 +372,12 @@ export class TataFleetEdgeAdapter implements ITelemetryProviderAdapter {
         // litres-per-hour figure. The original value stays in rawPayload for
         // anyone auditing this later.
         const engineHours =
-          rawEngineHours != null && odometerKm != null && odometerKm > 0 &&
-          rawEngineHours >= odometerKm * ENGINE_HOUR_ECHO_RATIO
+          rawEngineHours == null || rawEngineHours > MAX_REASONABLE_ENGINE_HOURS
             ? null
-            : rawEngineHours;
+            : odometerKm != null && odometerKm > 0 &&
+                rawEngineHours >= odometerKm * ENGINE_HOUR_ECHO_RATIO
+              ? null
+              : rawEngineHours;
 
         return {
           // Registration first: the fleet register was loaded from the client's

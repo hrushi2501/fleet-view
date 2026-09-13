@@ -125,8 +125,10 @@ async function ingestOne(body: Record<string, unknown>) {
     select: { id: true },
   });
 
-  const created = await db.telemetryReading.create({
-    data: {
+  let created: { id: string };
+  try {
+    created = await db.telemetryReading.create({
+      data: {
       assetId: asset.id,
       recordedAt: r.recordedAt,
       lat: r.lat, lng: r.lng,
@@ -141,8 +143,14 @@ async function ingestOne(body: Record<string, unknown>) {
       providerId: asset.telematicsProviderId,
       sessionId: session?.id ?? null,
       raw: body as never,
-    },
-  });
+      },
+    });
+  } catch (error) {
+    if (typeof error === "object" && error !== null && (error as { code?: string }).code === "P2002") {
+      return { ok: true, asset: asset.code, duplicate: true, session: null };
+    }
+    throw error;
+  }
 
   if (previous) {
     await recordTelemetryFuelAnomaly(

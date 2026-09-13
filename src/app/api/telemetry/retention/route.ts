@@ -31,7 +31,7 @@ export async function GET(req: Request) {
   const cutoff = new Date(Date.now() - FULL_PAYLOAD_DAYS * 86_400_000);
 
   const candidates = await db.telemetryReading.findMany({
-    where: { recordedAt: { lt: cutoff } },
+    where: { recordedAt: { lt: cutoff }, raw: { not: Prisma.JsonNull } },
     orderBy: { recordedAt: "asc" },
     take: RETENTION_BATCH,
     select: { id: true, raw: true },

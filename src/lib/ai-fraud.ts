@@ -29,7 +29,7 @@ export class AiFraudDetectionService {
    *   - the vehicle is *known* to have been stationary with the engine off.
    */
   async processTelemetry(stream: TelemetryReading[]): Promise<void> {
-    if (stream.length < 2) return;
+    if (stream.length === 0) return;
 
     // Group by vehicleId
     const byVehicle = new Map<string, TelemetryReading[]>();
@@ -42,6 +42,32 @@ export class AiFraudDetectionService {
     for (const [vehicleId, readings] of byVehicle.entries()) {
       // Sort by timestamp
       readings.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+      // Fleet Edge snapshots contain one reading per vehicle. Complete that
+      // snapshot with the prior persisted point so a single live ping can be
+      // evaluated without inventing a second sample.
+      if (readings.length === 1) {
+        const assetRow = await db.asset.findFirst({
+          where: { OR: [{ code: vehicleId }, { registrationNo: vehicleId }] },
+          select: { id: true },
+        });
+        const currentAt = new Date(readings[0].timestamp);
+        if (assetRow) {
+          const prior = await db.telemetryReading.findFirst({
+            where: { assetId: assetRow.id, recordedAt: { lt: currentAt }, fuelLevelL: { not: null } },
+            orderBy: { recordedAt: "desc" },
+            select: { recordedAt: true, fuelLevelL: true, speedKph: true, ignitionOn: true, lat: true, lng: true },
+          });
+          if (prior) readings.unshift({
+            vehicleId,
+            timestamp: prior.recordedAt.toISOString(),
+            speed: prior.speedKph,
+            tankLevel: prior.fuelLevelL,
+            engineState: prior.ignitionOn == null ? "UNKNOWN" : prior.ignitionOn ? "ON" : "OFF",
+            gps: prior.lat != null && prior.lng != null ? { lat: prior.lat, lng: prior.lng } : null,
+          });
+        }
+      }
 
       // Size the noise band against this vehicle's real tank.
       const asset = await db.asset.findFirst({
@@ -106,7 +132,9 @@ export class AiFraudDetectionService {
     const today = startOfBusinessDay(new Date());
 
     // Get Asset ID
-    const asset = await db.asset.findFirst({ where: { code: vehicleId } });
+    const asset = await db.asset.findFirst({
+      where: { OR: [{ code: vehicleId }, { registrationNo: vehicleId }] },
+    });
     if (!asset) return; // Unknown asset
     
     const existingCase = await db.fraudCase.findFirst({

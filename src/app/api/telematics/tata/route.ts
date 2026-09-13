@@ -379,14 +379,15 @@ async function handlePOST(req: Request) {
     // a concurrent write — the unique index is, and the create below still
     // catches it — so racing these three loses nothing.
     // ───────────────────────────────────────────────────────────────────────
-    const [already, previous, session] = await Promise.all([
+    const [already, previousRows, session] = await Promise.all([
       db.telemetryReading.findFirst({
         where: { assetId: asset.id, recordedAt: ping.timestamp, source: SOURCE },
         select: { id: true },
       }),
-      db.telemetryReading.findFirst({
+      db.telemetryReading.findMany({
         where: { assetId: asset.id, recordedAt: { lt: ping.timestamp } },
         orderBy: { recordedAt: "desc" },
+        take: 100,
         select: {
           recordedAt: true, lat: true, lng: true, speedKph: true, odometerKm: true,
           fuelLevelL: true, fuelLevelPct: true, ignitionOn: true, engineHours: true,
@@ -400,6 +401,7 @@ async function handlePOST(req: Request) {
         select: { id: true },
       }),
     ]);
+    const previous = previousRows[0] ?? null;
 
     if (already) {
       duplicates++;
@@ -458,6 +460,7 @@ async function handlePOST(req: Request) {
         },
         created.id,
         asset.fuelCapacity,
+        [...previousRows].reverse() as Parameters<typeof recordTelemetryFuelAnomaly>[5],
       );
     }
 

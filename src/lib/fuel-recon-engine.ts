@@ -140,7 +140,9 @@ export function reconcileTankDynamic(
     );
   } else {
     const missing = -varianceL;
-    if (missing > dynamicToleranceL && Math.abs(variancePct) > thresholds.shrinkagePctWarn) {
+    const materialLoss = missing > dynamicToleranceL &&
+      (throughput === 0 || Math.abs(variancePct) > thresholds.shrinkagePctWarn);
+    if (materialLoss) {
       status = missing > dynamicToleranceL * 3 || Math.abs(variancePct) > thresholds.shrinkagePctCrit ? "critical" : "watch";
       reasons.push(
         `${missing.toFixed(0)} L unaccounted for (${Math.abs(variancePct).toFixed(2)}% of throughput, dynamic tolerance: ${dynamicToleranceL.toFixed(0)} L).`

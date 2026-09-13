@@ -1,14 +1,15 @@
 import { db } from "@/lib/db";
-import { fleetUsage } from "@/lib/fleet-usage";
 import { StatCard, Card, SectionTitle, Badge, HeroStat, MeterRow, Table, Th, Td, Tr } from "@/components/ui";
 import { TrendArea, MultiBar } from "@/components/charts";
 import { inr, num, timeAgo, ASSET_CLASS_LABEL, SEVERITY_COLOR, healthColor } from "@/lib/utils";
-import { Fuel, TriangleAlert, Activity, ShieldAlert, ArrowRight, Gauge, IndianRupee } from "lucide-react";
+import { Fuel, TriangleAlert, ShieldAlert, ArrowRight, IndianRupee } from "lucide-react";
 import Link from "next/link";
 import { businessDayShort } from "@/lib/business-time";
 import { requirePage, assetScope } from "@/lib/access";
 import { MorningActionCenter } from "@/components/MorningActionCenter";
 import { Txt } from "@/components/Txt";
+import { Suspense } from "react";
+import DashboardTelemetry from "./DashboardTelemetry";
 
 export const dynamic = "force-dynamic";
 
@@ -80,9 +81,6 @@ export default async function Dashboard() {
 
   const configuredRate = Number(dieselSetting?.value);
   const dieselRate = Number.isFinite(configuredRate) && configuredRate > 0 ? configuredRate : 92.5;
-
-  // Measured from OEM telemetry rather than from what anyone typed in.
-  const telemetry = await fleetUsage(30);
 
   const totalAssets = assets.length;
   const activeCount = assets.filter((a) => a.status === "Active").length;
@@ -238,66 +236,9 @@ export default async function Dashboard() {
         </div>
       </section>
 
-      {/* ── Measured from the vehicles ─────────────────────────────────────
-          Kept as its own section, and above the keyed-entry figures, because
-          these come from the machines and those come from what somebody wrote
-          down. Mixing the two in one grid implies they are equally trustworthy. */}
-      {telemetry.totals.vehiclesReporting > 0 && (
-        <section className="space-y-4">
-          <SectionTitle
-            title="Measured from active Tata Fleet Edge vehicles — last 30 days"
-            subtitle={`${telemetry.totals.activeVehicles} active road vehicle${telemetry.totals.activeVehicles === 1 ? "" : "s"} with credible mileage · ${telemetry.totals.vehiclesReporting} Tata asset${telemetry.totals.vehiclesReporting === 1 ? "" : "s"} reported`}
-          />
-          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-4">
-            <StatCard label="Distance covered" value={`${num(telemetry.totals.distanceKm)} km`} sub="Odometer delta" accent="brand" icon={<Activity className="h-5 w-5" />} />
-            <StatCard
-              label="Diesel burned"
-              value={telemetry.totals.avgKmPerL != null ? `${num(telemetry.totals.litresBurned)} L` : "—"}
-              sub={telemetry.totals.avgKmPerL != null ? `${num(telemetry.totals.litresFilled)} L filled` : "Not measurable from this telemetry"}
-              accent="amber"
-              icon={<Fuel className="h-5 w-5" />}
-            />
-            <StatCard
-              label="Fleet efficiency"
-              value={telemetry.totals.avgKmPerL != null ? `${telemetry.totals.avgKmPerL} km/L` : "—"}
-              sub={telemetry.totals.activeVehicles > 0 ? `Active Tata road vehicles only · ${telemetry.totals.confidence.toLowerCase()} confidence` : "No active Tata road vehicle has usable mileage"}
-              accent={telemetry.perAsset.some((a) => a.belowNorm) ? "rose" : "emerald"}
-              icon={<Gauge className="h-5 w-5" />}
-            />
-            <StatCard
-              label="Unaccounted diesel"
-              value={`${num(telemetry.totals.litresUnaccounted)} L`}
-              sub={telemetry.totals.litresUnaccounted > 0 ? `${inr(telemetry.totals.valueUnaccounted, { compact: true })} at risk` : "Nothing unexplained"}
-              accent={telemetry.totals.litresUnaccounted > 0 ? "rose" : "emerald"}
-              icon={<TriangleAlert className="h-5 w-5" />}
-            />
-          </div>
-
-          {(telemetry.totals.vehiclesWithInsufficientData > 0 || telemetry.totals.vehiclesNotWorking > 0 || telemetry.totals.worstGapHours > 1) && (
-            <div className="space-y-1.5 rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3">
-              {telemetry.totals.vehiclesWithInsufficientData > 0 && (
-                <p className="text-[11px] leading-relaxed text-slate-500">
-                  Insufficient telemetry data for reliable fuel analysis on{" "}
-                  {telemetry.totals.vehiclesWithInsufficientData} of {telemetry.totals.vehiclesReporting} reporting
-                  vehicle{telemetry.totals.vehiclesReporting === 1 ? "" : "s"} — those vehicles are excluded from the
-                  efficiency figure rather than averaged into it. Open a vehicle to see what its telemetry is missing.
-                </p>
-              )}
-              {telemetry.totals.vehiclesNotWorking > 0 && (
-                <p className="text-[11px] leading-relaxed text-slate-500">
-                  {telemetry.totals.vehiclesNotWorking} Tata road vehicle{telemetry.totals.vehiclesNotWorking === 1 ? " was" : "s were"} parked or did not travel beyond the working threshold in this window, so {telemetry.totals.vehiclesNotWorking === 1 ? "it is" : "they are"} not included in fleet km/L.
-                </p>
-              )}
-              {telemetry.totals.worstGapHours > 1 && (
-                <p className="text-[11px] leading-relaxed text-slate-500">
-                  Longest gap between samples in this window: {telemetry.totals.worstGapHours} h. Sparse sampling
-                  cannot separate a siphon from a hard shift — treat unaccounted diesel as a prompt to look, not a finding.
-                </p>
-              )}
-            </div>
-          )}
-        </section>
-      )}
+      <Suspense fallback={<section className="space-y-4" aria-busy="true"><SectionTitle title="Measured from the vehicles" subtitle="Loading live vehicle readings…" /><div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">{Array.from({ length: 4 }, (_, i) => <div key={i} className="h-28 animate-pulse rounded-2xl bg-slate-100" />)}</div></section>}>
+        <DashboardTelemetry assetWhere={visible} />
+      </Suspense>
 
       {/* ── Money and paperwork ───────────────────────────────────────────── */}
       <section className="space-y-4">

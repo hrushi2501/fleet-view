@@ -18,6 +18,7 @@ import {
   analyseFuelSeries,
   cleanSeries,
   DEFAULT_FUEL_CONFIG,
+  confirmSensorRefuel,
   type AnalyticsReading,
   type Norm,
 } from "./fleet-analytics.ts";
@@ -75,6 +76,69 @@ describe("TEST 1 — normal driving", () => {
 });
 
 describe("TEST 2 — refuelling", () => {
+  test("a large rise must persist while stationary before it is a fill", () => {
+    const low = reading({ recordedAt: at(0), odometerKm: 10, fuelLevelL: 100 });
+    const high1 = reading({ recordedAt: at(2), odometerKm: 10, fuelLevelL: 130 });
+    const high2 = reading({ recordedAt: at(4), odometerKm: 10, fuelLevelL: 131 });
+    const high3 = reading({ recordedAt: at(6), odometerKm: 10, fuelLevelL: 130 });
+    const high4 = reading({ recordedAt: at(8), odometerKm: 10, fuelLevelL: 130 });
+    const result = confirmSensorRefuel([low, high1, high2, high3, high4], TANK);
+    assert.equal(result?.litresAdded, 30);
+  });
+
+  test("a long history confirms only the newest plateau, not an old fill", () => {
+    const readings = Array.from({ length: 96 }, (_, i) => reading({
+      recordedAt: at(i), odometerKm: 100, fuelLevelL: 50,
+    }));
+    for (let i = 96; i <= 100; i++) {
+      readings.push(reading({ recordedAt: at(i), odometerKm: 100, fuelLevelL: 200 }));
+    }
+    const result = confirmSensorRefuel(readings, TANK);
+    assert.equal(result?.litresAdded, 150);
+  });
+
+  test("a multi-ping pumping ramp uses the pre-fill baseline", () => {
+    const levels = [50, 50, 80, 130, 170, 200, 200, 200, 200];
+    const result = confirmSensorRefuel(levels.map((fuelLevelL, i) => reading({
+      recordedAt: at(i), odometerKm: 100, fuelLevelL,
+    })), TANK);
+    assert.equal(result?.fromL, 50);
+    assert.equal(result?.toL, 200);
+    assert.equal(result?.litresAdded, 150);
+  });
+
+  test("an unstable high/low wave is not a fill", () => {
+    const result = confirmSensorRefuel([
+      reading({ recordedAt: at(0), odometerKm: 10, fuelLevelL: 100 }),
+      reading({ recordedAt: at(2), odometerKm: 10, fuelLevelL: 130 }),
+      reading({ recordedAt: at(4), odometerKm: 10, fuelLevelL: 145 }),
+      reading({ recordedAt: at(6), odometerKm: 10, fuelLevelL: 130 }),
+      reading({ recordedAt: at(8), odometerKm: 10, fuelLevelL: 130 }),
+    ], TANK);
+    assert.equal(result, null);
+  });
+
+  test("a sudden spike while moving is rejected as sensor noise", () => {
+    const result = confirmSensorRefuel([
+      reading({ recordedAt: at(0), odometerKm: 10, fuelLevelL: 100, speedKph: 0 }),
+      reading({ recordedAt: at(1), odometerKm: 12, fuelLevelL: 130, speedKph: 40 }),
+      reading({ recordedAt: at(2), odometerKm: 14, fuelLevelL: 131, speedKph: 40 }),
+      reading({ recordedAt: at(4), odometerKm: 18, fuelLevelL: 130, speedKph: 40 }),
+      reading({ recordedAt: at(6), odometerKm: 20, fuelLevelL: 130, speedKph: 40 }),
+    ], TANK);
+    assert.equal(result, null);
+  });
+
+  test("small 1–2 litre rises are ignored", () => {
+    const result = confirmSensorRefuel([
+      reading({ recordedAt: at(0), odometerKm: 10, fuelLevelL: 100 }),
+      reading({ recordedAt: at(2), odometerKm: 10, fuelLevelL: 101 }),
+      reading({ recordedAt: at(4), odometerKm: 10, fuelLevelL: 102 }),
+      reading({ recordedAt: at(6), odometerKm: 10, fuelLevelL: 101 }),
+    ], TANK);
+    assert.equal(result, null);
+  });
+
   test("start 100 L, +50 L fill, end 120 L is 30 L consumed — not −20 or 70", () => {
     const readings: AnalyticsReading[] = [
       reading({ recordedAt: at(0), odometerKm: 0, fuelLevelL: 100, ignitionOn: true }),
@@ -136,6 +200,16 @@ describe("TEST 3 — stationary fuel fluctuation", () => {
   test("every segment of that sawtooth is classified as noise", () => {
     const a = reading({ recordedAt: at(0), odometerKm: 5_000, fuelLevelL: 241.1, ignitionOn: false });
     const b = reading({ recordedAt: at(2), odometerKm: 5_000, fuelLevelL: 240.4, ignitionOn: false });
+    const seg = analyseSegment(a, b, TRUCK_NORM, TANK);
+
+    assert.equal(seg.event, "NOISE");
+    assert.equal(seg.litresConsumed, null);
+    assert.equal(seg.excessLitres, 0);
+  });
+
+  test("a 4.9 L one-minute dip on a 300 L tank stays below the finding floor", () => {
+    const a = reading({ recordedAt: at(0), odometerKm: 203_147, fuelLevelL: 129.7, ignitionOn: true, speedKph: 10 });
+    const b = reading({ recordedAt: at(1), odometerKm: 203_147, fuelLevelL: 124.8, ignitionOn: true, speedKph: 0 });
     const seg = analyseSegment(a, b, TRUCK_NORM, TANK);
 
     assert.equal(seg.event, "NOISE");

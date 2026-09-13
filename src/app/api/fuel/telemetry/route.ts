@@ -138,7 +138,16 @@ async function handlePOST(req: Request) {
   try {
     const url = new URL(req.url);
     const providerCode = url.searchParams.get("provider") || "GENERIC";
+    // Provider identity belongs in providerId; source is the canonical
+    // telemetry-origin value used by the pull and Tata webhook paths. Keeping
+    // it stable prevents the same timestamp arriving through two routes from
+    // becoming duplicate readings.
+    const source = "GPS_API";
     const adapter = getTelemetryAdapter(providerCode);
+    const provider = await db.telematicsProvider.findUnique({
+      where: { code: adapter.providerCode },
+      select: { id: true },
+    });
 
     const parsed = await readTelemetryJson(req);
     if (!parsed.ok) return NextResponse.json({ success: false, error: parsed.error }, { status: parsed.status });
@@ -186,14 +195,16 @@ async function handlePOST(req: Request) {
       const summary = describeDrift(d);
       if (summary) drift.add(summary);
 
-      const previous = await db.telemetryReading.findFirst({
-        where: { assetId: asset.id, odometerKm: { not: null } },
+      const previousRows = await db.telemetryReading.findMany({
+        where: { assetId: asset.id, recordedAt: { lt: p.timestamp } },
         orderBy: { recordedAt: "desc" },
+        take: 100,
         select: {
           recordedAt: true, lat: true, lng: true, speedKph: true, odometerKm: true,
           fuelLevelL: true, fuelLevelPct: true, ignitionOn: true, engineHours: true,
         },
       });
+      const previous = previousRows[0] ?? null;
 
       const result = normaliseReading(p, {
         fuelCapacityL: asset.fuelCapacity,
@@ -214,7 +225,7 @@ async function handlePOST(req: Request) {
       const r = result.reading;
 
       const already = await db.telemetryReading.findFirst({
-        where: { assetId: asset.id, recordedAt: r.recordedAt, source: adapter.providerCode },
+        where: { assetId: asset.id, recordedAt: r.recordedAt, source },
         select: { id: true },
       });
       if (already) {
@@ -228,8 +239,10 @@ async function handlePOST(req: Request) {
         select: { id: true },
       });
 
-      const created = await db.telemetryReading.create({
-        data: {
+      let created: { id: string };
+      try {
+        created = await db.telemetryReading.create({
+          data: {
           assetId: asset.id,
           recordedAt: r.recordedAt,
           lat: r.lat, lng: r.lng,
@@ -240,12 +253,19 @@ async function handlePOST(req: Request) {
           fuelLevelPct: r.fuelLevelPct,
           fuelLevelL: r.fuelLevelL,
           ignitionOn: r.ignitionOn,
-          source: adapter.providerCode,
-          providerId: asset.telematicsProviderId,
+          source,
+          providerId: provider?.id ?? asset.telematicsProviderId,
           sessionId: session?.id ?? null,
           raw: (p.rawPayload ?? {}) as Prisma.InputJsonValue,
-        },
-      });
+          },
+        });
+      } catch (error) {
+        if (typeof error === "object" && error !== null && (error as { code?: string }).code === "P2002") {
+          duplicates++;
+          continue;
+        }
+        throw error;
+      }
 
       if (previous) {
         await recordTelemetryFuelAnomaly(
@@ -258,6 +278,7 @@ async function handlePOST(req: Request) {
           },
           created.id,
           asset.fuelCapacity,
+          [...previousRows].reverse() as Parameters<typeof recordTelemetryFuelAnomaly>[5],
         );
       }
 

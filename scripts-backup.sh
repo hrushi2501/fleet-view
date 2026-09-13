@@ -21,7 +21,13 @@ set -a; . ./.env.local; set +a
 mkdir -p backups
 chmod 700 backups
 OUT="backups/fleetview-erp-$(date +%Y%m%d-%H%M%S).sql"
-"$PGDUMP" "$DATABASE_URL_UNPOOLED" --no-owner --no-privileges -f "$OUT"
+# The application role cannot lock Supabase-managed auth/realtime/storage
+# schemas. Restrict the dump to the public schema owned by this application
+# instead of failing halfway through. The separate pre-delivery schema is
+# excluded because this role cannot read it; it remains untouched.
+"$PGDUMP" "$DATABASE_URL_UNPOOLED" \
+  --schema=public \
+  --no-owner --no-privileges -f "$OUT"
 
 # A dump that exists but is empty is worse than no dump, because it looks fine.
 TABLES=$(grep -c '^CREATE TABLE' "$OUT" || true)

@@ -99,6 +99,10 @@ export type FuelAnalysisConfig = {
    * A single high sample is a splash; a fill does not drain away by itself.
    */
   refuelConfirmSamples: number;
+  /** Minimum elapsed time over which a rise must remain present. */
+  refuelPersistenceMinutes: number;
+  /** A fill is only credible while the vehicle is effectively stationary. */
+  refuelMaxSpeedKph: number;
   /**
    * Litres/hour above which a drop cannot be combustion. A large truck diesel
    * at full load peaks near 60 L/h, so this is deliberately generous — it is
@@ -131,7 +135,12 @@ export const DEFAULT_FUEL_CONFIG: FuelAnalysisConfig = {
   noiseBandMinL: 2,
   refuelFractionOfTank: 0.05,
   refuelMinL: 15,
-  refuelConfirmSamples: 1,
+  // Four post-rise readings gives five consecutive stable observations when
+  // combined with the baseline; this is the common debounce pattern for
+  // float/ultrasonic tank senders.
+  refuelConfirmSamples: 4,
+  refuelPersistenceMinutes: 5,
+  refuelMaxSpeedKph: 3,
   maxBurnRateLph: 120,
   defaultIdleLph: 4,
   normalGapMinutes: 15,
@@ -145,6 +154,88 @@ export const DEFAULT_FUEL_CONFIG: FuelAnalysisConfig = {
   stationaryKm: 2,
   minMeaningfulDropL: 5,
 };
+
+/**
+ * Confirms a sensor rise without relying on an image or a manually entered
+ * fuel slip. A fill must remain above the pre-fill level for several samples,
+ * the vehicle must stay put, and the observation must span a few minutes.
+ * This is intentionally pure so every ingestion path can use the same rule.
+ */
+export function confirmSensorRefuel(
+  samples: AnalyticsReading[],
+  tankCapacityL: number | null,
+  cfg: FuelAnalysisConfig = DEFAULT_FUEL_CONFIG,
+): { fromL: number; toL: number; litresAdded: number; at: Date } | null {
+  const ordered = samples
+    .filter((s) => s.recordedAt instanceof Date && Number.isFinite(s.recordedAt.getTime()) && s.fuelLevelL != null)
+    .sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime());
+  const { refuelMinL } = fuelThresholds(tankCapacityL, cfg);
+  const needed = Math.max(2, Math.floor(cfg.refuelConfirmSamples));
+  if (ordered.length < needed + 1) return null;
+
+  // Only the newest sample can complete a fill. Older rises are already
+  // handled by the ingestion call that observed them and must not suppress
+  // later theft/drop analysis.
+  const end = ordered.length - 1;
+  const settled = ordered.slice(Math.max(0, end - needed + 1), end + 1);
+  if (settled.length < 2) return null;
+  const stabilityBand = fuelThresholds(tankCapacityL, cfg).noiseBandL * 2;
+  const settledLevels = settled.map((s) => s.fuelLevelL!);
+  if (Math.max(...settledLevels) - Math.min(...settledLevels) > stabilityBand) return null;
+
+  // Keep the whole ramp: walk backwards from the settled plateau to find the
+  // lowest pre-fill level, but never search beyond a bounded recent window.
+  const settledStart = end - needed + 1;
+  const endTime = ordered[end].recordedAt.getTime();
+  const sortedSettled = [...settledLevels].sort((a, b) => a - b);
+  const plateau = sortedSettled[Math.floor(sortedSettled.length / 2)]!;
+  let baseline = plateau;
+  let startIdx = -1;
+  for (let i = settledStart - 1; i >= 0; i--) {
+    const elapsed = (endTime - ordered[i].recordedAt.getTime()) / 60_000;
+    if (elapsed > 60) break;
+    const level = ordered[i].fuelLevelL!;
+    if (level < baseline) {
+      baseline = level;
+      startIdx = i;
+    } else if (startIdx !== -1 && level > baseline + stabilityBand) {
+      break;
+    }
+  }
+  if (startIdx === -1 || plateau - baseline < refuelMinL) return null;
+  // After the initial jump, the readings must settle around one level. A
+  // high/low/high slosh wave is not a fill even if every point clears the
+  // absolute threshold.
+  const elapsedMinutes = (endTime - ordered[startIdx].recordedAt.getTime()) / 60_000;
+  if (elapsedMinutes < cfg.refuelPersistenceMinutes) return null;
+
+  const run = ordered.slice(startIdx, end + 1);
+  const stationary = run.every((s, i, all) => {
+      if (i === 0) return true;
+      const prev = all[i - 1];
+      const hasSpeed = prev.speedKph != null || s.speedKph != null;
+      const hasOdometer = prev.odometerKm != null && s.odometerKm != null;
+      const hasGps = prev.lat != null && prev.lng != null && s.lat != null && s.lng != null;
+      if (!hasSpeed && !hasOdometer && !hasGps) return false;
+      const speed = Math.max(Math.abs(prev.speedKph ?? 0), Math.abs(s.speedKph ?? 0));
+      const distance = prev.odometerKm != null && s.odometerKm != null
+        ? Math.abs(s.odometerKm - prev.odometerKm)
+        : prev.lat != null && prev.lng != null && s.lat != null && s.lng != null
+          ? haversineKm(prev.lat, prev.lng, s.lat, s.lng)
+          : 0;
+      return speed <= cfg.refuelMaxSpeedKph && distance < cfg.stationaryKm;
+  });
+  if (!stationary) return null;
+
+  const settledLevel = sortedSettled[Math.floor(sortedSettled.length / 2)]!;
+  return {
+    fromL: round(baseline, 2),
+    toL: round(settledLevel, 2),
+    litresAdded: round(settledLevel - baseline, 2),
+    at: ordered[end].recordedAt,
+  };
+  return null;
+}
 
 /** The two fuel thresholds resolved against a specific tank. */
 export function fuelThresholds(tankCapacityL: number | null, cfg: FuelAnalysisConfig) {
@@ -561,14 +652,15 @@ export function analyseFuelSeries(
 /** Whether a rise is still present `hold` samples later. */
 function confirmRise(levelled: AnalyticsReading[], index: number, floor: number, hold: number): boolean {
   if (hold <= 0) return true;
+  if (index >= levelled.length - 1) return false;
   let seen = 0;
   for (let j = index + 1; j < levelled.length && seen < hold; j++) {
     if ((levelled[j].fuelLevelL ?? -Infinity) < floor) return false;
     seen++;
   }
-  // The series ending right after the rise is not disproof; a fill on the last
-  // sample is still a fill. Treat it as confirmed but let its own confidence
-  // and the series confidence carry the caveat.
+  // Once at least one follow-up sample exists, preserve the historical
+  // behaviour for sparse feeds: absence of a contradictory low sample is not
+  // itself a rejection. The newest sample is the only strictly pending case.
   return true;
 }
 
@@ -616,6 +708,10 @@ export function analyseDistance(
   let gpsKm = 0;
   let gpsPairs = 0;
 
+  let lastValidOdometer: { value: number; at: Date } | null =
+    samples[0]?.odometerKm != null && Number.isFinite(samples[0].odometerKm)
+      ? { value: samples[0].odometerKm!, at: samples[0].recordedAt }
+      : null;
   for (let i = 1; i < samples.length; i++) {
     const a = samples[i - 1];
     const b = samples[i];
@@ -624,12 +720,17 @@ export function analyseDistance(
     // almost any distance is possible, so the ceiling relaxes with the gap.
     const ceilingKm = Math.max(cfg.maxPlausibleSpeedKph * Math.max(hours, 0), 1);
 
-    if (a.odometerKm != null && b.odometerKm != null) {
-      odoSamples++;
-      const d = b.odometerKm - a.odometerKm;
-      if (d < 0) rollbacks++;
-      else if (d > ceilingKm) rejected++;
-      else odoKm += d;
+    if (b.odometerKm != null && Number.isFinite(b.odometerKm)) {
+      if (lastValidOdometer) {
+        const elapsed = Math.max(0, (b.recordedAt.getTime() - lastValidOdometer.at.getTime()) / 3_600_000);
+        const odoCeiling = Math.max(cfg.maxPlausibleSpeedKph * elapsed, 1);
+        const d = b.odometerKm - lastValidOdometer.value;
+        odoSamples++;
+        if (d < 0) rollbacks++;
+        else if (d > odoCeiling) rejected++;
+        else odoKm += d;
+      }
+      lastValidOdometer = { value: b.odometerKm, at: b.recordedAt };
     }
 
     if (a.lat != null && a.lng != null && b.lat != null && b.lng != null) {
@@ -804,8 +905,15 @@ export function analyseSegment(
   } else if (fuelDeltaL != null && fuelDeltaL < 0) {
     const dropped = -fuelDeltaL;
     const impliedLph = hours > 0 ? dropped / hours : Infinity;
+    const rapidDropFloor = Math.max(cfg.minMeaningfulDropL, noiseBandL * 1.5);
 
-    if (impliedLph > cfg.maxBurnRateLph) {
+    if (impliedLph > cfg.maxBurnRateLph && dropped < rapidDropFloor) {
+      event = "NOISE";
+      reasons.push(
+        `Level briefly fell ${dropped.toFixed(1)} L, below the ${rapidDropFloor.toFixed(1)} L ` +
+          `minimum for a rapid-drop finding on this tank. Treated as sender movement.`,
+      );
+    } else if (impliedLph > cfg.maxBurnRateLph) {
       // Flag for investigation, do not book as consumption and do not accuse
       // anyone: 9.6 L in 60 seconds is 576 L/h, which is a data fault.
       event = "IMPLAUSIBLE_DROP";
@@ -824,13 +932,19 @@ export function analyseSegment(
       }
 
       const movedKm = distanceKm ?? gpsDistanceKm ?? 0;
+      const stationaryEvidence = (distanceKm != null || gpsDistanceKm != null)
+        ? movedKm < cfg.stationaryKm
+        : a.speedKph != null && b.speedKph != null && a.speedKph <= 1 && b.speedKph <= 1;
 
-      if (movedKm < cfg.stationaryKm) {
+      if (stationaryEvidence) {
         // A vehicle that did not travel can still legitimately burn fuel — by
         // idling. Charge that against time, not distance, because distance-based
         // norms divide by ~zero here and flag every loading bay as a theft.
-        const engineRan = a.ignitionOn === true || b.ignitionOn === true;
-        const idleAllowance = engineRan ? (idleLph ?? cfg.defaultIdleLph) * hours : 0;
+        // A boundary ping with ignition on does not prove the engine ran
+        // through the whole interval. Long gaps are outages, not observed idling.
+        const engineRan = a.ignitionOn === true && b.ignitionOn === true;
+        const observedIdleHours = Math.min(Math.max(hours, 0), 0.5);
+        const idleAllowance = engineRan ? (idleLph ?? cfg.defaultIdleLph) * observedIdleHours : 0;
         const unexplained = litresConsumed - idleAllowance - noiseBandL;
 
         if (unexplained >= cfg.minMeaningfulDropL) {
@@ -847,7 +961,7 @@ export function analyseSegment(
             );
           } else {
             reasons.push(
-              `Idling at ${(idleLph ?? cfg.defaultIdleLph)} L/h accounts for only ` +
+              `Observed idling at ${(idleLph ?? cfg.defaultIdleLph)} L/h accounts for only ` +
                 `${idleAllowance.toFixed(1)} L of it, and sender tolerance for a further ` +
                 `${noiseBandL.toFixed(1)} L.`,
             );
@@ -1027,7 +1141,9 @@ export function analyseUsage(
     const moved = a.odometerKm != null && b.odometerKm != null ? b.odometerKm - a.odometerKm : 0;
     const engineRan = a.ignitionOn === true && b.ignitionOn === true;
     if (engineRan && moved <= 0) {
-      idleHours += (b.recordedAt.getTime() - a.recordedAt.getTime()) / 3_600_000;
+      const hours = (b.recordedAt.getTime() - a.recordedAt.getTime()) / 3_600_000;
+      // A long gap is an unobserved outage, not proof of continuous idling.
+      idleHours += Math.min(Math.max(hours, 0), 0.5);
     }
   }
   const idleAllowanceLitres = idleHours * (idleLph ?? cfg.defaultIdleLph);

@@ -117,6 +117,7 @@ export type TodayStats = {
 export type ServiceStatus = {
   taskName: string | null;
   distanceToServiceKm: number | null;
+  hoursToService?: number | null;
   daysToService: number | null;
   status: "OK" | "DUE" | "OVERDUE" | null;
 };
@@ -249,6 +250,7 @@ type ScheduleRow = {
   assetClass: string | null;
   taskName: string;
   intervalKm: number;
+  intervalHours: number;
   intervalDays: number;
   lastDoneMeter: number;
   lastDoneDate: Date | null;
@@ -264,10 +266,11 @@ type ScheduleRow = {
 function nearestService(
   schedules: ScheduleRow[],
   meterValue: number,
+  hourMeterValue: number,
   now: Date,
 ): ServiceStatus {
   const empty: ServiceStatus = {
-    taskName: null, distanceToServiceKm: null, daysToService: null, status: null,
+    taskName: null, distanceToServiceKm: null, hoursToService: null, daysToService: null, status: null,
   };
   if (!schedules.length) return empty;
 
@@ -286,15 +289,21 @@ function nearestService(
           )
         : null;
 
-    if (km == null && days == null) continue;
+    const hours =
+      s.intervalHours > 0 && hourMeterValue > 0
+        ? Math.round((s.lastDoneMeter + s.intervalHours) - hourMeterValue)
+        : null;
 
-    const overdue = (km != null && km <= 0) || (days != null && days <= 0);
-    const due = (km != null && km <= SERVICE_DUE_KM) || (days != null && days <= SERVICE_DUE_DAYS);
+    if (km == null && hours == null && days == null) continue;
+
+    const overdue = (km != null && km <= 0) || (hours != null && hours <= 0) || (days != null && days <= 0);
+    const due = (km != null && km <= SERVICE_DUE_KM) || (hours != null && hours <= 50) || (days != null && days <= SERVICE_DUE_DAYS);
     const status: ServiceStatus["status"] = overdue ? "OVERDUE" : due ? "DUE" : "OK";
 
     const candidate: ServiceStatus = {
       taskName: s.taskName,
       distanceToServiceKm: km,
+      hoursToService: hours,
       daysToService: days,
       status,
     };
@@ -305,6 +314,7 @@ function nearestService(
     const slack = (c: ServiceStatus) =>
       Math.min(
         c.distanceToServiceKm ?? Number.POSITIVE_INFINITY,
+        (c.hoursToService ?? Number.POSITIVE_INFINITY) * 10,
         (c.daysToService ?? Number.POSITIVE_INFINITY) * 100,
       );
 
@@ -558,7 +568,7 @@ async function buildLiveFleet(scope: LiveFleetScope): Promise<LiveFleet> {
         where: { active: true },
         select: {
           assetId: true, assetClass: true, taskName: true,
-          intervalKm: true, intervalDays: true, lastDoneMeter: true, lastDoneDate: true,
+          intervalKm: true, intervalHours: true, intervalDays: true, lastDoneMeter: true, lastDoneDate: true,
         },
       }),
       db.tripSession.findMany({
@@ -658,8 +668,7 @@ async function buildLiveFleet(scope: LiveFleetScope): Promise<LiveFleet> {
     const applicable = schedules.filter(
       (s) => s.assetId === a.id || (s.assetId == null && s.assetClass === a.assetClass),
     );
-    const meterForService = a.primaryMeter === "SMU" ? a.hourMeterValue : a.meterValue;
-    const service = nearestService(applicable, meterForService, now);
+    const service = nearestService(applicable, a.meterValue, a.hourMeterValue, now);
 
     const session = sessionByAsset.get(a.id);
 
