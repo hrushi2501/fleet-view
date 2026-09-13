@@ -69,8 +69,10 @@ export function TelematicsSyncBanner({ status, className }: TelematicsSyncBanner
   };
 
   const getStatusBadge = () => {
-    const recentPushReading =
-      status.lastReadingAt && mountedNow - new Date(status.lastReadingAt).getTime() < 30 * 60_000;
+    const readingAge = status.lastReadingAt
+      ? Math.abs(mountedNow - new Date(status.lastReadingAt).getTime())
+      : Infinity;
+    const recentPushReading = readingAge < 30 * 60_000;
     if (recentPushReading && status.lastReadingAt) {
       return {
         cls: "bg-emerald-100 text-emerald-800 ring-emerald-300",

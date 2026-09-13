@@ -1093,7 +1093,7 @@ export async function getTataSyncStatus(): Promise<TataStatusInfo> {
   const budget = await budgetStatus(TATA_BUDGET, TATA_CALLS_PER_HOUR);
 
   const hasLiveTelemetry =
-    Boolean(lastReading?.recordedAt && Date.now() - lastReading.recordedAt.getTime() < 30 * 60_000) ||
+    Boolean(lastReading?.recordedAt && Math.abs(Date.now() - lastReading.recordedAt.getTime()) < 30 * 60_000) ||
     provider?.lastSyncStatus === "OK";
 
   return {
