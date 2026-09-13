@@ -32,6 +32,7 @@ import type { FleetEdgeMapMarker, MapView } from "@/components/FleetEdgeMap";
 import { PlaybackBar, useTrack } from "@/components/FleetEdgePlayback";
 import { useLiveFleet } from "@/lib/query-hooks";
 import { DISPATCH_STATUS_ORDER, sortLiveVehiclesByStatus } from "@/lib/live-fleet-order";
+import { Txt } from "@/components/Txt";
 
 const FleetEdgeMap = dynamic(() => import("./FleetEdgeMap"), {
   ssr: false,
@@ -775,6 +776,17 @@ function DetailCard({
       </Section>
 
       <Section title="Today's Statistics">
+        {/* A day's figures need at least two samples to measure anything between.
+            Before that every metric is a dash, which on its own reads as broken
+            software rather than as an early hour — most often at the start of a
+            shift, or when a parked vehicle has sent one heartbeat and no more.
+            Saying so costs one line and stops the panel being mistaken for a
+            fault. */}
+        {v.today.distanceKm == null && (
+          <p className="mb-2.5 rounded-lg bg-slate-50 px-2.5 py-2 text-[11px] leading-relaxed text-slate-500">
+            <Txt text="Not enough readings yet today to measure distance or hours. Figures appear once this vehicle has reported at least twice." />
+          </p>
+        )}
         <div className="grid grid-cols-3 gap-y-3">
           <Metric
             label="Distance Travelled"

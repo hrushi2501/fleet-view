@@ -1396,6 +1396,8 @@ const HI: Record<string, string> = {
   "Redis — not answering": "Redis — jawab nahi de raha",
   "Shared by every server": "Har server ek hi cache use kar raha hai",
 
+  "Not enough readings yet today to measure distance or hours. Figures appear once this vehicle has reported at least twice.": "Aaj abhi itni reading nahi aayi ki doori ya ghante naap sakein. Gaadi do baar report karegi tab aankde dikhenge.",
+
   // ── the switcher ────────────────────────────────────────────────────────
   "Language": "Bhasha",
 };
