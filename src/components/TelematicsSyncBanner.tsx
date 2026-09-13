@@ -93,6 +93,16 @@ export function TelematicsSyncBanner({ status, className }: TelematicsSyncBanner
       };
     }
     if (syncStatus === "ERROR") {
+      const recentPushReading =
+        status.lastReadingAt && Date.now() - new Date(status.lastReadingAt).getTime() < 30 * 60_000;
+      if (recentPushReading) {
+        return {
+          cls: "bg-emerald-100 text-emerald-800 ring-emerald-300",
+          icon: CheckCircle2,
+          label: "Live Webhook Connected",
+          sub: `Streaming live telemetry (last reading ${timeAgo(status.lastReadingAt)})`,
+        };
+      }
       return {
         cls: "bg-rose-100 text-rose-800 ring-rose-300",
         icon: AlertCircle,
@@ -148,8 +158,9 @@ export function TelematicsSyncBanner({ status, className }: TelematicsSyncBanner
           <p className="mt-0.5 text-xs text-slate-500">
             {badge.sub}
             {lastSynced && (
-              <span className="ml-1.5 font-medium text-slate-600">
-                · Last synced {timeAgo(lastSynced)} ({fmtDate(lastSynced)})
+              <span className="ml-1.5 font-medium text-slate-600" suppressHydrationWarning>
+                {"· "}
+                {syncStatus === "OK" ? "Last synced" : "Last attempt"} {timeAgo(lastSynced)} ({fmtDate(lastSynced)})
               </span>
             )}
           </p>

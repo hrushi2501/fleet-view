@@ -79,19 +79,31 @@ export function scanSignals(input: ScanInput, now: Date = new Date()): Signal[] 
   const { rules, dieselRate } = input;
   const out: Signal[] = [];
 
-  // --- FUEL: tank gaps and short deliveries already scored by M5 ---
-  if (on(rules, "FUEL_TANK_GAP") || on(rules, "FUEL_SHORT_DELIVERY")) {
+  // --- FUEL: tank gaps, short deliveries, and abnormal fuel burn ---
+  if (on(rules, "FUEL_TANK_GAP") || on(rules, "FUEL_SHORT_DELIVERY") || on(rules, "FUEL_EFFICIENCY_DROP")) {
     for (const a of input.fuelAnomalies) {
       if (a.status === "FALSE_POSITIVE" || a.status === "CLOSED") continue;
-      const code = a.source === "RECEIPT" ? "FUEL_SHORT_DELIVERY" : "FUEL_TANK_GAP";
+      const code =
+        a.source === "RECEIPT"
+          ? "FUEL_SHORT_DELIVERY"
+          : a.source === "ASSET_EFFICIENCY"
+          ? "FUEL_EFFICIENCY_DROP"
+          : "FUEL_TANK_GAP";
       if (!on(rules, code)) continue;
-      if (a.litres < thr(rules, code, 25)) continue;
+      if (code !== "FUEL_EFFICIENCY_DROP" && a.litres < thr(rules, code, 25)) continue;
+
+      const title =
+        code === "FUEL_SHORT_DELIVERY"
+          ? `Short delivery — ${a.litres.toFixed(0)} L not received`
+          : code === "FUEL_EFFICIENCY_DROP"
+          ? `Abnormal fuel consumption — ${a.litres.toFixed(0)} L`
+          : `Unaccounted fuel — ${a.litres.toFixed(0)} L`;
 
       out.push({
         signalKey: `FUEL_ANOMALY:${a.id}`,
         ruleCode: code,
         domain: "FUEL",
-        title: code === "FUEL_SHORT_DELIVERY" ? `Short delivery — ${a.litres.toFixed(0)} L not received` : `Unaccounted fuel — ${a.litres.toFixed(0)} L`,
+        title,
         summary: a.reasons,
         severity: (a.severity as Signal["severity"]) ?? "MEDIUM",
         score: a.score,

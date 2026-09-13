@@ -24,6 +24,7 @@ import {
   RefreshCw, Loader2, Truck, Radio, ExternalLink, UserRound,
 } from "lucide-react";
 import { cn, num } from "@/lib/utils";
+import { businessClock } from "@/lib/business-time";
 import { AssetGlass } from "@/components/AssetGlass";
 import type { LiveFleet, LiveStatus, LiveVehicle } from "@/lib/fleet-edge-live";
 import { liveVehicleReportRows } from "@/lib/live-vehicle-report";
@@ -136,14 +137,7 @@ function fmtAge(iso: string | null, now: number): string {
 
 function fmtClock(iso: string | null): string {
   if (!iso) return DASH;
-  return new Date(iso).toLocaleString("en-IN", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  return businessClock(iso);
 }
 
 // ---------------------------------------------------------------------------
@@ -647,8 +641,8 @@ function VehicleCard({
             <Clock className="h-3 w-3 shrink-0" />
             {v.lastUpdate ? (
               <>
-                <span className="font-medium">{fmtClock(v.lastUpdate)}</span>
-                <span className="text-slate-400">· {fmtAge(v.lastUpdate, now)} ago</span>
+                <span className="font-medium" suppressHydrationWarning>{fmtClock(v.lastUpdate)}</span>
+                <span className="text-slate-400" suppressHydrationWarning>· {fmtAge(v.lastUpdate, now)} ago</span>
               </>
             ) : (
               <span className="text-slate-400">Never reported</span>
@@ -736,6 +730,7 @@ function DetailCard({
             <span
               className="rounded-full bg-violet-500 px-2 py-0.5 text-[10px] font-bold text-white"
               title={v.lastUpdate ? `Last sample ${fmtClock(v.lastUpdate)}` : "No sample ever received"}
+              suppressHydrationWarning
             >
               {fmtAge(v.lastUpdate, now)}
             </span>
