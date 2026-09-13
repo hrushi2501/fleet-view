@@ -95,7 +95,7 @@ export function TelematicsSyncBanner({ status, className }: TelematicsSyncBanner
     if (syncStatus === "ERROR") {
       const recentPushReading =
         status.lastReadingAt && Date.now() - new Date(status.lastReadingAt).getTime() < 30 * 60_000;
-      if (recentPushReading) {
+      if (recentPushReading && status.lastReadingAt) {
         return {
           cls: "bg-emerald-100 text-emerald-800 ring-emerald-300",
           icon: CheckCircle2,
