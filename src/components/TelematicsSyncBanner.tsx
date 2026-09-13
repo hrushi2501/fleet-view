@@ -158,7 +158,7 @@ export function TelematicsSyncBanner({ status, className }: TelematicsSyncBanner
 
           <p className="mt-0.5 text-xs text-slate-500">
             {badge.sub}
-            {lastSynced && (
+            {lastSynced && badge.label !== "Live Webhook Connected" && (
               <span className="ml-1.5 font-medium text-slate-600" suppressHydrationWarning>
                 {"· "}
                 {syncStatus === "OK" ? "Last synced" : "Last attempt"} {timeAgo(lastSynced)} ({fmtDate(lastSynced)})

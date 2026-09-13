@@ -997,6 +997,26 @@ async function runTataSync(base: TataSyncResult): Promise<TataSyncResult> {
     }
 
     if (provider) {
+      const recentReading = await db.telemetryReading.findFirst({
+        where: {
+          source: "GPS_API",
+          recordedAt: { gte: new Date(Date.now() - 30 * 60_000) },
+        },
+        select: { id: true, recordedAt: true },
+      });
+
+      if (recentReading) {
+        await db.telematicsProvider.update({
+          where: { id: provider.id },
+          data: { lastSyncAt: new Date(), lastSyncStatus: "OK", lastSyncError: null },
+        });
+        return {
+          ...base,
+          ok: true,
+          skipped: `Pull snapshot unavailable (${message.slice(0, 80)}), but live push telemetry stream is active.`,
+        };
+      }
+
       await db.telematicsProvider.update({
         where: { id: provider.id },
         data: { lastSyncAt: new Date(), lastSyncStatus: "ERROR", lastSyncError: message.slice(0, 500) },
