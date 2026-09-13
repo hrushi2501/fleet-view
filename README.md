@@ -1,7 +1,7 @@
 # FleetView ERP — Mahadev Constructions
 
 Vehicle & fleet management for road construction and infrastructure. **This is a live
-system carrying a real client's commercial data** — 53 vehicles, their compliance
+system carrying a real client's commercial data** — the registered fleet, its compliance
 documents, and live telemetry from a Tata Fleet Edge subscription. It is not a demo,
 and it is not seeded with sample data.
 
