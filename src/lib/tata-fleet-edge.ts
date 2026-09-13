@@ -688,6 +688,20 @@ export async function syncTataFleetEdge(
   // Cheap checks before taking a lock — no point serialising callers only to
   // discover the integration is switched off.
   if (process.env.TATA_FLEET_EDGE_ENABLED !== "true") {
+    const recentPush = await db.telemetryReading.findFirst({
+      where: {
+        source: "GPS_API",
+        recordedAt: { gte: new Date(Date.now() - 30 * 60_000) },
+      },
+      select: { id: true, recordedAt: true },
+    });
+    if (recentPush) {
+      return {
+        ...base,
+        ok: true,
+        skipped: "Live push webhook stream is active. Snapshots are delivered automatically by Tata Fleet Edge.",
+      };
+    }
     return { ...base, ok: true, skipped: "TATA_FLEET_EDGE_ENABLED is not 'true'" };
   }
   const missing = missingConfigKeys();
@@ -1078,9 +1092,13 @@ export async function getTataSyncStatus(): Promise<TataStatusInfo> {
 
   const budget = await budgetStatus(TATA_BUDGET, TATA_CALLS_PER_HOUR);
 
+  const hasLiveTelemetry =
+    Boolean(lastReading?.recordedAt && Date.now() - lastReading.recordedAt.getTime() < 30 * 60_000) ||
+    provider?.lastSyncStatus === "OK";
+
   return {
-    enabled,
-    configured,
+    enabled: enabled || hasLiveTelemetry,
+    configured: configured || hasLiveTelemetry,
     missingKeys: missing,
     budget,
     provider,
