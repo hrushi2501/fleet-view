@@ -131,7 +131,11 @@ export default async function TripsPage() {
                           {a.usage.avgKmPerL} km/L
                         </span>
                       ) : <span className="text-slate-300">—</span>}
-                      <p className="text-[10px] text-slate-400">{CONFIDENCE_LABEL[a.usage.confidence] ?? "Data accuracy: partial"}</p>
+                      <p className="text-[10px] text-slate-400">
+                        {a.usage.fuelResolution === "RESOLVED"
+                          ? (CONFIDENCE_LABEL[a.usage.confidence] ?? "Data accuracy: partial")
+                          : "Fuel readings inconsistent — not assessed"}
+                      </p>
                     </td>
                     <td className="px-5 py-3 text-slate-500">{a.norm ? `${a.norm.low}–${a.norm.high}` : "—"}</td>
                     <td className="px-5 py-3">

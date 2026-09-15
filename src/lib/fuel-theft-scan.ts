@@ -135,6 +135,11 @@ export async function scanForFuelTheft(sinceHours = 30): Promise<ScanOutcome> {
 
     const { segments, usage } = analyseUsage(rows as AnalyticsReading[], null, asset.fuelCapacity);
 
+    if (usage.fuelResolution !== "RESOLVED") {
+      note(usage.confidenceReasons[0] ?? "fuel evidence did not pass resolution checks");
+      continue;
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Deliberately NOT gated on `usage.insufficientData`.
     //

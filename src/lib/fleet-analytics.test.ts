@@ -299,6 +299,32 @@ describe("TEST 6 — impossible fuel drop", () => {
       usage.confidenceReasons.some((r) => /burn rate/i.test(r)),
       "the flag must be visible in the confidence reasons",
     );
+    assert.equal(usage.fuelResolution, "UNRESOLVED_IMPLAUSIBLE_MOVEMENT");
+    assert.equal(usage.insufficientData, true);
+    assert.equal(usage.litresBurned, 0);
+    assert.equal(usage.avgKmPerL, null);
+    assert.equal(usage.litresUnaccounted, 0);
+  });
+
+  test("a sender that repeatedly falls and rebounds cannot manufacture fuel KPIs", () => {
+    const levels = [240, 35, 235, 31, 242, 36, 238, 34];
+    const readings = levels.map((fuelLevelL, i) => reading({
+      recordedAt: at(i * 5),
+      odometerKm: 1_000 + i,
+      fuelLevelL,
+      ignitionOn: true,
+    }));
+
+    const { usage } = analyseUsage(readings, TRUCK_NORM, TANK);
+
+    assert.equal(usage.fuelResolution, "UNRESOLVED_CONTRADICTORY_SENDER");
+    assert.equal(usage.insufficientData, true);
+    assert.equal(usage.litresBurned, 0);
+    assert.equal(usage.litresFilled, 0);
+    assert.equal(usage.avgKmPerL, null);
+    assert.equal(usage.litresUnaccounted, 0);
+    assert.equal(usage.suspectSegments, 0);
+    assert.ok(usage.confidenceReasons.some((reason) => /not assessed/i.test(reason)));
   });
 
   test("a physically impossible drop is not dressed up as a HIGH-confidence theft", () => {

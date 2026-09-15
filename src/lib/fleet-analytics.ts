@@ -46,6 +46,8 @@
  * daily sample is how a fleet system loses the trust of the people using it.
  */
 
+import { senderContradictsItself } from "@/lib/fuel-sender-quality";
+
 export type AnalyticsReading = {
   recordedAt: Date;
   lat: number | null;
@@ -1091,6 +1093,8 @@ export type UsageSummary = {
   confidenceReasons: string[];
   /** True when the data cannot support a fuel figure worth printing. */
   insufficientData: boolean;
+  /** Final fuel decision. UNRESOLVED values must never feed KPIs or anomalies. */
+  fuelResolution: "RESOLVED" | "UNRESOLVED_CONTRADICTORY_SENDER" | "UNRESOLVED_IMPLAUSIBLE_MOVEMENT";
   diagnostics: UsageDiagnostics;
 };
 
@@ -1131,6 +1135,13 @@ export function analyseUsage(
   const gaps = analyseGaps(samples, cfg);
   const distance = analyseDistance(samples, cfg);
   const fuel = analyseFuelSeries(samples, tankCapacityL, cfg);
+  const litreSeries = samples.map((sample) => sample.fuelLevelL).filter((n): n is number => n != null);
+  const contradictorySender = senderContradictsItself(litreSeries, tankCapacityL);
+  const fuelResolution: UsageSummary["fuelResolution"] = contradictorySender
+    ? "UNRESOLVED_CONTRADICTORY_SENDER"
+    : fuel.implausibleDrops.length > 0
+      ? "UNRESOLVED_IMPLAUSIBLE_MOVEMENT"
+      : "RESOLVED";
 
   // Idle burn is charged against time the engine ran without the odometer
   // advancing. It is reported, never silently subtracted from the headline.
@@ -1157,10 +1168,10 @@ export function analyseUsage(
   // tolerance together cannot explain — never the raw difference between
   // measured and expected, which would call every hard shift a theft.
   const explained = (expectedLitresForDistance ?? 0) + idleAllowanceLitres + fuel.uncertaintyL;
-  const litresUnaccounted =
+  const calculatedLitresUnaccounted =
     expectedLitresForDistance != null ? Math.max(0, round(fuel.litresConsumed - explained, 2)) : 0;
 
-  const avgKmPerL =
+  const calculatedAvgKmPerL =
     fuel.litresConsumed > fuel.noiseBandL && distance.chosenKm > 0
       ? round(distance.chosenKm / fuel.litresConsumed, 2)
       : null;
@@ -1170,25 +1181,31 @@ export function analyseUsage(
     cfg,
   );
 
+  if (contradictorySender) {
+    reasons.unshift("Fuel sender repeatedly reported mutually incompatible rises and falls; fuel is not assessed.");
+  }
+  const unresolved = fuelResolution !== "RESOLVED";
+
   const usage: UsageSummary = {
     segments: segments.length,
     windowHours: gaps.windowHours,
     distanceKm: distance.chosenKm,
     distanceSource: distance.source,
     gpsDistanceKm: distance.gpsKm,
-    litresBurned: fuel.litresConsumed,
+    litresBurned: unresolved ? 0 : fuel.litresConsumed,
     litresBurnedUncertainty: fuel.uncertaintyL,
-    litresFilled: fuel.litresRefuelled,
-    refuelEvents: fuel.refuels.length,
-    avgKmPerL,
-    suspectSegments: segments.filter(
-      (s) => s.event === "STATIONARY_DROP" || s.event === "EXCESS_CONSUMPTION",
-    ).length,
-    litresUnaccounted,
+    litresFilled: unresolved ? 0 : fuel.litresRefuelled,
+    refuelEvents: unresolved ? 0 : fuel.refuels.length,
+    avgKmPerL: unresolved ? null : calculatedAvgKmPerL,
+    suspectSegments: unresolved
+      ? 0
+      : segments.filter((s) => s.event === "STATIONARY_DROP" || s.event === "EXCESS_CONSUMPTION").length,
+    litresUnaccounted: unresolved ? 0 : calculatedLitresUnaccounted,
     worstGapHours: gaps.worstGapHours,
-    confidence,
+    confidence: unresolved ? "LOW" : confidence,
     confidenceReasons: reasons,
-    insufficientData: insufficient,
+    insufficientData: insufficient || unresolved,
+    fuelResolution,
     diagnostics: {
       hygiene,
       gaps,
@@ -1262,10 +1279,11 @@ function confidenceForWindow(
 
   if (d.fuel.implausibleDrops.length > 0) {
     demote(
-      "MEDIUM",
+      "LOW",
       `${d.fuel.implausibleDrops.length} fuel drop(s) implied a burn rate no engine can reach — ` +
-        `excluded from consumption and flagged as a sensor fault.`,
+        `fuel is not assessed from this window.`,
     );
+    insufficient = true;
   }
 
   if (d.fuel.withinNoise) {

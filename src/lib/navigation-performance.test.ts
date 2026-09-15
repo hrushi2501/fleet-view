@@ -50,7 +50,7 @@ test("interactive telemetry pages stay scoped and avoid historical scans", () =>
   assert.match(trips, /const liveWindowDays = 1/);
   assert.match(trips, /fleetUsage\(liveWindowDays, visible\)/);
   assert.doesNotMatch(trips, /telemetryReading\.count/);
-  assert.match(fleetUsage, /assetId: \{ in: assetIds \}/);
-  assert.match(fleetUsage, /providerId: provider\.id/);
+  assert.match(fleetUsage, /"assetId" IN \(\$\{Prisma\.join\(assetIds\)\}\)/);
+  assert.match(fleetUsage, /"providerId" = \$\{provider\.id\}/);
   assert.doesNotMatch(fleetUsage, /where: tataAssets/);
 });

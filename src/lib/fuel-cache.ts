@@ -28,6 +28,8 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import { db } from "@/lib/db";
+import { senderContradictsItself } from "@/lib/fuel-sender-quality";
+export { senderContradictsItself } from "@/lib/fuel-sender-quality";
 
 /** Enough samples to see the shape of the recent trace. */
 const WINDOW = 20;
@@ -36,10 +38,9 @@ const WINDOW = 20;
  * A swing this large, as a fraction of the tank, is not consumption.
  *
  * A tank cannot lose a fifth of its capacity and regain it within half an hour.
- * A refuel rises and stays; consumption falls and stays. Only a fault does both.
+ * A refuel rises and stays; consumption falls and stays. When both appear, the
+ * series cannot distinguish real movement from a sender fault.
  */
-const UNSTABLE_SWING_FRACTION = 0.2;
-
 /** Beyond this the samples are too old to describe the tank now. */
 const WINDOW_MS = 2 * 60 * 60_000;
 
@@ -48,8 +49,8 @@ export type CachedFuel = {
   at: Date | null;
   /**
    * True when the sender contradicted itself inside the window — it both rose
-   * and fell by more than a fifth of the tank. Callers should show "sender
-   * unreliable" rather than any number.
+   * and fell by more than a fifth of the tank. Callers should show "fuel
+   * readings inconsistent" rather than any number.
    */
   unstable: boolean;
 };
@@ -59,7 +60,7 @@ export type CachedFuel = {
  *
  * Both a large rise and a large fall inside the same window. A genuine fill
  * only rises; genuine consumption only falls; a siphon only falls. Only a
- * faulty sender does both.
+ * contradictory series does both, so it cannot support a conclusion.
  *
  * Exported because the same question decides two different things: what level
  * to display, and whether this vehicle's "refuels" are real. Getting the second
@@ -68,19 +69,6 @@ export type CachedFuel = {
  *
  * @param litres oldest → newest
  */
-export function senderContradictsItself(litres: number[], tankL: number | null): boolean {
-  if (!tankL || tankL <= 0 || litres.length < 3) return false;
-  const limit = tankL * UNSTABLE_SWING_FRACTION;
-  let maxRise = 0;
-  let maxFall = 0;
-  for (let i = 1; i < litres.length; i++) {
-    const delta = litres[i]! - litres[i - 1]!;
-    if (delta > maxRise) maxRise = delta;
-    if (-delta > maxFall) maxFall = -delta;
-  }
-  return maxRise > limit && maxFall > limit;
-}
-
 function median(xs: number[]): number | null {
   if (xs.length === 0) return null;
   const s = [...xs].sort((a, b) => a - b);

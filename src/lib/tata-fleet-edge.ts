@@ -63,7 +63,7 @@ import { withPollLock } from "@/lib/poll-lock";
 import { reserveCall, budgetStatus, startCooldown, cooldownRemaining, TATA_CALLS_PER_HOUR } from "@/lib/api-budget";
 import { TataFleetEdgeAdapter, type TelemetryPing } from "@/lib/telematics-adapters";
 import {
-  analyseSegment, confirmSensorRefuel, riskScore, severityFor,
+  analyseSegment, analyseUsage, confirmSensorRefuel, riskScore, severityFor,
   type AnalyticsReading,
 } from "@/lib/fleet-analytics";
 import {
@@ -458,6 +458,19 @@ export async function recordTelemetryFuelAnomaly(
     where: { assetClass: asset.assetClass, unit: "LPH" },
   });
 
+  // A pair of individually plausible values is not enough to judge a sender.
+  // Resolve the surrounding series first. This blocks the first downward leg
+  // of a flickering sender from becoming a case before its rebound arrives.
+  const evidence = [...recentReadings, previous, current];
+  if (evidence.length < 6) return false;
+  const { usage: resolvedWindow } = analyseUsage(
+    evidence,
+    norm,
+    tankCapacityL,
+    idle?.normHigh ?? null,
+  );
+  if (resolvedWindow.fuelResolution !== "RESOLVED") return false;
+
   const segment = analyseSegment(previous, current, norm, tankCapacityL, idle?.normHigh ?? null);
 
   // A tank that rises was filled only when the rise persists across multiple
@@ -475,10 +488,8 @@ export async function recordTelemetryFuelAnomaly(
     segment.event !== "IMPLAUSIBLE_DROP"
   ) return false;
 
-  // A physically impossible fall (for example 200 L to 170 L in ten minutes)
-  // is not evidence that a driver stole fuel. It may be a sender fault, leak,
-  // splash, or removal. It must still reach the problem queue, otherwise the
-  // system silently loses the exact signal a supervisor needs to inspect.
+  // Physically impossible changes have already failed the window-resolution
+  // oracle above. They remain telemetry diagnostics and never become loss.
   const rapidSensorDrop = segment.event === "IMPLAUSIBLE_DROP";
   const involvedLitres = rapidSensorDrop
     ? Math.abs(segment.fuelDeltaL ?? 0)
