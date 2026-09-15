@@ -18,6 +18,40 @@ export function StatusLoading({ label }: { label: string }) {
   );
 }
 
+/**
+ * Keeps query-string tab changes responsive while the selected server section
+ * reads its data. The heading and tabs stay usable; only the data region is
+ * replaced, so a slow section can also be interrupted by another tab click.
+ */
+export function ModuleSectionLoading({ label = "Loading section data" }: { label?: string }) {
+  return (
+    <section className="space-y-5" aria-busy="true">
+      <LoadingLabel><Txt text={label} />…</LoadingLabel>
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        {Array.from({ length: 4 }, (_, index) => (
+          <div key={index} className="h-28 animate-pulse rounded-[13px] border border-slate-200 bg-white p-5">
+            <div className="h-3 w-20 rounded bg-slate-200" />
+            <div className="mt-3 h-7 w-24 rounded bg-slate-200/90" />
+            <div className="mt-2 h-3 w-16 rounded bg-slate-100" />
+          </div>
+        ))}
+      </div>
+      <div className="animate-pulse rounded-[13px] border border-slate-200 bg-white p-5">
+        <div className="h-4 w-40 rounded bg-slate-200" />
+        <div className="mt-5 space-y-3.5">
+          {Array.from({ length: 6 }, (_, row) => (
+            <div key={row} className="grid grid-cols-4 gap-4">
+              {Array.from({ length: 4 }, (_, column) => (
+                <div key={column} className="h-3 rounded bg-slate-100" />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function FuelSectionLoading({ compact = false }: { compact?: boolean }) {
   return (
     <section className="space-y-5" aria-busy="true">

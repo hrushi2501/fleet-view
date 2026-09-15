@@ -4,6 +4,8 @@ import { Workforce } from "./_sections/Workforce";
 import { PeopleRecords } from "./_sections/PeopleRecords";
 import { DriverVehicleHistory } from "./_sections/DriverVehicleHistory";
 import { Txt } from "@/components/Txt";
+import { ModuleSectionLoading } from "@/components/ModuleLoading";
+import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +44,9 @@ export default async function PeoplePage({
 
       <PageTabs tabs={TABS} active={tab} basePath="/people" />
 
-      {tab === "records" ? <PeopleRecords /> : tab === "mapping" ? <DriverVehicleHistory /> : <Workforce tab={tab} />}
+      <Suspense key={tab} fallback={<ModuleSectionLoading label="Loading people data" />}>
+        {tab === "records" ? <PeopleRecords /> : tab === "mapping" ? <DriverVehicleHistory /> : <Workforce tab={tab} />}
+      </Suspense>
     </div>
   );
 }

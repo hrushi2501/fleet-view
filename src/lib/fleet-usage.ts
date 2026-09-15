@@ -108,11 +108,9 @@ export async function fleetUsage(
     ],
   };
 
-  // Run the related reads on one acquired connection. Production intentionally
-  // keeps a tiny Prisma pool behind Supabase's transaction pooler; four
-  // concurrent promises otherwise wait on one another and can exhaust the pool
-  // timeout during a dashboard render.
-  const [assets, readings, norms, dieselSetting] = await db.$transaction([
+  // These are independent snapshots. Let the bounded Prisma pool overlap their
+  // Supabase round trips instead of forcing all four through one transaction.
+  const [assets, readings, norms, dieselSetting] = await Promise.all([
     db.asset.findMany({
       where: tataAssets,
       select: {

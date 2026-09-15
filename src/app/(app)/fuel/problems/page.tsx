@@ -4,6 +4,8 @@ import { ProblemQueue } from "./_sections/ProblemQueue";
 import { LossCases } from "./_sections/LossCases";
 import { FuelInsights } from "./_sections/FuelInsights";
 import { Txt } from "@/components/Txt";
+import { ModuleSectionLoading } from "@/components/ModuleLoading";
+import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +46,9 @@ export default async function FuelProblemsPage({
 
       <PageTabs tabs={tabs} active={tab} basePath="/fuel/problems" />
 
-      {tab === "cases" ? <LossCases /> : tab === "patterns" ? <FuelInsights /> : <ProblemQueue />}
+      <Suspense key={tab} fallback={<ModuleSectionLoading label="Loading problem data" />}>
+        {tab === "cases" ? <LossCases /> : tab === "patterns" ? <FuelInsights /> : <ProblemQueue />}
+      </Suspense>
     </div>
   );
 }

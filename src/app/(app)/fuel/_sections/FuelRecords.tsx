@@ -21,9 +21,10 @@ export async function FuelRecords({ access }: { access: Access }) {
   // Rows, not just the page: a scoped supervisor sees their own sites.
   const visible = assetScope(access);
   const dieselRatePromise = getDieselRate();
-  // Share the overview's 14-day cached detector result. Filtering a small
-  // derived list is much cheaper than scanning telemetry again for seven days.
-  const detectedPromise = dieselRatePromise.then((rate) => getDetectedFills(visible, rate, 14));
+  // A cold 14-day detector scan currently reads about 175,000 telemetry rows
+  // and breaches the production request window. Keep this interactive screen
+  // to the live 24-hour window; older persisted issues remain in Fill History.
+  const detectedPromise = dieselRatePromise.then((rate) => getDetectedFills(visible, rate, 1));
   const [issues, assets, tanks, detectedResult] = await Promise.all([
     db.fuelTransaction.findMany({
       where: { type: "ISSUE", asset: visible },
@@ -43,9 +44,9 @@ export async function FuelRecords({ access }: { access: Access }) {
   // What the tanks actually saw, matched against what was written down. The
   // screen claimed to show "every fill" while reading only the keyed table, so
   // a fill nobody entered could not appear on it at all.
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  const detected = detectedResult.fills.filter((fill) => fill.at >= sevenDaysAgo);
+  const liveWindowStart = new Date();
+  liveWindowStart.setDate(liveWindowStart.getDate() - 1);
+  const detected = detectedResult.fills.filter((fill) => fill.at >= liveWindowStart);
   const unreliableSenders = detectedResult.unreliable;
   const unlogged = detected.filter((f) => !f.logged);
   const unloggedValue = unlogged.reduce((s, f) => s + f.estimatedValue, 0);
@@ -98,7 +99,7 @@ export async function FuelRecords({ access }: { access: Access }) {
             <SectionTitle
               title={`${unlogged.length} fill${unlogged.length === 1 ? "" : "s"} nobody entered`}
               subtitle={
-                "The fuel sensor saw diesel go in over the last 7 days, but no one entered these fills. " +
+                "The fuel sensor saw diesel go in over the last 24 hours, but no one entered these fills. " +
                 "Usually the bill just has not been entered yet, or the diesel came from a site tank. Best checked today." +
                 (unreliableSenders.length > 0
                   ? ` Not shown: ${unreliableSenders.map((u) => u.assetCode).join(", ")} — the fuel sensor on ${unreliableSenders.length === 1 ? "this vehicle" : "these vehicles"} is giving wrong readings, so its fills cannot be trusted.`

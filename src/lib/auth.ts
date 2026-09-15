@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { timingSafeEqual } from "node:crypto";
 import bcrypt from "bcryptjs";
+import { cache } from "react";
 import { db } from "./db";
 import { can, type RoleLite } from "./rbac";
 import { issueToken, verifyToken, isRevoked, SESSION_TTL_MS } from "./session-token";
@@ -95,17 +96,19 @@ export function isHashed(stored: string) {
 }
 
 /**
- * The signed-in user, or null.
+ * The database-backed signed-in account, or null.
  *
  * The cookie is a signed token, never a bare user id. It is verified before
  * its contents are used for anything: a forged or edited cookie fails the
  * signature check and is treated as no session at all.
  *
- * Every route in the app resolves identity through this function, so the
- * signature, expiry, revocation and deactivation checks all apply everywhere
- * at once.
+ * Every route in the app resolves identity through this cached function, so the
+ * signature, expiry, revocation and deactivation checks apply everywhere while
+ * the database-backed account is resolved only once per render pass. Returning the
+ * account internally lets `access.ts` reuse this same user read instead of
+ * immediately querying the same row again on every navigation.
  */
-export async function getSession() {
+export const getSessionAccount = cache(async () => {
   const store = await cookies();
   const raw = store.get(COOKIE)?.value;
 
@@ -114,10 +117,22 @@ export async function getSession() {
 
   const { sub: userId, iat } = verified.payload;
 
-  const [user, epoch] = await db.$transaction([
+  // These reads are independent. Overlap them on the bounded pool because this
+  // path gates every page and API request; serial round trips here tax every
+  // navigation before its page-specific data can even start.
+  const [user, epoch] = await Promise.all([
     db.user.findUnique({
       where: { id: userId },
-      select: { id: true, name: true, email: true, role: true, active: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        active: true,
+        driverId: true,
+        language: true,
+        roleRef: { select: { permissions: true } },
+      },
     }),
     db.setting.findUnique({ where: { key: epochKey(userId) }, select: { value: true } }),
   ]);
@@ -132,8 +147,13 @@ export async function getSession() {
     return null;
   }
 
-  return { id: user.id, name: user.name, email: user.email, role: user.role };
-}
+  return user;
+});
+
+export const getSession = cache(async () => {
+  const user = await getSessionAccount();
+  return user ? { id: user.id, name: user.name, email: user.email, role: user.role } : null;
+});
 
 export async function setSession(userId: string) {
   const store = await cookies();

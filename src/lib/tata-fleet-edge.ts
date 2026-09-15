@@ -1064,7 +1064,7 @@ export async function getTataSyncStatus(): Promise<TataStatusInfo> {
   const missing = missingConfigKeys();
   const configured = missing.length === 0;
 
-  const [provider, lastReading, activeVehicles, totalReadings] = await db.$transaction([
+  const [provider, lastReading, activeVehicles, totalReadings] = await Promise.all([
     db.telematicsProvider.findUnique({
       where: { code: TATA_PROVIDER_CODE },
       select: {

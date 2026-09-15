@@ -22,34 +22,36 @@ export default async function SiteWorkPage() {
   const access = await requirePage("production.view");
   const since = new Date(); since.setDate(since.getDate() - 30);
 
-  const logs = await db.productionLog.findMany({
-    where: { date: { gte: since }, ...projectIdScope(access) },
-    select: {
-      id: true, assetId: true, date: true, shift: true, trips: true, tonnage: true,
-      volumeM3: true, cycles: true, workedHours: true, idleHours: true, distanceKm: true,
-      leadKm: true, material: true, projectId: true, driverId: true, source: true,
-    },
-    orderBy: { date: "desc" },
-    take: 300,
-  });
-  const assets = await db.asset.findMany({
-    select: { id: true, code: true, name: true, registrationNo: true, assetClass: true, category: true },
-    orderBy: { code: "asc" },
-  });
-  const projects = await db.project.findMany({
-    select: { id: true, code: true, name: true },
-    orderBy: { code: "asc" },
-  });
-  const drivers = await db.driver.findMany({
-    select: { id: true, empCode: true, name: true },
-    orderBy: { name: "asc" },
-  });
-  const norms = await db.productionNorm.findMany();
-  const fuel = await db.fuelTransaction.groupBy({
-    by: ["assetId"],
-    where: { type: "ISSUE", date: { gte: since } },
-    _sum: { quantity: true, amount: true },
-  });
+  const [logs, assets, projects, drivers, norms, fuel] = await Promise.all([
+    db.productionLog.findMany({
+      where: { date: { gte: since }, ...projectIdScope(access) },
+      select: {
+        id: true, assetId: true, date: true, shift: true, trips: true, tonnage: true,
+        volumeM3: true, cycles: true, workedHours: true, idleHours: true, distanceKm: true,
+        leadKm: true, material: true, projectId: true, driverId: true, source: true,
+      },
+      orderBy: { date: "desc" },
+      take: 300,
+    }),
+    db.asset.findMany({
+      select: { id: true, code: true, name: true, registrationNo: true, assetClass: true, category: true },
+      orderBy: { code: "asc" },
+    }),
+    db.project.findMany({
+      select: { id: true, code: true, name: true },
+      orderBy: { code: "asc" },
+    }),
+    db.driver.findMany({
+      select: { id: true, empCode: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    db.productionNorm.findMany(),
+    db.fuelTransaction.groupBy({
+      by: ["assetId"],
+      where: { type: "ISSUE", date: { gte: since } },
+      _sum: { quantity: true, amount: true },
+    }),
+  ]);
 
   const assetOpts = assets.map((a) => ({ id: a.id, label: `${a.code} — ${a.registrationNo ?? a.name} (${ASSET_CLASS_LABEL[a.assetClass] ?? a.assetClass})` }));
   const projOpts = projects.map((p) => ({ id: p.id, label: `${p.code} — ${p.name}` }));

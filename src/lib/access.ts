@@ -23,7 +23,7 @@
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { db } from "@/lib/db";
-import { getSession, type Session } from "@/lib/auth";
+import { getSessionAccount, type Session } from "@/lib/auth";
 import { can, type RoleLite } from "@/lib/rbac";
 
 /**
@@ -130,23 +130,9 @@ export async function setProjectScope(userId: string, projectIds: string[] | nul
  * one function, so there is a single definition of what a user may reach.
  */
 async function resolveAccess(): Promise<Access | null> {
-  const session = await getSession();
-  if (!session) return null;
-
-  // This used to make one query for permissions and a second one for driverId.
-  // Keeping them together matters because access is resolved for every RSC/API
-  // request and a transaction-pooler can have only a few database connections.
-  const user = await db.user.findUnique({
-    where: { id: session.id },
-    select: {
-      role: true,
-      active: true,
-      driverId: true,
-      language: true,
-      roleRef: { select: { permissions: true } },
-    },
-  });
-  if (!user || user.active === false) return null;
+  const user = await getSessionAccount();
+  if (!user) return null;
+  const session: Session = { id: user.id, name: user.name, email: user.email, role: user.role };
 
   const codes = user.roleRef?.permissions.split("\n").map((c) => c.trim()).filter(Boolean) ?? [];
   const group = groupFor(user.role, codes);

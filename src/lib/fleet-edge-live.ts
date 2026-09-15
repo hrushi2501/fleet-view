@@ -518,7 +518,7 @@ async function buildLiveFleet(scope: LiveFleetScope): Promise<LiveFleet> {
   const assetIds = assets.map((a) => a.id);
 
   const [todayReadings, latestReadings, schedules, activeSessions, norms, provider] =
-    await db.$transaction([
+    await Promise.all([
       db.telemetryReading.findMany({
         where: { assetId: { in: assetIds }, recordedAt: { gte: dayStart } },
         orderBy: { recordedAt: "asc" },

@@ -3,6 +3,8 @@ import { PageTabs, resolveTab, type Tab } from "@/components/PageTabs";
 import { Register } from "./_sections/Register";
 import { VehicleRecords } from "./_sections/VehicleRecords";
 import { Txt } from "@/components/Txt";
+import { ModuleSectionLoading } from "@/components/ModuleLoading";
+import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +39,9 @@ export default async function FleetPage({
 
       <PageTabs tabs={TABS} active={tab} basePath="/fleet" />
 
-      {tab === "register" ? <Register /> : <VehicleRecords />}
+      <Suspense key={tab} fallback={<ModuleSectionLoading label="Loading fleet data" />}>
+        {tab === "register" ? <Register /> : <VehicleRecords />}
+      </Suspense>
     </div>
   );
 }

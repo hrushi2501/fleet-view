@@ -28,17 +28,19 @@ function resolveDbUrl(): string | undefined {
   const isPooled = finalUrl.includes("pgbouncer") || finalUrl.includes(":6543");
   if (isPooled && param("pgbouncer") !== "true") setParam("pgbouncer", "true");
 
-  // A serverless deployment needs a deliberately tiny pool per function
-  // instance. Local development is one long-lived process, however, and a
-  // single connection makes concurrent RSC/API requests queue behind one
-  // another until Prisma's timeout expires. Keep production's explicit value,
-  // but give the local process enough headroom for normal browser navigation.
+  // Keep the per-instance pool deliberately small, but do not default it to one.
+  // Most pages start several independent reads together. With one connection,
+  // Prisma serializes that work and every Supabase round trip is added to the
+  // navigation time. Three production connections preserve a bounded pool while
+  // allowing ordinary RSC reads to overlap; local development keeps five.
+  // PRISMA_CONNECTION_LIMIT remains the explicit escape hatch for deployments
+  // whose database connection budget requires a different value.
   const requestedLimit = process.env.PRISMA_CONNECTION_LIMIT?.trim();
   const configuredLimit = Number(param("connection_limit"));
-  const localMinimum = process.env.NODE_ENV === "production" ? 1 : 5;
+  const runtimeMinimum = process.env.NODE_ENV === "production" ? 3 : 5;
   const connectionLimit = requestedLimit
-    || (!Number.isFinite(configuredLimit) || configuredLimit < localMinimum
-      ? String(localMinimum)
+    || (!Number.isFinite(configuredLimit) || configuredLimit < runtimeMinimum
+      ? String(runtimeMinimum)
       : null);
   if (connectionLimit) setParam("connection_limit", connectionLimit);
   // A short pool timeout turns a brief queue behind one slower query into a

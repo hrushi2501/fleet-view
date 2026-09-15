@@ -9,6 +9,8 @@ import { WageBook } from "./_sections/WageBook";
 import { PageTabs, resolveTab, type Tab } from "@/components/PageTabs";
 import { IndianRupee, Users, CalendarCheck, Wallet } from "lucide-react";
 import { Txt } from "@/components/Txt";
+import { ModuleSectionLoading } from "@/components/ModuleLoading";
+import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
 
@@ -37,23 +39,66 @@ export default async function PayrollPage({
     ? params.period!
     : businessMonth(new Date());
 
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Payroll" /></h1>
+        <p className="text-sm text-slate-500">
+          Wages worked out from the attendance register — kitna paisa banta hai
+        </p>
+      </div>
+
+      <PageTabs tabs={TABS} active={tab} basePath="/people/payroll" />
+
+      <Suspense key={`${tab}:${period}`} fallback={<ModuleSectionLoading label="Loading payroll data" />}>
+        <PayrollSection
+          tab={tab}
+          period={period}
+          canEdit={access.can("payroll.edit")}
+          canApprove={access.can("payroll.approve")}
+        />
+      </Suspense>
+    </div>
+  );
+}
+
+async function PayrollSection({
+  tab,
+  period,
+  canEdit,
+  canApprove,
+}: {
+  tab: string;
+  period: string;
+  canEdit: boolean;
+  canApprove: boolean;
+}) {
+  const peoplePromise = db.driver.findMany({
+    where: { status: "Active" },
+    select: {
+      id: true,
+      name: true,
+      empCode: true,
+      type: true,
+      employmentType: true,
+      wageRates: { orderBy: { effectiveFrom: "desc" as const }, take: 3 },
+    },
+    orderBy: { empCode: "asc" as const },
+  });
+
+  // The wages tab only needs people and their rates. Avoid loading payroll runs
+  // that it never renders; the selected section should define the query cost.
+  if (tab === "wages") {
+    const people = await peoplePromise;
+    return <WageBook people={people} canEdit={canEdit} />;
+  }
+
   const [run, people, latestRuns] = await Promise.all([
     db.payrollRun.findUnique({
       where: { period },
       include: { lines: { orderBy: { empCode: "asc" } } },
     }),
-    db.driver.findMany({
-      where: { status: "Active" },
-      select: {
-        id: true,
-        name: true,
-        empCode: true,
-        type: true,
-        employmentType: true,
-        wageRates: { orderBy: { effectiveFrom: "desc" }, take: 3 },
-      },
-      orderBy: { empCode: "asc" },
-    }),
+    peoplePromise,
     db.payrollRun.findMany({
       orderBy: { period: "desc" },
       take: 12,
@@ -67,21 +112,8 @@ export default async function PayrollPage({
   const unpaidPeople = people.filter((p) => p.wageRates.length === 0).length;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink-900"><Txt text="Payroll" /></h1>
-        <p className="text-sm text-slate-500">
-          Wages worked out from the attendance register — kitna paisa banta hai
-        </p>
-      </div>
-
-      <PageTabs tabs={TABS} active={tab} basePath="/people/payroll" />
-
-      {tab === "wages" ? (
-        <WageBook people={people} canEdit={access.can("payroll.edit")} />
-      ) : (
-        <>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4">
+    <>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4">
             <StatCard
               label="This Month's Pay"
               value={run ? inr(totalNet, { compact: true }) : "—"}
@@ -109,9 +141,9 @@ export default async function PayrollPage({
               accent={run?.status === "FINALISED" ? "emerald" : "amber"}
               icon={<CalendarCheck className="h-5 w-5" />}
             />
-          </div>
+      </div>
 
-          {people.length === 0 ? (
+      {people.length === 0 ? (
             <Card className="p-6">
               <EmptyState
                 title="No people to pay yet"
@@ -159,12 +191,12 @@ export default async function PayrollPage({
                 status: r.status,
                 people: r._count.lines,
               }))}
-              canEdit={access.can("payroll.edit")}
-              canApprove={access.can("payroll.approve")}
+              canEdit={canEdit}
+              canApprove={canApprove}
             />
-          )}
+      )}
 
-          <Card className="p-5">
+      <Card className="p-5">
             <SectionTitle
               title="How the days are counted"
               subtitle="So anyone can check the sheet by hand"
@@ -183,9 +215,7 @@ export default async function PayrollPage({
                 rate has been set for that person.
               </li>
             </ul>
-          </Card>
-        </>
-      )}
-    </div>
+      </Card>
+    </>
   );
 }

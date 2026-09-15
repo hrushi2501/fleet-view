@@ -33,7 +33,7 @@ export default async function Dashboard() {
     urgentWorkOrders,
     unmarkedDriversCount,
     dieselSetting,
-  ] = await db.$transaction([
+  ] = await Promise.all([
     db.asset.findMany({
       where: visible,
       select: {

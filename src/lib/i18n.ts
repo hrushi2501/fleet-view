@@ -183,9 +183,9 @@ const HI: Record<string, string> = {
   "Fuel Use & Mileage": "Diesel aur Mileage",
   "Mileage and cost per km for each vehicle, and fills that look wrong":
     "Har gaadi ki mileage aur per km kharcha, aur jo bharai galat lag rahi hai",
-  "Diesel Filled Each Day — All Vehicles": "Har Din Kitna Diesel Bhara — Sab Gaadiyan",
-  "Last 14 days — from the fuel sensor and from fills entered by hand":
-    "Pichhle 14 din — sensor se aur haath se likhe hue, dono",
+  "Diesel Filled Today — All Vehicles": "Aaj Kitna Diesel Bhara — Sab Gaadiyan",
+  "Last 24 hours — from the fuel sensor and from fills entered by hand":
+    "Pichhle 24 ghante — sensor se aur haath se likhe hue, dono",
   "Which vehicles, and how much": "Kaunsi gaadiyan, aur kitna",
   "Approx. Cost": "Andaazan Kharcha",
   "Day": "Din",

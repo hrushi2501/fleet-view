@@ -34,7 +34,7 @@ You need a `.env.local`. It is gitignored and never committed — ask for the va
 
 | Variable | Required | What breaks without it |
 | --- | --- | --- |
-| `DATABASE_URL` | yes | Nothing runs. Pooled URL, keep `?pgbouncer=true&connection_limit=1` |
+| `DATABASE_URL` | yes | Nothing runs. Pooled URL, keep `?pgbouncer=true&connection_limit=3` |
 | `DATABASE_URL_UNPOOLED` | operator only | Read-only verification and non-owner schema operations; not required in Vercel runtime |
 | `DATABASE_URL_OWNER` / `SUPABASE_DB_PASSWORD` | RLS operator only | One-off table-owner RLS policy changes; never set in Vercel runtime |
 | `AUTH_SECRET` | production | Browser sessions cannot be issued safely |

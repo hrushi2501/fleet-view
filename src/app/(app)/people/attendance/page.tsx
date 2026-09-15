@@ -4,6 +4,8 @@ import { Register } from "./_sections/Register";
 import { Approvals } from "./_sections/Approvals";
 import { BatchSignOff } from "./_sections/BatchSignOff";
 import { Txt } from "@/components/Txt";
+import { ModuleSectionLoading } from "@/components/ModuleLoading";
+import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
 
@@ -33,13 +35,15 @@ export default async function AttendancePage({
 
       <PageTabs tabs={TABS} active={tab} basePath="/people/attendance" />
 
-      {tab === "approvals" ? (
-        <Approvals />
-      ) : tab === "register" ? (
-        <Register />
-      ) : (
-        <BatchSignOff />
-      )}
+      <Suspense key={tab} fallback={<ModuleSectionLoading label="Loading attendance data" />}>
+        {tab === "approvals" ? (
+          <Approvals />
+        ) : tab === "register" ? (
+          <Register />
+        ) : (
+          <BatchSignOff />
+        )}
+      </Suspense>
     </div>
   );
 }

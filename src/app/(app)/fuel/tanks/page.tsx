@@ -3,6 +3,8 @@ import { PageTabs, resolveTab, type Tab } from "@/components/PageTabs";
 import { Tanks } from "./_sections/Tanks";
 import { Reconciliation } from "./_sections/Reconciliation";
 import { Txt } from "@/components/Txt";
+import { ModuleSectionLoading } from "@/components/ModuleLoading";
+import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +40,9 @@ export default async function TanksPage({
 
       <PageTabs tabs={tabs} active={tab} basePath="/fuel/tanks" />
 
-      {tab === "stock" ? <Reconciliation /> : <Tanks />}
+      <Suspense key={tab} fallback={<ModuleSectionLoading label="Loading tank data" />}>
+        {tab === "stock" ? <Reconciliation /> : <Tanks />}
+      </Suspense>
     </div>
   );
 }

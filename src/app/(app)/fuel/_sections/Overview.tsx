@@ -29,9 +29,15 @@ export async function Overview({ access }: { access: Access }) {
   // Rows, not just the page: a scoped supervisor sees their own sites.
   const visible = assetScope(access);
   const dieselRatePromise = getDieselRate();
-  const detectedPromise = dieselRatePromise.then((rate) => getDetectedFills(visible, rate, 14));
+  // Keep interactive navigation on a bounded live window. The telemetry table
+  // currently receives roughly 12,000 rows per day; scanning 14-30 days here
+  // made a cold Fuel request process 175k-200k rows and exceed the production
+  // function timeout. Historical incidents remain available from the persisted
+  // anomaly records and nightly theft scan below.
+  const liveWindowDays = 1;
+  const detectedPromise = dieselRatePromise.then((rate) => getDetectedFills(visible, rate, liveWindowDays));
   const dailyPromise = dieselRatePromise.then((rate) =>
-    dailyFillsByVehicle(visible, rate, 14, detectedPromise),
+    dailyFillsByVehicle(visible, rate, liveWindowDays, detectedPromise),
   );
   const anomalyPromise = fuelAnomalyScope(access).then((scope) =>
     db.fuelAnomaly.findMany({
@@ -44,7 +50,7 @@ export async function Overview({ access }: { access: Access }) {
   // batch and then waited through telemetry, anomalies, settings, two complete
   // fill scans, the daily roll-up and scan status in sequence. On a remote
   // transaction pooler, those waits accumulated into several seconds.
-  const [base, telemetry, openAnomalies, dieselRate, detected14, daily, scan] = await Promise.all([
+  const [base, telemetry, openAnomalies, dieselRate, detectedLive, daily, scan] = await Promise.all([
     db.$transaction([
       db.fuelTransaction.findMany({
       where: { type: "ISSUE", asset: visible },
@@ -55,7 +61,7 @@ export async function Overview({ access }: { access: Access }) {
       db.asset.findMany({ where: visible, orderBy: { code: "asc" } }),
       db.project.findMany({ where: projectScope(access), orderBy: { code: "asc" } }),
     ]),
-    fleetUsage(30, visible),
+    fleetUsage(liveWindowDays, visible),
     anomalyPromise,
     dieselRatePromise,
     detectedPromise,
@@ -101,10 +107,10 @@ export async function Overview({ access }: { access: Access }) {
   // loss. But it cannot sit only on the other tab either — this page reported
   // "Theft Alerts 0 · ₹0 at risk" while ₹21.7 K of diesel stood unaccounted one
   // click away, which reads as all-clear.
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  const detectedFills = detected14.fills.filter((fill) => fill.at >= sevenDaysAgo);
-  const unreliableSenders = detected14.unreliable;
+  const liveWindowStart = new Date();
+  liveWindowStart.setDate(liveWindowStart.getDate() - liveWindowDays);
+  const detectedFills = detectedLive.fills.filter((fill) => fill.at >= liveWindowStart);
+  const unreliableSenders = detectedLive.unreliable;
 
   // Filling, day by day, across every vehicle rather than only the ones with
   // paperwork. The per-vehicle table further down is built from
@@ -178,7 +184,7 @@ export async function Overview({ access }: { access: Access }) {
               ? `${unloggedFills.length === 0 ? "none detected" : `${num(unloggedLitres)} L · ${unloggedFills.length} fill${unloggedFills.length === 1 ? "" : "s"}`} · ${unreliableSenders.length} sender${unreliableSenders.length === 1 ? "" : "s"} excluded`
               : unloggedFills.length === 0
                 ? "all fills have an entry"
-                : `${num(unloggedLitres)} L · ${unloggedFills.length} fill${unloggedFills.length === 1 ? "" : "s"}, last 7 days`
+                : `${num(unloggedLitres)} L · ${unloggedFills.length} fill${unloggedFills.length === 1 ? "" : "s"}, last 24 hours`
           }
           accent={unloggedFills.length === 0 ? "emerald" : "amber"}
           icon={<Fuel className="h-5 w-5" />}
@@ -375,13 +381,13 @@ export async function Overview({ access }: { access: Access }) {
         <div className="flex items-center gap-2 p-5 pb-3">
           <CalendarDays className="h-5 w-5 text-brand-600" />
           <SectionTitle
-            title="Diesel Filled Each Day — All Vehicles"
-            subtitle="Last 14 days — from the fuel sensor and from fills entered by hand"
+            title="Diesel Filled Today — All Vehicles"
+            subtitle="Last 24 hours — from the fuel sensor and from fills entered by hand"
           />
         </div>
 
         {daily.days.length === 0 ? (
-          <p className="px-5 pb-5 text-sm text-slate-500">No fills recorded in the last 14 days.</p>
+          <p className="px-5 pb-5 text-sm text-slate-500">No fills recorded in the last 24 hours.</p>
         ) : (
           <>
             <div className="flex flex-wrap gap-x-8 gap-y-2 border-t border-slate-100 px-5 py-3 text-sm">

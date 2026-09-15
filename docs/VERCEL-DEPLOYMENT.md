@@ -18,7 +18,7 @@ backfill missed readings. See [Vercel cron limits](https://vercel.com/docs/cron-
 
    | Variable | Value |
    | --- | --- |
-   | `DATABASE_URL` | Existing Supabase transaction-pooler connection string, port 6543, with `?pgbouncer=true&connection_limit=1`. Preserve any existing parameters using `&`. URL-encode special characters in the password. |
+   | `DATABASE_URL` | Existing Supabase transaction-pooler connection string, port 6543, with `?pgbouncer=true&connection_limit=3`. Preserve any existing parameters using `&`. URL-encode special characters in the password. |
    | `AUTH_SECRET` | Existing production secret, or a new unique random secret of at least 32 bytes for a first deployment. |
    | `CRON_SECRET` | A different random secret of at least 32 bytes. Vercel automatically sends it as a bearer token to cron handlers. |
 

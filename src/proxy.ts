@@ -61,5 +61,15 @@ export const config = {
   // `brand/` matters twice over: it holds the sign-in artwork, which by
   // definition has to load for someone who is not signed in yet. Guarding it
   // redirected the login page's own background to the login page.
-  matcher: ["/((?!api/|api|.well-known|manifest.webmanifest|sw.js|icon.svg|icon-192.png|icon-512.png|_next/static|_next/image|favicon.ico|vehicles/|brand/).*)"],
+  // Next's own prefetch requests do not need a fresh CSP nonce. Running Proxy
+  // for them forces extra dynamic work before a user has even clicked a link
+  // and can turn the sidebar into a burst of competing server requests. The
+  // Next 16 CSP guide explicitly recommends these two `missing` filters.
+  matcher: [{
+    source: "/((?!api/|api|.well-known|manifest.webmanifest|sw.js|icon.svg|icon-192.png|icon-512.png|_next/static|_next/image|favicon.ico|vehicles/|brand/).*)",
+    missing: [
+      { type: "header", key: "next-router-prefetch" },
+      { type: "header", key: "purpose", value: "prefetch" },
+    ],
+  }],
 };
