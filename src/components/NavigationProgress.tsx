@@ -18,9 +18,18 @@ export function NavigationProgress() {
   const routeKey = `${pathname}?${searchParams}`;
   const [navigating, setNavigating] = useState(false);
   const routeKeyRef = useRef(routeKey);
+  const startedAtRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (routeKeyRef.current !== routeKey) {
+      const startedAt = startedAtRef.current;
+      if (startedAt !== null) {
+        const durationMs = Math.round(performance.now() - startedAt);
+        if (durationMs > 1_500) {
+          console.warn("[navigation-slow]", JSON.stringify({ from: routeKeyRef.current, to: routeKey, durationMs }));
+        }
+      }
+      startedAtRef.current = null;
       routeKeyRef.current = routeKey;
       setNavigating(false);
     }
@@ -49,6 +58,7 @@ export function NavigationProgress() {
           destination.search === window.location.search)
       ) return;
 
+      startedAtRef.current = performance.now();
       setNavigating(true);
     };
 

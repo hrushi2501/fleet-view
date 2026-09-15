@@ -10,13 +10,14 @@ import type { Prisma } from "@prisma/client";
  * dashboard's operational sections can stream immediately.
  */
 export default async function DashboardTelemetry({ assetWhere }: { assetWhere: Prisma.AssetWhereInput }) {
-  const telemetry = await fleetUsage(30, assetWhere);
+  const liveWindowDays = 1;
+  const telemetry = await fleetUsage(liveWindowDays, assetWhere);
   if (telemetry.totals.vehiclesReporting === 0) return null;
 
   return (
     <section className="space-y-4">
       <SectionTitle
-        title="Measured from active Tata Fleet Edge vehicles — last 30 days"
+        title="Tata Fleet Edge — Last 24 Hours"
         subtitle={`${telemetry.totals.activeVehicles} active road vehicle${telemetry.totals.activeVehicles === 1 ? "" : "s"} with credible mileage · ${telemetry.totals.vehiclesReporting} Tata asset${telemetry.totals.vehiclesReporting === 1 ? "" : "s"} reported`}
       />
       <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-4">

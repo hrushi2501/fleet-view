@@ -50,25 +50,23 @@ export async function Overview({ access }: { access: Access }) {
   // batch and then waited through telemetry, anomalies, settings, two complete
   // fill scans, the daily roll-up and scan status in sequence. On a remote
   // transaction pooler, those waits accumulated into several seconds.
-  const [base, telemetry, openAnomalies, dieselRate, detectedLive, daily, scan] = await Promise.all([
-    db.$transaction([
+  const [issues, tanks, assets, projects, telemetry, openAnomalies, dieselRate, detectedLive, daily, scan] =
+    await Promise.all([
       db.fuelTransaction.findMany({
-      where: { type: "ISSUE", asset: visible },
-      include: { asset: true, session: { select: { driver: { select: { name: true, empCode: true } } } } },
-      orderBy: { date: "asc" },
+        where: { type: "ISSUE", asset: visible },
+        include: { session: { select: { driver: { select: { name: true, empCode: true } } } } },
+        orderBy: { date: "asc" },
       }),
       db.fuelTank.findMany({ where: recordScope("fuelTank", access) }),
       db.asset.findMany({ where: visible, orderBy: { code: "asc" } }),
       db.project.findMany({ where: projectScope(access), orderBy: { code: "asc" } }),
-    ]),
-    fleetUsage(liveWindowDays, visible),
-    anomalyPromise,
-    dieselRatePromise,
-    detectedPromise,
-    dailyPromise,
-    lastTheftScan(),
-  ]);
-  const [issues, tanks, assets, projects] = base;
+      fleetUsage(liveWindowDays, visible),
+      anomalyPromise,
+      dieselRatePromise,
+      detectedPromise,
+      dailyPromise,
+      lastTheftScan(),
+    ]);
 
   const assetOpts = assets.map((a) => ({ id: a.id, label: `${a.code} — ${a.registrationNo ?? a.name}` }));
   const projOpts = projects.map((p) => ({ id: p.id, label: `${p.code} — ${p.name}` }));

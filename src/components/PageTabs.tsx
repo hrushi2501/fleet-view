@@ -45,6 +45,7 @@ export function PageTabs({
           <Link
             key={t.key}
             href={href}
+            prefetch={false}
             className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 transition-all ${
               isActive
                 ? "bg-white font-bold text-ink-900 shadow-sm"

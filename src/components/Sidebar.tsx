@@ -60,7 +60,7 @@ export function Sidebar({
           const Icon = ICONS[item.icon] ?? LayoutDashboard;
           const active = isActive(item.href);
           return (
-            <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} className={cn("flex min-h-16 flex-col items-center justify-center gap-1 px-1 text-[11px] font-semibold", active ? "text-brand-700" : "text-slate-500")}>
+            <Link key={item.href} href={item.href} prefetch={false} aria-current={active ? "page" : undefined} className={cn("flex min-h-16 flex-col items-center justify-center gap-1 px-1 text-[11px] font-semibold", active ? "text-brand-700" : "text-slate-500")}>
               <Icon className="h-5 w-5" />
               <span>{item.label}</span>
             </Link>
@@ -82,6 +82,7 @@ export function Sidebar({
       <div key={item.href}>
         <Link
           href={item.href}
+          prefetch={false}
           onClick={() => setOpen(false)}
           className={cn(
             "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
@@ -108,6 +109,7 @@ export function Sidebar({
               <Link
                 key={c.href}
                 href={c.href}
+                prefetch={false}
                 onClick={() => setOpen(false)}
                 className={cn(
                   "block rounded-md px-3 py-1.5 text-[13px] transition-colors",

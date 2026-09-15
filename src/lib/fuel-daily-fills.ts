@@ -34,6 +34,27 @@
 import { db } from "@/lib/db";
 import { businessDay } from "@/lib/business-time";
 import { detectFills, type DetectFillsResult } from "@/lib/fuel-fill-reconcile";
+import { serverCache } from "@/lib/cache";
+import { createHash } from "node:crypto";
+
+function stableJson(value: unknown): string {
+  if (value instanceof Date) return JSON.stringify(value.toISOString());
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "undefined";
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(",")}}`;
+}
+
+export function dailyFillsCacheKey(
+  assetWhere: Record<string, unknown>,
+  dieselRate: number,
+  days: number,
+): string {
+  const scope = createHash("sha256").update(stableJson(assetWhere)).digest("hex");
+  return `fuel:daily-fills:${days}:${dieselRate.toFixed(2)}:${scope}`;
+}
+
+const DAILY_FILLS_CACHE_SECONDS = 60;
 
 export type FillSource = "LOGGED" | "SENSOR";
 
@@ -74,6 +95,20 @@ export type DailyFillsResult = {
  * buries the days that matter.
  */
 export async function dailyFillsByVehicle(
+  assetWhere: Record<string, unknown>,
+  dieselRate: number,
+  days = 14,
+  detectedResult?: DetectFillsResult | Promise<DetectFillsResult>,
+): Promise<DailyFillsResult> {
+  const key = dailyFillsCacheKey(assetWhere, dieselRate, days);
+  return serverCache.wrap(
+    key,
+    () => computeDailyFillsByVehicle(assetWhere, dieselRate, days, detectedResult),
+    DAILY_FILLS_CACHE_SECONDS,
+  );
+}
+
+async function computeDailyFillsByVehicle(
   assetWhere: Record<string, unknown>,
   dieselRate: number,
   days = 14,

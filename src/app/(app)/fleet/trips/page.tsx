@@ -22,16 +22,15 @@ const SRC: Record<string, { label: string; cls: string }> = {
 
 export default async function TripsPage() {
   const access = await requirePage("fleet.view");
-  const since = new Date(); since.setDate(since.getDate() - 30);
-  const [sessions, assets, providers, readingCount, syncStatus] = await Promise.all([
-    db.tripSession.findMany({ include: { asset: true, driver: true, _count: { select: { readings: true, fuelReadings: true } } }, orderBy: { startedAt: "desc" }, take: 100 }),
-    db.asset.findMany({ where: assetScope(access), include: { telematicsProvider: true }, orderBy: { code: "asc" } }),
+  const visible = assetScope(access);
+  const liveWindowDays = 1;
+  const [sessions, assets, providers, syncStatus, telemetry] = await Promise.all([
+    db.tripSession.findMany({ where: { asset: visible }, include: { asset: true, driver: true, _count: { select: { readings: true, fuelReadings: true } } }, orderBy: { startedAt: "desc" }, take: 100 }),
+    db.asset.findMany({ where: visible, include: { telematicsProvider: true }, orderBy: { code: "asc" } }),
     db.telematicsProvider.findMany({ orderBy: { name: "asc" } }),
-    db.telemetryReading.count({ where: { recordedAt: { gte: since } } }),
     getTataSyncStatus(),
+    fleetUsage(liveWindowDays, visible),
   ]);
-
-  const telemetry = await fleetUsage(30);
 
   // eslint-disable-next-line react-hooks/purity
   const nowMs = Date.now();
@@ -72,7 +71,7 @@ export default async function TripsPage() {
         <StatCard label="Forgotten Checkouts" value={num(stale.length)} sub={`open over ${SESSION_STALE_HOURS}h`} accent={stale.length ? "rose" : "emerald"} icon={<TriangleAlert className="h-5 w-5" />} />
         <StatCard label="QR Codes Issued" value={`${num(withQr)}/${num(assets.length)}`} sub="cabin stickers" accent="brand" icon={<QrCode className="h-5 w-5" />} />
         <StatCard label="GPS Devices" value={`${num(withDevice)}/${num(assets.length)}`} sub={`${num(withSensor)} with fuel sensor`} accent="violet" icon={<Satellite className="h-5 w-5" />} />
-        <StatCard label="Vehicle Data Points" value={num(readingCount)} sub="last 30 days" accent="brand" icon={<Smartphone className="h-5 w-5" />} />
+        <StatCard label="Vehicle Data Points" value={num(telemetry.totals.readingsAnalyzed)} sub="last 24 hours" accent="brand" icon={<Smartphone className="h-5 w-5" />} />
       </div>
 
       <Card className="border-brand-200">
@@ -95,7 +94,7 @@ export default async function TripsPage() {
         <Card className="p-0">
           <div className="p-5 pb-3">
             <SectionTitle
-              title="Usage & Efficiency — Last 30 Days"
+              title="Usage & Efficiency — Last 24 Hours"
               subtitle="Measured from the vehicle's own readings, not from anything typed in"
             />
           </div>

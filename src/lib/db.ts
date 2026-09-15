@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { auditExtension } from "./audit-extension";
 import { fuelEvidenceSchemaCompatExtension } from "./fuel-evidence-schema-compat";
+import { performanceExtension } from "./performance-extension";
 
 /**
  * Build a runtime-safe connection URL.
@@ -82,5 +83,6 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = rawDb;
 // audited only after its retried database operation succeeds, never after the
 // initial rejected attempt against an older schema.
 export const db = rawDb
+  .$extends(performanceExtension)
   .$extends(auditExtension)
   .$extends(fuelEvidenceSchemaCompatExtension) as unknown as PrismaClient;

@@ -7,6 +7,8 @@
  * `fleet-analytics.ts`; this only groups it by vehicle and totals it.
  */
 import { db } from "@/lib/db";
+import { serverCache } from "@/lib/cache";
+import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import {
   analyseUsage,
@@ -41,6 +43,8 @@ export type AssetUsage = {
 export type FleetUsage = {
   perAsset: AssetUsage[];
   totals: {
+    /** Source rows actually processed for this window. */
+    readingsAnalyzed: number;
     vehiclesReporting: number;
     /** Tata road vehicles that actually travelled and have a credible km/L window. */
     activeVehicles: number;
@@ -79,11 +83,70 @@ export function countsTowardFleetEfficiency(
   );
 }
 
+function stableJson(value: unknown): string {
+  if (value instanceof Date) return JSON.stringify(value.toISOString());
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "undefined";
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(",")}}`;
+}
+
+export function fleetUsageCacheKey(
+  sinceDays: number,
+  assetWhere: Prisma.AssetWhereInput,
+): string {
+  const scope = createHash("sha256").update(stableJson(assetWhere)).digest("hex");
+  return `telemetry:fleet-usage:${sinceDays}:${scope}`;
+}
+
+type CachedAssetUsage = Omit<AssetUsage, "lastSeen"> & {
+  lastSeen: string | null;
+};
+
+type CachedFleetUsage = Omit<FleetUsage, "perAsset"> & {
+  perAsset: CachedAssetUsage[];
+};
+
+function serializeFleetUsage(result: FleetUsage): CachedFleetUsage {
+  return {
+    ...result,
+    perAsset: result.perAsset.map((a) => ({
+      ...a,
+      lastSeen: a.lastSeen ? a.lastSeen.toISOString() : null,
+    })),
+  };
+}
+
+function deserializeFleetUsage(cached: CachedFleetUsage): FleetUsage {
+  return {
+    ...cached,
+    perAsset: cached.perAsset.map((a) => ({
+      ...a,
+      lastSeen: a.lastSeen ? new Date(a.lastSeen) : null,
+    })),
+  };
+}
+
+const FLEET_USAGE_CACHE_SECONDS = 60;
+
 /**
  * @param sinceDays window to analyse. Readings outside it are ignored, so the
  *        figures track recent behaviour rather than being diluted by history.
  */
 export async function fleetUsage(
+  sinceDays = 30,
+  assetWhere: Prisma.AssetWhereInput = {},
+): Promise<FleetUsage> {
+  const key = fleetUsageCacheKey(sinceDays, assetWhere);
+  const cached = await serverCache.wrap(
+    key,
+    async () => serializeFleetUsage(await computeFleetUsage(sinceDays, assetWhere)),
+    FLEET_USAGE_CACHE_SECONDS,
+  );
+  return deserializeFleetUsage(cached);
+}
+
+async function computeFleetUsage(
   sinceDays = 30,
   assetWhere: Prisma.AssetWhereInput = {},
 ): Promise<FleetUsage> {
@@ -93,50 +156,68 @@ export async function fleetUsage(
   // a Tata-attributed GPS reading inside this window. `providerId` on the
   // reading is the source of truth: legacy imports can have valid Tata history
   // before `Asset.telematicsProviderId` is backfilled.
-  const tataAssets: Prisma.AssetWhereInput = {
-    AND: [
-      assetWhere,
-      {
-        telemetry: {
-          some: {
-            recordedAt: { gte: since },
-            source: "GPS_API",
-            provider: { is: { code: FLEET_EFFICIENCY_PROVIDER } },
-          },
-        },
-      },
-    ],
-  };
-
-  // These are independent snapshots. Let the bounded Prisma pool overlap their
-  // Supabase round trips instead of forcing all four through one transaction.
-  const [assets, readings, norms, dieselSetting] = await Promise.all([
+  // Concurrently fetch provider metadata, the candidate assets, norms, and diesel rate.
+  // Overlapping these round trips keeps the transaction pool slots free.
+  const [provider, assets, norms, dieselSetting] = await Promise.all([
+    db.telematicsProvider.findUnique({
+      where: { code: FLEET_EFFICIENCY_PROVIDER },
+      select: { id: true },
+    }),
     db.asset.findMany({
-      where: tataAssets,
+      // Read the small scoped asset register directly. Filtering assets through
+      // `telemetry: { some: ... }` made PostgreSQL run a correlated telemetry
+      // existence check before the indexed readings query below.
+      where: assetWhere,
       select: {
         id: true, code: true, name: true, registrationNo: true,
         assetClass: true, category: true, lastSeen: true, fuelLevelPct: true, fuelCapacity: true,
       },
     }),
-    db.telemetryReading.findMany({
-      // Filtering the readings at the database as well as the asset list
-      // prevents a one-project dashboard from scanning the whole fleet's
-      // telemetry history only to discard it in memory.
-      where: {
-        recordedAt: { gte: since },
-        source: "GPS_API",
-        provider: { is: { code: FLEET_EFFICIENCY_PROVIDER } },
-        asset: tataAssets,
-      },
-      orderBy: { recordedAt: "asc" },
-      select: {
-        assetId: true, recordedAt: true, lat: true, lng: true, speedKph: true,
-        odometerKm: true, fuelLevelL: true, fuelLevelPct: true, ignitionOn: true,
-      },
-    }),
     db.consumptionNorm.findMany(),
     db.setting.findUnique({ where: { key: "dieselRate" } }),
   ]);
+
+  if (!provider || assets.length === 0) {
+    return {
+      perAsset: [],
+      totals: {
+        readingsAnalyzed: 0,
+        vehiclesReporting: 0,
+        activeVehicles: 0,
+        distanceKm: 0,
+        litresBurned: 0,
+        litresFilled: 0,
+        avgKmPerL: null,
+        litresUnaccounted: 0,
+        valueUnaccounted: 0,
+        suspectSegments: 0,
+        worstGapHours: 0,
+        confidence: "LOW",
+        vehiclesWithInsufficientData: 0,
+        vehiclesNotWorking: 0,
+      },
+    };
+  }
+
+  const assetIds = assets.map((a) => a.id);
+
+  // Filter explicitly by the resolved assetIds and providerId.
+  // This allows PostgreSQL to use the existing indexes on
+  // TelemetryReading directly rather than running an expensive correlated
+  // subquery across 200,000+ historical rows.
+  const readings = await db.telemetryReading.findMany({
+    where: {
+      assetId: { in: assetIds },
+      recordedAt: { gte: since },
+      source: "GPS_API",
+      providerId: provider.id,
+    },
+    orderBy: { recordedAt: "asc" },
+    select: {
+      assetId: true, recordedAt: true, lat: true, lng: true, speedKph: true,
+      odometerKm: true, fuelLevelL: true, fuelLevelPct: true, ignitionOn: true,
+    },
+  });
 
   const rate = Number(dieselSetting?.value) > 0 ? Number(dieselSetting?.value) : 95;
 
@@ -224,6 +305,7 @@ export async function fleetUsage(
   return {
     perAsset,
     totals: {
+      readingsAnalyzed: readings.length,
       vehiclesReporting: perAsset.length,
       activeVehicles: measurable.length,
       distanceKm: round(distanceKm),

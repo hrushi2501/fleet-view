@@ -42,18 +42,28 @@ export async function ProblemQueue() {
   // so the vehicles this caller may see are resolved first and the queue is
   // limited to them. A finding names a vehicle and a driver; it must not appear
   // to a supervisor who is not responsible for either.
-  const assets = await db.asset.findMany({ where: visible, select: { id: true, code: true } });
   const scoped = Object.keys(visible).length > 0;
-  const allowedIds = assets.map((a) => a.id);
-
-  const [anomalies, tanks] = await Promise.all([
-    db.fuelAnomaly.findMany({
-      where: scoped ? { assetId: { in: allowedIds } } : {},
-      orderBy: [{ status: "asc" }, { score: "desc" }, { detectedAt: "desc" }],
-      take: 200,
-    }),
-    db.fuelTank.findMany({ select: { id: true, name: true } }),
-  ]);
+  const [assets, tanks, anomalies] = scoped
+    ? await (async () => {
+        const [a, t] = await Promise.all([
+          db.asset.findMany({ where: visible, select: { id: true, code: true } }),
+          db.fuelTank.findMany({ select: { id: true, name: true } }),
+        ]);
+        const anom = await db.fuelAnomaly.findMany({
+          where: { assetId: { in: a.map((x) => x.id) } },
+          orderBy: [{ status: "asc" }, { score: "desc" }, { detectedAt: "desc" }],
+          take: 200,
+        });
+        return [a, t, anom];
+      })()
+    : await Promise.all([
+        db.asset.findMany({ where: visible, select: { id: true, code: true } }),
+        db.fuelTank.findMany({ select: { id: true, name: true } }),
+        db.fuelAnomaly.findMany({
+          orderBy: [{ status: "asc" }, { score: "desc" }, { detectedAt: "desc" }],
+          take: 200,
+        }),
+      ]);
 
   const tankName = new Map(tanks.map((t) => [t.id, t.name]));
   const assetCode = new Map(assets.map((a) => [a.id, a.code]));
