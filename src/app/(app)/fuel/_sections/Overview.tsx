@@ -13,6 +13,7 @@ import { businessMonth } from "@/lib/business-time";
 import { assetScope, projectScope, type Access } from "@/lib/access";
 import { getDetectedFills } from "@/lib/fuel-fill-reconcile";
 import { dailyFillsByVehicle } from "@/lib/fuel-daily-fills";
+import { fuelHeadline } from "@/lib/fuel-headline";
 import { lastTheftScan } from "@/lib/theft-scan-status";
 import { Txt } from "@/components/Txt";
 import { fuelAnomalyScope, recordScope } from "@/lib/record-access";
@@ -119,6 +120,10 @@ export async function Overview({ access }: { access: Access }) {
   const unloggedFills = detectedFills.filter((f) => !f.logged);
   const unloggedLitres = unloggedFills.reduce((s, f) => s + f.litresAdded, 0);
   const unloggedValue = unloggedFills.reduce((s, f) => s + f.estimatedValue, 0);
+  const headline = fuelHeadline(
+    { litres: fleet.totalLitres, spend: fleet.totalSpend, entries: issues.length },
+    { litres: unloggedLitres, fills: unloggedFills.length },
+  );
   const detectionIncomplete = unreliableSenders.length > 0;
   const noRecordedFlagsButUnassessed = allFlagCount === 0 && scan.stale;
   const assetById = new Map(assets.map((a) => [a.id, a]));
@@ -152,18 +157,18 @@ export async function Overview({ access }: { access: Access }) {
             rupees until someone confirms the fill and records the paperwork. */}
         <StatCard
           label="Total Recorded Diesel Spend"
-          value={inr(fleet.totalSpend, { compact: true })}
-          sub={unloggedLitres > 0 ? `logged fills only · ${num(unloggedLitres)} L unpriced` : undefined}
+          value={inr(headline.recorded.spend, { compact: true })}
+          sub={headline.sensorOnly.litres > 0 ? `logged fills only · ${num(headline.sensorOnly.litres)} L unpriced` : undefined}
           accent="brand"
           icon={<IndianRupee className="h-5 w-5" />}
         />
         <StatCard
           label="Recorded Diesel Issued"
-          value={`${num(fleet.totalLitres)} L`}
+          value={`${num(headline.recorded.litres)} L`}
           sub={
-            unloggedLitres > 0
-              ? `${num(unloggedLitres)} L sensor-only shown separately`
-              : `${issues.length} recorded ${issues.length === 1 ? "entry" : "entries"}`
+            headline.sensorOnly.litres > 0
+              ? `${num(headline.sensorOnly.litres)} L sensor-only shown separately`
+              : `${headline.recorded.entries} recorded ${headline.recorded.entries === 1 ? "entry" : "entries"}`
           }
           accent="violet"
           icon={<Droplets className="h-5 w-5" />}

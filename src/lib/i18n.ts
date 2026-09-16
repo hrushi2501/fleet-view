@@ -1162,7 +1162,6 @@ const HI: Record<string, string> = {
   "last 90 days": "pichhle 90 din",
   "latest 500 events": "pichhli 500 ghatnayein",
   "levied": "lagaya gaya",
-  "live tank variance": "tank ka abhi ka farak",
   "meter ran backwards": "meter peechhe chala",
   "model was wrong": "model galat tha",
   "most recent": "sabse naya",

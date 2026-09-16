@@ -7,6 +7,7 @@ import Link from "next/link";
 
 import { assetScope, type Access } from "@/lib/access";
 import { getDetectedFills } from "@/lib/fuel-fill-reconcile";
+import { fuelHeadline } from "@/lib/fuel-headline";
 import { Txt } from "@/components/Txt";
 import { recordScope } from "@/lib/record-access";
 
@@ -63,9 +64,14 @@ export async function FuelRecords({ access }: { access: Access }) {
   // a person to confirm whether it was a real fill and enter its paperwork.
   const unloggedLitres = unlogged.reduce((s, f) => s + f.litresAdded, 0);
 
-  const totalSpend = recordedTotals._sum.amount ?? 0;
-  const totalLitres = recordedTotals._sum.quantity ?? 0;
-  const recordCount = recordedTotals._count._all;
+  const headline = fuelHeadline(
+    {
+      litres: recordedTotals._sum.quantity ?? 0,
+      spend: recordedTotals._sum.amount ?? 0,
+      entries: recordedTotals._count._all,
+    },
+    { litres: unloggedLitres, fills: unlogged.length },
+  );
   const assetMap = new Map(assets.map((a) => [a.id, a]));
 
   return (
@@ -81,15 +87,15 @@ export async function FuelRecords({ access }: { access: Access }) {
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         <StatCard
           label="Recorded Fuel Spend"
-          value={inr(totalSpend, { compact: true })}
-          sub={`${recordCount} recorded ${recordCount === 1 ? "entry" : "entries"}`}
+          value={inr(headline.recorded.spend, { compact: true })}
+          sub={`${headline.recorded.entries} recorded ${headline.recorded.entries === 1 ? "entry" : "entries"}`}
           accent="brand"
           icon={<IndianRupee className="h-5 w-5" />}
         />
         <StatCard
           label="Recorded Diesel Issued"
-          value={`${num(totalLitres)} L`}
-          sub={unloggedLitres > 0 ? `${num(unloggedLitres)} L sensor-only shown separately` : "from recorded entries"}
+          value={`${num(headline.recorded.litres)} L`}
+          sub={headline.sensorOnly.litres > 0 ? `${num(headline.sensorOnly.litres)} L sensor-only shown separately` : "from recorded entries"}
           accent="violet"
           icon={<Fuel className="h-5 w-5" />}
         />
