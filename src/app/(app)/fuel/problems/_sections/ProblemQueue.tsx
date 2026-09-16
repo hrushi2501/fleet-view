@@ -150,9 +150,9 @@ export async function ProblemQueue() {
           {anomalies.length === 0 && (
             <div className="py-16 text-center">
               <ShieldAlert className="mx-auto h-10 w-10 text-slate-300" />
-              <p className="mt-3 text-sm font-medium text-ink-900">Koi problem nahi mili</p>
+              <p className="mt-3 text-sm font-medium text-ink-900">No problem cases recorded</p>
               <p className="mt-1 text-sm text-slate-500">
-                Record deliveries and tank dips, then run the{" "}
+                This does not mean every vehicle or tank was assessed. Record deliveries and tank dips, then run the{" "}
                 <Link href="/fuel/tanks?tab=stock" className="font-medium text-brand-600 hover:underline">stock check</Link>.
               </p>
             </div>

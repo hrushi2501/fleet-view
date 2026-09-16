@@ -4,7 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { checkSharedSecret } from "@/lib/auth";
 import { requireApi, assetScope, type Access } from "@/lib/access";
 import { getTelemetryAdapter } from "@/lib/telematics-adapters";
-import { normaliseReading, assetCacheUpdate, detectSchemaDrift, describeDrift, readTelemetryJson } from "@/lib/telemetry-normalization";
+import { normaliseReading, assetCacheUpdate, detectSchemaDrift, describeDrift, readTelemetryJson, telemetryStreamHistoryWhere } from "@/lib/telemetry-normalization";
 import { db } from "@/lib/db";
 import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 import { recordTelemetryFuelAnomaly, type FuelAnomalyAsset } from "@/lib/tata-fleet-edge";
@@ -195,8 +195,13 @@ async function handlePOST(req: Request) {
       const summary = describeDrift(d);
       if (summary) drift.add(summary);
 
+      const streamProviderId = provider?.id ?? asset.telematicsProviderId;
       const previousRows = await db.telemetryReading.findMany({
-        where: { assetId: asset.id, recordedAt: { lt: p.timestamp } },
+        where: telemetryStreamHistoryWhere({
+          assetId: asset.id,
+          source,
+          providerId: streamProviderId,
+        }, p.timestamp),
         orderBy: { recordedAt: "desc" },
         take: 100,
         select: {
@@ -254,7 +259,7 @@ async function handlePOST(req: Request) {
           fuelLevelL: r.fuelLevelL,
           ignitionOn: r.ignitionOn,
           source,
-          providerId: provider?.id ?? asset.telematicsProviderId,
+          providerId: streamProviderId,
           sessionId: session?.id ?? null,
           raw: (p.rawPayload ?? {}) as Prisma.InputJsonValue,
           },

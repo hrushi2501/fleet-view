@@ -23,12 +23,13 @@ type Detail = {
   usage?: {
     segments: number; windowHours: number; distanceKm: number;
     distanceSource: "ODOMETER" | "GPS" | "NONE"; gpsDistanceKm: number | null;
-    litresBurned: number; litresBurnedUncertainty: number; litresFilled: number;
-    refuelEvents: number; avgKmPerL: number | null;
-    suspectSegments: number; litresUnaccounted: number; worstGapHours: number;
+    litresBurned: number | null; litresBurnedUncertainty: number; litresFilled: number | null;
+    refuelEvents: number | null; avgKmPerL: number | null;
+    suspectSegments: number | null; litresUnaccounted: number | null; worstGapHours: number;
     confidence: "HIGH" | "MEDIUM" | "LOW";
     confidenceReasons: string[];
     insufficientData: boolean;
+    fuelResolution: "RESOLVED" | "UNRESOLVED_CONTRADICTORY_SENDER" | "UNRESOLVED_IMPLAUSIBLE_MOVEMENT";
     norm: { low: number; high: number; unit: string } | null;
   };
   refuels?: {
@@ -38,7 +39,7 @@ type Detail = {
   segments?: {
     from: string; to: string; hours: number; distanceKm: number | null;
     fuelDeltaL: number | null; litresConsumed: number | null; kmPerL: number | null;
-    event: string; excessLitres: number; confidence: string; reasons: string[];
+    event: string; rawEvent?: string; excessLitres: number | null; confidence: string; reasons: string[];
   }[];
   telemetry?: {
     recordedAt: string; source: string; provider: string | null;
@@ -154,6 +155,7 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
     : [];
 
   const fuelPct = data?.telemetry?.fuelLevelPct;
+  const fuelUnresolved = data?.usage?.fuelResolution != null && data.usage.fuelResolution !== "RESOLVED";
   const liveRows: Row[] = data
     ? [
         { label: "Last reported", value: timeAgo(data.lastSeen), tone: "good" },
@@ -165,6 +167,7 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
           value: fuelPct != null
             ? `${fuelPct.toFixed(1)}%${data.telemetry?.fuelLevelL != null ? ` · ${data.telemetry.fuelLevelL} L` : ""}`
             : null,
+          hint: fuelUnresolved ? "sender readings conflict; level not assessed" : undefined,
           numeric: true,
         },
         { label: "Speed", value: data.telemetry?.speedKph != null ? `${num(data.telemetry.speedKph)} km/h` : null, numeric: true },
@@ -285,7 +288,7 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                     />
                     <Stat
                       label="Diesel burned"
-                      value={data.usage.insufficientData ? "—" : `${data.usage.litresBurned} L`}
+                      value={data.usage.insufficientData || data.usage.litresBurned == null ? "—" : `${data.usage.litresBurned} L`}
                       sub={data.usage.insufficientData ? "not measurable" : `±${data.usage.litresBurnedUncertainty} L sender tolerance`}
                     />
                     <Stat
@@ -299,8 +302,8 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                     />
                     <Stat
                       label="Refuelled"
-                      value={`${data.usage.litresFilled} L`}
-                      sub={`${data.usage.refuelEvents} confirmed fill${data.usage.refuelEvents === 1 ? "" : "s"}`}
+                      value={data.usage.litresFilled == null ? "—" : `${data.usage.litresFilled} L`}
+                      sub={data.usage.refuelEvents == null ? "not assessed" : `${data.usage.refuelEvents} confirmed fill${data.usage.refuelEvents === 1 ? "" : "s"}`}
                     />
                   </div>
 
@@ -309,9 +312,9 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                         only stated when the data can carry it. */}
                     <Stat
                       label="Unaccounted"
-                      value={data.usage.insufficientData ? "—" : `${data.usage.litresUnaccounted} L`}
+                      value={data.usage.insufficientData || data.usage.litresUnaccounted == null ? "—" : `${data.usage.litresUnaccounted} L`}
                       sub={
-                        data.usage.insufficientData
+                        data.usage.insufficientData || data.usage.litresUnaccounted == null
                           ? "not assessable"
                           : data.usage.litresUnaccounted > 0
                             ? "beyond journey + idling + tolerance"
@@ -397,7 +400,7 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                                 >
                                   {s.event.replace(/_/g, " ").toLowerCase()}
                                 </span>
-                                {s.excessLitres > 0 && (
+                                {s.excessLitres != null && s.excessLitres > 0 && (
                                   <span className="ml-1.5 text-[11px] text-slate-500">
                                     +{s.excessLitres} L · {s.confidence.toLowerCase()} confidence
                                   </span>
@@ -412,7 +415,8 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                         what survived validation. A tank that moves less than the sender can resolve is marked
                         <em> noise</em> and contributes nothing to the totals above — the window&rsquo;s
                         consumption comes from its start and end levels plus any confirmed fills, so a wobble
-                        that goes down and back up cannot be charged twice.
+                        that goes down and back up cannot be charged twice. An unresolved row is raw sender
+                        movement retained for repair work; it is not a confirmed fill, burn, or loss.
                       </p>
                     </div>
                   )}
@@ -492,7 +496,9 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                     <div key={i} className="flex flex-wrap items-center justify-between gap-3 text-sm">
                       <span className="text-slate-600">{fmtDate(f.date)}</span>
                       <span className="font-medium text-ink-900">{num(f.quantity)} L</span>
-                      <span className={f.anomaly ? "text-xs font-medium text-rose-600" : "text-xs text-emerald-600"}>{f.anomaly ? `${f.variancePct}% ⚠` : "OK"}</span>
+                      <span className={f.anomaly ? "text-xs font-medium text-rose-600" : f.sensorRise > 0 ? "text-xs text-slate-600" : "text-xs text-slate-400"}>
+                        {f.anomaly ? `${f.variancePct}% ⚠` : f.sensorRise > 0 ? "Within range" : "Not assessed"}
+                      </span>
                     </div>
                   ))}
                 </div>

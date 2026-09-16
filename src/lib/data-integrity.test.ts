@@ -93,7 +93,12 @@ describe("normalisation — one bad field does not discard a good reading", () =
     const r = normaliseReading(
       ping({ fuelLevelLitres: 150, fuelLevelPct: 90 }), { fuelCapacityL: 300 }, DEFAULT_LIMITS, now,
     );
-    assert.ok(r.issues.some((i) => i.field === "fuel" && /different tank/.test(i.reason)));
+    assert.equal(r.accepted, true, "valid time, location and odometer are preserved");
+    assert.equal(r.degraded, true);
+    assert.equal(r.reading!.fuelLevelL, null);
+    assert.equal(r.reading!.fuelLevelPct, null);
+    assert.equal(r.reading!.odometerKm, 89_513);
+    assert.ok(r.issues.some((i) => i.field === "fuel" && i.severity === "DROP_FIELD" && /different tank/.test(i.reason)));
   });
 });
 

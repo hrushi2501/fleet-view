@@ -3,7 +3,7 @@ import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { checkSharedSecret } from "@/lib/auth";
-import { normaliseReading, assetCacheUpdate, readTelemetryJson } from "@/lib/telemetry-normalization";
+import { normaliseReading, assetCacheUpdate, readTelemetryJson, telemetryStreamHistoryWhere } from "@/lib/telemetry-normalization";
 import { TataFleetEdgeAdapter } from "@/lib/telematics-adapters";
 import { cachedFuelFor } from "@/lib/fuel-cache";
 import type { TelemetryPing } from "@/lib/telematics-adapters";
@@ -385,7 +385,11 @@ async function handlePOST(req: Request) {
         select: { id: true },
       }),
       db.telemetryReading.findMany({
-        where: { assetId: asset.id, recordedAt: { lt: ping.timestamp } },
+        where: telemetryStreamHistoryWhere({
+          assetId: asset.id,
+          source: SOURCE,
+          providerId: asset.telematicsProviderId,
+        }, ping.timestamp),
         orderBy: { recordedAt: "desc" },
         take: 100,
         select: {

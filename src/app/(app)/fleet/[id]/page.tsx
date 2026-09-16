@@ -845,7 +845,9 @@ export default async function AssetDetail({ params }: { params: Promise<{ id: st
                       <td className="py-2.5 text-right">
                         {f.anomaly
                           ? <Badge color="bg-rose-100 text-rose-700 ring-rose-600/20">Check</Badge>
-                          : <Badge color="bg-emerald-100 text-emerald-700 ring-emerald-600/20">OK</Badge>}
+                          : f.sensorRise > 0
+                            ? <Badge color="bg-slate-100 text-slate-700 ring-slate-500/20">Within range</Badge>
+                            : <Badge color="bg-slate-100 text-slate-500 ring-slate-400/20">Not assessed</Badge>}
                       </td>
                     </tr>
                   ))}

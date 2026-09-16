@@ -11,9 +11,9 @@ import Link from "next/link";
 import { requirePage, assetScope, projectScope } from "@/lib/access";
 import { Txt } from "@/components/Txt";
 
-/** Safe DB fetch — returns empty array if the table doesn't exist yet. */
-async function safeFindMany<T>(fn: () => Promise<T[]>): Promise<T[]> {
-  try { return await fn(); } catch { return []; }
+/** A failed optional read must stay distinguishable from a successful empty result. */
+async function safeFindMany<T>(fn: () => Promise<T[]>): Promise<{ data: T[]; available: boolean }> {
+  try { return { data: await fn(), available: true }; } catch { return { data: [], available: false }; }
 }
 
 /**
@@ -29,7 +29,7 @@ export async function FuelInsights() {
   // Rows, not just the page: a scoped supervisor sees their own sites.
   const visible = assetScope(access);
   const _visibleProjects = projectScope(access);
-  const [tanks, issues, receipts, assets, norms, dieselRate] = await Promise.all([
+  const [tanks, issues, receipts, assets, normsResult, dieselRate] = await Promise.all([
     db.fuelTank.findMany({
       include: {
         receipts: true,
@@ -44,11 +44,13 @@ export async function FuelInsights() {
     safeFindMany(() => db.consumptionNorm.findMany({ orderBy: [{ unit: "asc" }, { assetClass: "asc" }] })),
     getDieselRate(),
   ]);
+  const norms = normsResult.data;
 
   // Fetch unified anomalies safely (table may not exist)
-  const unifiedAnomalies = await safeFindMany(() =>
+  const unifiedResult = await safeFindMany(() =>
     db.unifiedAnomaly.findMany({ orderBy: [{ status: "asc" }, { score: "desc" }, { detectedAt: "desc" }], take: 100 })
   );
+  const unifiedAnomalies = unifiedResult.data;
 
   const tankOpts = tanks.map((t: { id: string; name: string; location: string }) => ({ id: t.id, label: `${t.name} — ${t.location}` }));
   const classOpts = Object.entries(ASSET_CLASS_LABEL).map(([value, label]) => ({ value, label }));
@@ -67,7 +69,10 @@ export async function FuelInsights() {
     })
   );
 
-  const totalUnaccountedL = liveRecons.reduce((s: number, r) => s + Math.max(0, -r.varianceL), 0);
+  const assessedRecons = liveRecons.filter((r) => r.status !== "insufficient");
+  const totalUnaccountedL = assessedRecons.length > 0
+    ? assessedRecons.reduce((s: number, r) => s + Math.max(0, -r.varianceL), 0)
+    : null;
   const openCases = unifiedAnomalies.filter((a: { status?: string }) => a.status === "OPEN" || a.status === "INVESTIGATING");
   const valueAtRisk = openCases.reduce((s: number, a: { valueAtRisk?: number }) => s + (a.valueAtRisk ?? 0), 0);
   const recoveredInr = (unifiedAnomalies as { recoveredInr?: number }[]).reduce((s: number, a) => s + (a.recoveredInr ?? 0), 0);
@@ -100,10 +105,10 @@ export async function FuelInsights() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
-        <StatCard label="Open Risk Cases" value={num(openCases.length)} sub={`${num(unifiedAnomalies.length)} total cases`} accent="rose" icon={<ShieldAlert className="h-5 w-5" />} />
-        <StatCard label="Litres Unaccounted" value={`${num(totalUnaccountedL)} L`} sub="live tank variance" accent="amber" icon={<Fuel className="h-5 w-5" />} />
-        <StatCard label="Value at Risk" value={inr(valueAtRisk, { compact: true })} sub={`@ ₹${dieselRate}/L`} accent="rose" icon={<IndianRupee className="h-5 w-5" />} />
-        <StatCard label="Recovered Value" value={inr(recoveredInr, { compact: true })} sub="closed cases" accent="emerald" icon={<HandCoins className="h-5 w-5" />} />
+        <StatCard label="Open Risk Cases" value={unifiedResult.available ? num(openCases.length) : "—"} sub={unifiedResult.available ? `${num(unifiedAnomalies.length)} total cases` : "case data unavailable"} accent={unifiedResult.available ? "rose" : "amber"} icon={<ShieldAlert className="h-5 w-5" />} />
+        <StatCard label="Litres Unaccounted" value={totalUnaccountedL == null ? "—" : `${num(totalUnaccountedL)} L`} sub={totalUnaccountedL == null ? "not assessed; two dips required" : "assessed tank variance"} accent="amber" icon={<Fuel className="h-5 w-5" />} />
+        <StatCard label="Value at Risk" value={unifiedResult.available ? inr(valueAtRisk, { compact: true }) : "—"} sub={unifiedResult.available ? `@ ₹${dieselRate}/L` : "case data unavailable"} accent={unifiedResult.available ? "rose" : "amber"} icon={<IndianRupee className="h-5 w-5" />} />
+        <StatCard label="Recovered Value" value={unifiedResult.available ? inr(recoveredInr, { compact: true }) : "—"} sub={unifiedResult.available ? "closed cases" : "case data unavailable"} accent={unifiedResult.available ? "emerald" : "amber"} icon={<HandCoins className="h-5 w-5" />} />
       </div>
 
       {/* Quick links to dedicated pages */}
@@ -116,7 +121,7 @@ export async function FuelInsights() {
               </div>
               <div>
                 <p className="font-semibold text-ink-900">Problem Queue</p>
-                <p className="text-sm text-slate-500">{num(openCases.length)} open cases · {num(unifiedAnomalies.length)} total</p>
+                <p className="text-sm text-slate-500">{unifiedResult.available ? `${num(openCases.length)} open cases · ${num(unifiedAnomalies.length)} total` : "Case data unavailable"}</p>
               </div>
             </div>
             <ArrowRight className="h-5 w-5 text-slate-300 transition-transform group-hover:translate-x-1 group-hover:text-brand-600" />
@@ -130,7 +135,7 @@ export async function FuelInsights() {
               </div>
               <div>
                 <p className="font-semibold text-ink-900">Tank Stock Check</p>
-                <p className="text-sm text-slate-500">{num(tanks.length)} tanks · {num(totalUnaccountedL)} L unaccounted</p>
+                <p className="text-sm text-slate-500">{num(tanks.length)} tanks · {totalUnaccountedL == null ? "not assessed" : `${num(totalUnaccountedL)} L unaccounted`}</p>
               </div>
             </div>
             <ArrowRight className="h-5 w-5 text-slate-300 transition-transform group-hover:translate-x-1 group-hover:text-brand-600" />
@@ -165,18 +170,20 @@ export async function FuelInsights() {
                       <span className="font-semibold text-ink-900">{r.tank.name}</span>
                       <p className="text-xs text-slate-400">{r.tank.location}</p>
                     </td>
-                    <td className="px-5 py-3 text-right text-slate-600">{num(r.openingDip)} L</td>
+                    <td className="px-5 py-3 text-right text-slate-600">{r.status === "insufficient" ? "—" : `${num(r.openingDip)} L`}</td>
                     <td className="px-5 py-3 text-right font-medium text-emerald-600">+{num(r.receiptsL)} L</td>
                     <td className="px-5 py-3 text-right font-medium text-brand-700">−{num(r.issuesL)} L</td>
                     <td className="px-5 py-3 text-right font-semibold text-ink-900">{num(r.expectedClosing)} L</td>
                     <td className="px-5 py-3 text-right font-semibold text-ink-900">{r.closingDip == null ? "—" : `${num(r.closingDip)} L`}</td>
                     <td className="px-5 py-3 text-right">
-                      <span className={`font-bold ${r.varianceL < 0 ? "text-rose-600" : "text-emerald-600"}`}>
-                        {r.varianceL > 0 ? "+" : ""}{num(r.varianceL)} L
-                      </span>
+                      {r.status === "insufficient" ? <span className="text-slate-400">—</span> : (
+                        <span className={`font-bold ${r.varianceL < 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                          {r.varianceL > 0 ? "+" : ""}{num(r.varianceL)} L
+                        </span>
+                      )}
                     </td>
                     <td className="px-5 py-3">
-                      <Badge color={r.status === "ok" ? "bg-emerald-100 text-emerald-700" : r.status === "watch" ? "bg-amber-100 text-amber-700" : "bg-rose-100 text-rose-700"}>{r.status}</Badge>
+                      <Badge color={r.status === "ok" ? "bg-emerald-100 text-emerald-700" : r.status === "watch" ? "bg-amber-100 text-amber-700" : r.status === "insufficient" ? "bg-slate-100 text-slate-600" : "bg-rose-100 text-rose-700"}>{r.status === "insufficient" ? "not assessed" : r.status}</Badge>
                     </td>
                   </tr>
                 ))}

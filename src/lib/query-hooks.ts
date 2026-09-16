@@ -56,12 +56,16 @@ export function useAssetDetail<T = unknown>(assetId: string | null | undefined) 
     queryKey: queryKeys.fleet.detail(assetId ?? ""),
     queryFn: async (): Promise<T | null> => {
       if (!assetId) return null;
-      const res = await fetch(`/api/assets/${encodeURIComponent(assetId)}`);
+      const res = await fetch(`/api/assets/${encodeURIComponent(assetId)}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`Asset ${assetId} not found`);
       return res.json();
     },
     enabled: Boolean(assetId),
-    staleTime: 30 * 1000,
+    // This card carries live position and fuel judgements. Reopening it must
+    // revalidate rather than replay a recently cached all-clear after a new
+    // telemetry sample or anomaly arrived.
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 }
 

@@ -16,9 +16,9 @@ import { revalidatePath } from "next/cache";
 import crypto from "crypto";
 import { getSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
-import { decideGaugeReading, sensorGaugeDecision, makeQrToken, staleSessions, detectFuelEvents, PROVIDERS, type GaugeExtraction, type SessionLite, type ReadingLite } from "@/lib/telematics";
+import { decideGaugeReading, sensorGaugeDecision, makeQrToken, staleSessions, PROVIDERS, type GaugeExtraction, type SessionLite } from "@/lib/telematics";
 import { requireAction, ActionError, safe } from "@/lib/guard";
-import { getDieselRate } from "@/lib/settings";
+import { scanForFuelTheft } from "@/lib/fuel-theft-scan";
 import { fuelSensorState } from "@/lib/fuel-sensor";
 import { uploadPrivateFile } from "@/lib/private-upload";
 import { assetScope } from "@/lib/access";
@@ -261,56 +261,22 @@ async function closeStaleSessions__impl() {
   return { ok: true as const, closed };
 }
 
-/** Scan the telemetry stream for fuel events worth investigating. */
+/** Run the same evidence gate as the nightly scan for one accessible vehicle. */
 async function scanFuelEvents__impl(rawAssetId: string) {
   const assetId = sanitizeId(rawAssetId, "Asset ID");
   const scopeAccess = await requireAction("fuel.reconcile");
   await assertRecordAccess(scopeAccess, "asset", assetId);
-  const asset = await db.asset.findUnique({ where: { id: assetId } });
+  const asset = await db.asset.findUnique({ where: { id: assetId }, select: { id: true } });
   if (!asset) throw new ActionError("Vehicle not found");
-  const since = new Date(); since.setDate(since.getDate() - 30);
-
-  const readings = await db.telemetryReading.findMany({
-    where: { assetId, recordedAt: { gte: since }, fuelLevelPct: { not: null } },
-    orderBy: { recordedAt: "asc" },
-  });
-  const events = detectFuelEvents(readings.map((r): ReadingLite => ({
-    id: r.id, recordedAt: r.recordedAt, lat: r.lat, lng: r.lng, speedKph: r.speedKph,
-    odometerKm: r.odometerKm, fuelLevelPct: r.fuelLevelPct, ignitionOn: r.ignitionOn, source: r.source,
-  })), asset.fuelCapacity);
-
-  // The rate an administrator actually set. This was hardcoded to 92.5, so
-  // every value-at-risk raised here was priced at a number nobody had updated
-  // since it was typed — while every other screen used the setting.
-  const rate = await getDieselRate();
-  let raised = 0;
-  for (const e of events.filter((x) => x.suspicious)) {
-    const key = `FUEL_TELEMETRY:${assetId}:${e.at.toISOString()}`;
-    const exists = await db.fuelAnomaly.findUnique({ where: { source_refId: { source: "ASSET_EFFICIENCY", refId: key } } });
-    if (exists) continue;
-
-    // An event the detector flagged but could not size is still worth raising —
-    // it is a real observation. What it must not do is arrive as a HIGH-severity
-    // case worth ₹0, which is what `litres ?? 0` produced: the column is
-    // non-nullable so zero is forced, and a loss-prevention list padded with
-    // zero-value "HIGH" cases is one people stop working through.
-    const quantified = e.litres != null && e.litres > 0;
-    await db.fuelAnomaly.create({
-      data: {
-        source: "ASSET_EFFICIENCY", refId: key, assetId,
-        severity: quantified ? "HIGH" : "MEDIUM",
-        score: quantified ? 80 : 45,
-        litres: e.litres ?? 0,
-        valueAtRisk: quantified ? e.litres! * rate : 0,
-        reasons: quantified
-          ? e.reason
-          : `${e.reason}\nVolume could not be measured from this telemetry, so no value at risk is claimed.`,
-      },
-    });
-    raised++;
-  }
+  const result = await scanForFuelTheft(30, { assetId, trigger: "manual" });
   refresh();
-  return { ok: true as const, events: events.length, suspicious: events.filter((e) => e.suspicious).length, raised };
+  return {
+    ok: true as const,
+    scanned: result.scanned,
+    raised: result.raised,
+    duplicates: result.duplicates,
+    notAssessed: result.notAssessed.map((item) => item.reason),
+  };
 }
 
 /** Manually trigger a pull from Tata Fleet Edge API and refresh views. */

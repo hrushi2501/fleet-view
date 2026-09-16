@@ -58,7 +58,7 @@ export function MorningActionCenter({ data }: { data: ActionCenterData }) {
               ) : (
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-700">
                   <CheckCircle2 className="h-3.5 w-3.5" />
-                  Fleet Optimal
+                  No open priorities
                 </span>
               )}
             </div>
@@ -134,7 +134,7 @@ export function MorningActionCenter({ data }: { data: ActionCenterData }) {
             <p className="text-sm font-bold text-ink-900">
               {data.criticalAlertsCount > 0
                 ? `${data.criticalAlertsCount} unacknowledged alarms`
-                : "Telemetry healthy"}
+                : "No critical alerts open"}
             </p>
           </div>
           <div className="mt-2 flex items-center gap-1 text-[11px] font-semibold text-brand-600">

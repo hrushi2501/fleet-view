@@ -161,7 +161,9 @@ export function ScanFuelButton({ assetId }: { assetId: string }) {
   return (
     <span className="inline-flex items-center gap-2">
       <button onClick={() => start(async () => { const r = await scanFuelEvents(assetId);
- if (isActionError(r)) { setMsg(r.error); return; } setMsg(`${r.events} events, ${r.suspicious} suspicious, ${r.raised} raised`); router.refresh(); })}
+ if (isActionError(r)) { setMsg(r.error); return; }
+ setMsg(r.notAssessed.length ? `Not assessed: ${r.notAssessed.join("; ")}` : `${r.raised} raised, ${r.duplicates} already recorded`);
+ router.refresh(); })}
         disabled={pending} className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 disabled:opacity-60">
         {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Radar className="h-3.5 w-3.5" />} Scan fuel
       </button>

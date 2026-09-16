@@ -49,7 +49,7 @@ export default async function Dashboard() {
     }),
     db.fuelTransaction.findMany({
       where: { type: "ISSUE", date: { gte: fuelSince }, asset: visible },
-      select: { quantity: true, sensorRise: true, date: true },
+      select: { quantity: true, sensorRise: true, anomaly: true, date: true },
     }),
     db.alert.count({ where: { status: "Open", severity: "Critical" } }),
     db.complianceDoc.count({ where: { status: { in: ["Expiring", "Expired"] } } }),
@@ -92,12 +92,14 @@ export default async function Dashboard() {
   const avgUtil = totalAssets ? Math.round(assets.reduce((s, a) => s + a.utilization, 0) / totalAssets) : null;
   const readyPct = totalAssets ? Math.round((activeCount / totalAssets) * 100) : 0;
 
-  // Fuel loss estimate (issued - sensor rise) * rate
-  const fuelLossL = fuelIssues.reduce((s, f) => s + Math.max(0, f.quantity - f.sensorRise), 0);
+  // A default sensorRise=0 also means "no sensor reading was supplied" on
+  // legacy/manual entries. Only assessed rows may support a loss figure.
+  const assessedFuelIssues = fuelIssues.filter((f) => f.sensorRise > 0 || f.anomaly);
+  const fuelLossL = assessedFuelIssues.reduce((s, f) => s + Math.max(0, f.quantity - f.sensorRise), 0);
   const fuelLossValue = fuelLossL * dieselRate;
-  const totalIssuedL = fuelIssues.reduce((s, f) => s + f.quantity, 0);
-  const fuelLossPct = totalIssuedL ? (fuelLossL / totalIssuedL) * 100 : 0;
-  const fuelAnomaliesCount = fuelIssues.filter((f) => f.quantity > f.sensorRise + 5).length;
+  const assessedIssuedL = assessedFuelIssues.reduce((s, f) => s + f.quantity, 0);
+  const fuelLossPct = assessedIssuedL ? (fuelLossL / assessedIssuedL) * 100 : null;
+  const fuelAnomaliesCount = assessedFuelIssues.filter((f) => f.quantity > f.sensorRise + 5).length;
 
   const actionCenterData = {
     breakdownsCount,
@@ -256,9 +258,9 @@ export default async function Dashboard() {
           />
           <StatCard
             label="Fuel loss (30d)"
-            value={inr(fuelLossValue, { compact: true })}
-            sub={`${fuelLossPct.toFixed(1)}% of ${num(totalIssuedL)} L issued`}
-            accent="rose"
+            value={fuelLossPct == null ? "—" : inr(fuelLossValue, { compact: true })}
+            sub={fuelLossPct == null ? "not assessed from sensor evidence" : `${fuelLossPct.toFixed(1)}% of ${num(assessedIssuedL)} L assessed`}
+            accent={fuelLossPct == null ? "amber" : fuelLossL > 0 ? "rose" : "emerald"}
             icon={<Fuel className="h-5 w-5" />}
             spark={fuelSpark}
           />

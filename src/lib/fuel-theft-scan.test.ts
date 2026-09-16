@@ -16,6 +16,8 @@ import assert from "node:assert/strict";
 
 import { analyseSegment, type AnalyticsReading } from "./fleet-analytics.ts";
 import { senderContradictsItself } from "./fuel-cache.ts";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const TANK = 300;
 const at = (iso: string) => new Date(iso);
@@ -109,4 +111,15 @@ describe("a vehicle that cannot be judged is excluded, not passed", () => {
     const trace = [260, 259.4, 258.8, 220.1, 219.6, 219.0];
     assert.equal(senderContradictsItself(trace, TANK), false);
   });
+});
+
+test("the manual tracking action uses the assessed theft scan", () => {
+  const source = readFileSync(join(process.cwd(), "src/app/(app)/tracking/actions.ts"), "utf8");
+  const start = source.indexOf("async function scanFuelEvents__impl");
+  const end = source.indexOf("async function triggerTataSync__impl", start);
+  const action = source.slice(start, end);
+
+  assert.match(action, /scanForFuelTheft\(30, \{ assetId, trigger: "manual" \}\)/);
+  assert.doesNotMatch(action, /detectFuelEvents/);
+  assert.doesNotMatch(action, /fuelAnomaly\.(create|upsert)/);
 });

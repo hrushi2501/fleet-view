@@ -436,12 +436,19 @@ export function liveFleetCacheKey(scope: LiveFleetScope): string {
 }
 
 /**
- * Called by writes that change a vehicle's map representation.  Redis failures
- * deliberately stay non-fatal — the 90-second TTL still bounds staleness.
+ * Called by writes that change vehicle or fuel evidence. All telemetry-derived
+ * views are purged together: leaving the one-minute usage/fill caches warm
+ * after accepting a new reading made different screens disagree until expiry.
+ * Redis failures deliberately stay non-fatal; each cache still has a short TTL.
  */
 export async function invalidateLiveFleetCache(): Promise<void> {
   liveFleetInFlight.clear();
-  await serverCache.invalidatePrefix("fleet:live:");
+  await Promise.all([
+    serverCache.invalidatePrefix("fleet:live:"),
+    serverCache.invalidatePrefix("telemetry:fleet-usage:"),
+    serverCache.invalidatePrefix("fuel:detected-fills:"),
+    serverCache.invalidatePrefix("fuel:daily-fills:"),
+  ]);
 }
 
 /**
@@ -635,13 +642,6 @@ async function buildLiveFleet(scope: LiveFleetScope): Promise<LiveFleet> {
       rawNum(raw, "primaryFuelTankCapacity", "PrimaryFuelTankCapacity") ??
       (a.fuelCapacity > 0 ? a.fuelCapacity : null);
 
-    const fuelLitres = latest?.fuelLevelL ?? null;
-    const fuelPct =
-      latest?.fuelLevelPct ??
-      (fuelLitres != null && capacity != null && capacity > 0
-        ? Math.round((fuelLitres / capacity) * 1000) / 10
-        : null);
-
     // Odometer: prefer the sample, fall back to the register's meter. The
     // register is updated from the same samples, so this is a staleness
     // fallback, not a second source of truth.
@@ -649,6 +649,18 @@ async function buildLiveFleet(scope: LiveFleetScope): Promise<LiveFleet> {
 
     const norm = pickNorm(norms, a.id, a.assetClass);
     const { usage } = analyseUsage(samples, norm, capacity, null);
+    // The newest sample is still useful as raw provider evidence, but a sender
+    // that contradicts itself cannot support an operational tank gauge. A
+    // blank gauge says "not assessed"; showing the latest oscillating value
+    // would make one arbitrary side of the contradiction look authoritative.
+    const fuelAssessed = usage.fuelResolution === "RESOLVED";
+    const fuelLitres = fuelAssessed ? latest?.fuelLevelL ?? null : null;
+    const fuelPct = fuelAssessed
+      ? latest?.fuelLevelPct ??
+        (fuelLitres != null && capacity != null && capacity > 0
+          ? Math.round((fuelLitres / capacity) * 1000) / 10
+          : null)
+      : null;
     const stationary = stationaryMinutes(samples);
 
     const today: TodayStats = {

@@ -119,6 +119,8 @@ export async function Overview({ access }: { access: Access }) {
   const unloggedFills = detectedFills.filter((f) => !f.logged);
   const unloggedLitres = unloggedFills.reduce((s, f) => s + f.litresAdded, 0);
   const unloggedValue = unloggedFills.reduce((s, f) => s + f.estimatedValue, 0);
+  const detectionIncomplete = unreliableSenders.length > 0;
+  const noRecordedFlagsButUnassessed = allFlagCount === 0 && scan.stale;
   const assetById = new Map(assets.map((a) => [a.id, a]));
   const recentFills = [...issues].reverse().slice(0, 25);
 
@@ -145,46 +147,45 @@ export async function Overview({ access }: { access: Access }) {
 
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-6">
-        {/* Spend stays logged-only on purpose. A sender measures litres, not
-            rupees, so folding an estimated value in here would put an assumed
-            price into a financial figure. Saying so keeps it from silently
-            contradicting the litres tile beside it, which does include them. */}
+        {/* The two ledger cards stay recorded-only. A sender observation remains
+            visible below as an operational lead, but it cannot alter litres or
+            rupees until someone confirms the fill and records the paperwork. */}
         <StatCard
-          label="Total Diesel Spend"
+          label="Total Recorded Diesel Spend"
           value={inr(fleet.totalSpend, { compact: true })}
           sub={unloggedLitres > 0 ? `logged fills only · ${num(unloggedLitres)} L unpriced` : undefined}
           accent="brand"
           icon={<IndianRupee className="h-5 w-5" />}
         />
         <StatCard
-          label="Diesel Issued"
-          value={`${num(fleet.totalLitres + unloggedLitres)} L`}
+          label="Recorded Diesel Issued"
+          value={`${num(fleet.totalLitres)} L`}
           sub={
             unloggedLitres > 0
-              ? `${num(fleet.totalLitres)} L logged + ${num(unloggedLitres)} L sensor-only`
-              : "all from logged entries"
+              ? `${num(unloggedLitres)} L sensor-only shown separately`
+              : `${issues.length} recorded ${issues.length === 1 ? "entry" : "entries"}`
           }
           accent="violet"
           icon={<Droplets className="h-5 w-5" />}
         />
         <StatCard label="Avg Fleet Mileage" value={measuredKmpl != null ? `${measuredKmpl.toFixed(2)} km/L` : "—"} sub={usingTelemetry ? "active Tata Fleet Edge road vehicles" : "no active Tata vehicle with usable mileage"} accent={telemetry.perAsset.some((a) => a.belowNorm) ? "rose" : "emerald"} icon={<Gauge className="h-5 w-5" />} />
         <StatCard label="Distance Covered" value={usingTelemetry ? `${num(measuredKm)} km` : "—"} sub={usingTelemetry ? "active Tata odometer delta" : "not inferred from manual entries"} accent="brand" icon={<TrendingUp className="h-5 w-5" />} />
-        <StatCard label="Theft Alerts" value={num(highFlagCount)} sub={`${allFlagCount} total flags`} accent="rose" icon={<ShieldAlert className="h-5 w-5" />} />
-        <StatCard label="₹ at Risk" value={inr(atRisk + anomalyValue, { compact: true })} sub={`${num(Math.round((flaggedLitres + anomalyLitres) * 10) / 10)} L flagged`} accent="rose" icon={<TriangleAlert className="h-5 w-5" />} />
+        <StatCard label="Theft Alerts" value={noRecordedFlagsButUnassessed ? "—" : num(highFlagCount)} sub={noRecordedFlagsButUnassessed ? "not assessed; nightly check overdue" : `${allFlagCount} total recorded flags`} accent={noRecordedFlagsButUnassessed ? "amber" : highFlagCount > 0 ? "rose" : "emerald"} icon={<ShieldAlert className="h-5 w-5" />} />
+        <StatCard label="₹ at Risk" value={noRecordedFlagsButUnassessed ? "—" : inr(atRisk + anomalyValue, { compact: true })} sub={noRecordedFlagsButUnassessed ? "not assessed; no current check" : `${num(Math.round((flaggedLitres + anomalyLitres) * 10) / 10)} L in recorded flags`} accent={noRecordedFlagsButUnassessed ? "amber" : atRisk + anomalyValue > 0 ? "rose" : "emerald"} icon={<TriangleAlert className="h-5 w-5" />} />
         <StatCard
           label="Unlogged Fills"
-          value={unloggedFills.length === 0 ? "0" : inr(unloggedValue, { compact: true })}
+          value={unloggedFills.length === 0 && detectionIncomplete ? "—" : unloggedFills.length === 0 ? "0" : inr(unloggedValue, { compact: true })}
           sub={
             unreliableSenders.length > 0
               // Say so on the tile itself. A quietly reduced count reads as
               // "nothing to see", and the excluded vehicle is the one that
               // needs a fitter.
-              ? `${unloggedFills.length === 0 ? "none detected" : `${num(unloggedLitres)} L · ${unloggedFills.length} fill${unloggedFills.length === 1 ? "" : "s"}`} · ${unreliableSenders.length} sender${unreliableSenders.length === 1 ? "" : "s"} excluded`
+              ? `${unloggedFills.length === 0 ? "not assessed across all vehicles" : `${num(unloggedLitres)} L · ${unloggedFills.length} fill${unloggedFills.length === 1 ? "" : "s"}`} · ${unreliableSenders.length} sender${unreliableSenders.length === 1 ? "" : "s"} excluded`
               : unloggedFills.length === 0
                 ? "all fills have an entry"
                 : `${num(unloggedLitres)} L · ${unloggedFills.length} fill${unloggedFills.length === 1 ? "" : "s"}, last 24 hours`
           }
-          accent={unloggedFills.length === 0 ? "emerald" : "amber"}
+          accent={unloggedFills.length === 0 && !detectionIncomplete ? "emerald" : "amber"}
           icon={<Fuel className="h-5 w-5" />}
         />
       </div>

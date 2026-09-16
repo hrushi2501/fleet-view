@@ -25,7 +25,7 @@ export async function FuelRecords({ access }: { access: Access }) {
   // and breaches the production request window. Keep this interactive screen
   // to the live 24-hour window; older persisted issues remain in Fill History.
   const detectedPromise = dieselRatePromise.then((rate) => getDetectedFills(visible, rate, 1));
-  const [issues, assets, tanks, detectedResult] = await Promise.all([
+  const [issues, recordedTotals, assets, tanks, detectedResult] = await Promise.all([
     db.fuelTransaction.findMany({
       where: { type: "ISSUE", asset: visible },
       include: {
@@ -35,6 +35,14 @@ export async function FuelRecords({ access }: { access: Access }) {
       },
       orderBy: { date: "desc" },
       take: 100,
+    }),
+    // The history table is intentionally bounded, but its headline totals must
+    // describe every visible record rather than only the first page. Sensor-only
+    // rises are operational leads, not ledger entries, and stay separate below.
+    db.fuelTransaction.aggregate({
+      where: { type: "ISSUE", asset: visible },
+      _sum: { quantity: true, amount: true },
+      _count: { _all: true },
     }),
     db.asset.findMany({ where: visible, orderBy: { code: "asc" } }),
     db.fuelTank.findMany({ where: recordScope("fuelTank", access) }),
@@ -50,14 +58,14 @@ export async function FuelRecords({ access }: { access: Access }) {
   const unreliableSenders = detectedResult.unreliable;
   const unlogged = detected.filter((f) => !f.logged);
   const unloggedValue = unlogged.reduce((s, f) => s + f.estimatedValue, 0);
-  // Litres the tanks received with no entry behind them. Added to the headline
-  // rather than left out of it: "how much diesel went into the trucks" is
-  // answered by what the tanks actually took, and a total that silently omits a
-  // 235 L fill is wrong in the direction that matters.
+  // Litres the sensors saw with no entry behind them. Keep this visible beside
+  // the recorded total, but do not add it to that ledger figure: it still needs
+  // a person to confirm whether it was a real fill and enter its paperwork.
   const unloggedLitres = unlogged.reduce((s, f) => s + f.litresAdded, 0);
 
-  const totalSpend = issues.reduce((s, i) => s + i.amount, 0);
-  const totalLitres = issues.reduce((s, i) => s + i.quantity, 0);
+  const totalSpend = recordedTotals._sum.amount ?? 0;
+  const totalLitres = recordedTotals._sum.quantity ?? 0;
+  const recordCount = recordedTotals._count._all;
   const assetMap = new Map(assets.map((a) => [a.id, a]));
 
   return (
@@ -72,20 +80,16 @@ export async function FuelRecords({ access }: { access: Access }) {
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         <StatCard
-          label="Recent Fuel Spend"
+          label="Recorded Fuel Spend"
           value={inr(totalSpend, { compact: true })}
-          sub={unloggedLitres > 0 ? `logged fills only · ${num(unloggedLitres)} L unpriced` : undefined}
+          sub={`${recordCount} recorded ${recordCount === 1 ? "entry" : "entries"}`}
           accent="brand"
           icon={<IndianRupee className="h-5 w-5" />}
         />
         <StatCard
-          label="Total Diesel Issued"
-          value={`${num(totalLitres + unloggedLitres)} L`}
-          sub={
-            unloggedLitres > 0
-              ? `${num(totalLitres)} L logged + ${num(unloggedLitres)} L sensor-only`
-              : "all from logged entries"
-          }
+          label="Recorded Diesel Issued"
+          value={`${num(totalLitres)} L`}
+          sub={unloggedLitres > 0 ? `${num(unloggedLitres)} L sensor-only shown separately` : "from recorded entries"}
           accent="violet"
           icon={<Fuel className="h-5 w-5" />}
         />

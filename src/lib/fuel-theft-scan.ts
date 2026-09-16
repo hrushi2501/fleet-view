@@ -35,10 +35,17 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import { db } from "@/lib/db";
-import { analyseUsage, type AnalyticsReading, type Segment } from "@/lib/fleet-analytics";
-import { senderContradictsItself } from "@/lib/fuel-cache";
+import { analyseUsage, type Segment } from "@/lib/fleet-analytics";
+import {
+  FUEL_SCAN_SOURCE,
+  MIN_FUEL_SCAN_SAMPLES,
+  fuelScanProviderProblem,
+  pickFuelScanNorm,
+  prepareFuelScanEvidence,
+} from "@/lib/fuel-theft-scan-evidence";
 import { getDieselRate } from "@/lib/settings";
 import { recordSystemAudit } from "@/lib/audit-writer";
+import { TATA_PROVIDER_CODE } from "@/lib/tata-fleet-edge";
 
 /** Events worth raising. IMPLAUSIBLE_DROP is deliberately absent — see above. */
 const ACCUSABLE = new Set(["STATIONARY_DROP", "EXCESS_CONSUMPTION"]);
@@ -59,8 +66,6 @@ const MIN_RAISEABLE_LITRES = 10;
  * quality bar — the quality bar is the per-segment confidence, which already
  * refuses to raise anything scored LOW.
  */
-const MIN_FUEL_SAMPLES = 6;
-
 export type ScanOutcome = {
   scanned: number;
   raised: number;
@@ -82,23 +87,46 @@ export type ScanOutcome = {
  * @param sinceHours how far back to look. A nightly run wants a little more
  *        than twenty-four so a drop straddling midnight is not cut in half.
  */
-export async function scanForFuelTheft(sinceHours = 30): Promise<ScanOutcome> {
+export async function scanForFuelTheft(
+  sinceHours = 30,
+  options: { assetId?: string; trigger?: "nightly" | "manual" } = {},
+): Promise<ScanOutcome> {
   const since = new Date(Date.now() - sinceHours * 3_600_000);
   const rate = await getDieselRate();
 
   const assets = await db.asset.findMany({
-    where: { status: { not: "Off-hired" } },
-    select: { id: true, code: true, registrationNo: true, fuelCapacity: true },
+    where: { status: { not: "Off-hired" }, ...(options.assetId ? { id: options.assetId } : {}) },
+    select: { id: true, code: true, registrationNo: true, fuelCapacity: true, assetClass: true },
   });
 
-  const readings = await db.telemetryReading.findMany({
-    where: { assetId: { in: assets.map((a) => a.id) }, recordedAt: { gte: since } },
-    orderBy: { recordedAt: "asc" },
-    select: {
-      assetId: true, recordedAt: true, lat: true, lng: true, speedKph: true,
-      odometerKm: true, fuelLevelL: true, fuelLevelPct: true, ignitionOn: true,
-    },
-  });
+  // `GPS_API` is a delivery channel, not a provider identity. More than one
+  // integration can use it, so the reading-level relation is the authority.
+  const [tataProvider, norms] = await Promise.all([
+    db.telematicsProvider.findUnique({
+      where: { code: TATA_PROVIDER_CODE },
+      select: { id: true },
+    }),
+    db.consumptionNorm.findMany({
+      where: { unit: "KMPL" },
+      select: { assetId: true, assetClass: true, normLow: true, normHigh: true, tolerancePct: true },
+    }),
+  ]);
+
+  const readings = tataProvider
+    ? await db.telemetryReading.findMany({
+        where: {
+          assetId: { in: assets.map((a) => a.id) },
+          recordedAt: { gte: since },
+          source: FUEL_SCAN_SOURCE,
+          providerId: tataProvider.id,
+        },
+        orderBy: { recordedAt: "asc" },
+        select: {
+          assetId: true, source: true, providerId: true, recordedAt: true, lat: true, lng: true, speedKph: true,
+          odometerKm: true, fuelLevelL: true, fuelLevelPct: true, ignitionOn: true,
+        },
+      })
+    : [];
 
   const byAsset = new Map<string, typeof readings>();
   for (const r of readings) {
@@ -115,6 +143,12 @@ export async function scanForFuelTheft(sinceHours = 30): Promise<ScanOutcome> {
     const note = (reason: string) =>
       out.notAssessed.push({ code: asset.code, registrationNo: asset.registrationNo, reason });
 
+    const providerProblem = fuelScanProviderProblem(tataProvider?.id, TATA_PROVIDER_CODE);
+    if (providerProblem) {
+      note(providerProblem);
+      continue;
+    }
+
     if (rows.length < 2) {
       // Not an accusation and not a clean bill of health — simply unmeasured.
       if (rows.length === 0) note("no telemetry in the window");
@@ -127,13 +161,14 @@ export async function scanForFuelTheft(sinceHours = 30): Promise<ScanOutcome> {
       continue;
     }
 
-    const litreSeries = rows.map((r) => r.fuelLevelL).filter((n): n is number => n != null);
-    if (senderContradictsItself(litreSeries, asset.fuelCapacity)) {
+    const evidence = prepareFuelScanEvidence(rows, asset.fuelCapacity, tataProvider!.id);
+    if (evidence.contradictorySender) {
       note("fuel sender contradicts itself — readings cannot support a finding");
       continue;
     }
 
-    const { segments, usage } = analyseUsage(rows as AnalyticsReading[], null, asset.fuelCapacity);
+    const norm = pickFuelScanNorm(norms, asset.id, asset.assetClass);
+    const { segments, usage } = analyseUsage(evidence.samples, norm, asset.fuelCapacity);
 
     if (usage.fuelResolution !== "RESOLVED") {
       note(usage.confidenceReasons[0] ?? "fuel evidence did not pass resolution checks");
@@ -162,9 +197,8 @@ export async function scanForFuelTheft(sinceHours = 30): Promise<ScanOutcome> {
     // LOW findings are never raised. So the sampling quality still governs what
     // can be said — it just no longer silently excuses the whole vehicle.
     // ─────────────────────────────────────────────────────────────────────────
-    const fuelSamples = litreSeries.length;
-    if (fuelSamples < MIN_FUEL_SAMPLES) {
-      note(`only ${fuelSamples} fuel readings — too few to compare`);
+    if (evidence.fuelSamples < MIN_FUEL_SCAN_SAMPLES) {
+      note(`only ${evidence.fuelSamples} distinct valid OEM fuel readings — too few to compare`);
       continue;
     }
 
@@ -228,7 +262,7 @@ export async function scanForFuelTheft(sinceHours = 30): Promise<ScanOutcome> {
             endpoints +
             where +
             `\n${seg.reasons.join("\n")}` +
-            `\nRaised by the nightly scan; ${seg.confidence.toLowerCase()} confidence.`,
+            `\nRaised by the ${options.trigger === "manual" ? "manual" : "nightly"} scan; ${seg.confidence.toLowerCase()} confidence.`,
           },
         });
       } catch (error) {
@@ -266,14 +300,17 @@ export async function scanForFuelTheft(sinceHours = 30): Promise<ScanOutcome> {
   // long ago. It is written whatever the outcome, and never allowed to fail
   // the scan itself.
   // ───────────────────────────────────────────────────────────────────────────
+  const trigger = options.trigger ?? "nightly";
   await recordSystemAudit({
     action: "SCAN",
     module: "FUEL",
     summary:
       out.raised > 0
-        ? `Fuel theft scan: ${out.raised} raised from ${out.scanned} vehicles`
-        : `Fuel theft scan: nothing found across ${out.scanned} vehicles`,
+        ? `Fuel theft ${trigger} scan: ${out.raised} raised from ${out.scanned} vehicles`
+        : `Fuel theft ${trigger} scan: nothing found across ${out.scanned} vehicles`,
     changes: JSON.stringify({
+      trigger,
+      assetId: options.assetId ?? null,
       scanned: out.scanned,
       raised: out.raised,
       duplicates: out.duplicates,

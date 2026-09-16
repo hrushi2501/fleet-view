@@ -41,6 +41,27 @@
  */
 import type { TelemetryPing } from "@/lib/telematics-adapters";
 
+/** Identity of one authoritative telemetry series for an asset. */
+export type TelemetryStream = {
+  assetId: string;
+  source: string;
+  providerId: string | null;
+};
+
+/**
+ * Scope validation and anomaly evidence to the incoming sample's own stream.
+ * Mixing manual/device and OEM rows can create a false drop, hide a real one,
+ * or make a valid odometer look like rollback.
+ */
+export function telemetryStreamHistoryWhere(stream: TelemetryStream, before: Date) {
+  return {
+    assetId: stream.assetId,
+    source: stream.source,
+    providerId: stream.providerId,
+    recordedAt: { lt: before },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Physical limits
 // ---------------------------------------------------------------------------
@@ -368,11 +389,14 @@ export function normaliseReading(
   if (fuelLevelL != null && fuelLevelPct != null && capacity) {
     const impliedPct = (fuelLevelL / capacity) * 100;
     if (Math.abs(impliedPct - fuelLevelPct) > 10) {
-      warn(
+      drop(
         "fuel", { litres: fuelLevelL, pct: fuelLevelPct, capacity },
         `${fuelLevelL} L of a ${capacity} L tank is ${impliedPct.toFixed(1)}%, but the provider reports ` +
-          `${fuelLevelPct}%. One of them is measured against a different tank.`,
+          `${fuelLevelPct}%. One of them is measured against a different tank. ` +
+          `Both normalized fuel fields are withheld; the original OEM payload remains available for diagnosis.`,
       );
+      fuelLevelL = null;
+      fuelLevelPct = null;
     }
   }
 

@@ -95,6 +95,7 @@ async function handleGET(_req: Request, { params }: { params: Promise<{ id: stri
     asset.fuelCapacity || null,
     idleNorm?.normHigh ?? null,
   );
+  const fuelAssessed = usage.fuelResolution === "RESOLVED" && !usage.insufficientData;
 
   if (process.env.FUEL_ANALYSIS_DEBUG === "true") {
     console.info(describeUsage(`${asset.code} (${asset.registrationNo ?? "no reg"})`, usage));
@@ -118,10 +119,20 @@ async function handleGET(_req: Request, { params }: { params: Promise<{ id: stri
     workOrders: asset.workOrders.map((w) => ({ woNo: w.woNo, type: w.type, description: w.description, totalCost: w.totalCost, status: w.status })),
     fuel: asset.fuelTxns.map((f) => ({ date: f.date, quantity: f.quantity, sensorRise: f.sensorRise, variancePct: f.variancePct, anomaly: f.anomaly })),
     costByHead, totalCost,
-    usage: { ...usage, norm: norm ? { low: norm.normLow, high: norm.normHigh, unit: norm.unit } : null },
+    usage: {
+      ...usage,
+      // An unresolved sender must never be serialised as zero fuel burned,
+      // zero fills, or zero loss. Those zeros mean "measured none" to clients.
+      litresBurned: fuelAssessed ? usage.litresBurned : null,
+      litresFilled: fuelAssessed ? usage.litresFilled : null,
+      refuelEvents: fuelAssessed ? usage.refuelEvents : null,
+      suspectSegments: fuelAssessed ? usage.suspectSegments : null,
+      litresUnaccounted: fuelAssessed ? usage.litresUnaccounted : null,
+      norm: norm ? { low: norm.normLow, high: norm.normHigh, unit: norm.unit } : null,
+    },
     // Sensor-detected fills, so the UI can show that a tank rise was recognised
     // as a fill rather than quietly cancelling out against consumption.
-    refuels: usage.diagnostics.fuel.refuels.map((r) => ({
+    refuels: (fuelAssessed ? usage.diagnostics.fuel.refuels : []).map((r) => ({
       at: r.at, fromL: r.fromL, toL: r.toL, litresAdded: r.litresAdded,
       lat: r.lat, lng: r.lng, confidence: r.confidence, hoursObserved: r.hoursObserved,
     })),
@@ -135,8 +146,12 @@ async function handleGET(_req: Request, { params }: { params: Promise<{ id: stri
         // its own cannot be checked against a dipstick, and a loss with no place
         // attached is not something anyone can be sent to look at.
         fuelBeforeL: s.fuelBeforeL, fuelAfterL: s.fuelAfterL, parkedAt: s.parkedAt,
-        kmPerL: s.kmPerL, event: s.event, excessLitres: s.excessLitres,
-        confidence: s.confidence, reasons: s.reasons,
+        kmPerL: fuelAssessed ? s.kmPerL : null,
+        event: fuelAssessed ? s.event : "UNRESOLVED",
+        rawEvent: s.event,
+        excessLitres: fuelAssessed ? s.excessLitres : null,
+        confidence: fuelAssessed ? s.confidence : "LOW",
+        reasons: fuelAssessed ? s.reasons : ["Fuel sender data is unresolved; raw movement is diagnostic only, not a fuel finding."],
       })),
     telemetry: latest && {
       recordedAt: latest.recordedAt,
@@ -148,8 +163,8 @@ async function handleGET(_req: Request, { params }: { params: Promise<{ id: stri
       headingDeg: latest.headingDeg,
       odometerKm: latest.odometerKm,
       engineHours: latest.engineHours,
-      fuelLevelPct: latest.fuelLevelPct,
-      fuelLevelL: latest.fuelLevelL,
+      fuelLevelPct: fuelAssessed ? latest.fuelLevelPct : null,
+      fuelLevelL: fuelAssessed ? latest.fuelLevelL : null,
       ignitionOn: latest.ignitionOn,
       raw: redactRaw(latest.raw),
     },

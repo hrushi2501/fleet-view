@@ -2,7 +2,7 @@ import { withApiErrors } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { checkSharedSecret } from "@/lib/auth";
-import { normaliseReading, assetCacheUpdate, readTelemetryJson } from "@/lib/telemetry-normalization";
+import { normaliseReading, assetCacheUpdate, readTelemetryJson, telemetryStreamHistoryWhere } from "@/lib/telemetry-normalization";
 import type { TelemetryPing } from "@/lib/telematics-adapters";
 import { reserveRateLimit, rateLimitResponse, clientIp } from "@/lib/request-rate-limit";
 import { recordTelemetryFuelAnomaly, type FuelAnomalyAsset } from "@/lib/tata-fleet-edge";
@@ -71,14 +71,20 @@ async function ingestOne(body: Record<string, unknown>) {
   const suppliedSource = typeof body.source === "string" ? body.source.trim().toUpperCase() : "";
   const source = ["DEVICE", "MOBILE", "LOCANAV", "MAPMYINDIA", "TATA_FLEET_EDGE"].includes(suppliedSource) ? suppliedSource : "DEVICE";
 
-  const previous = await db.telemetryReading.findFirst({
-    where: { assetId: asset.id, odometerKm: { not: null } },
+  const previousRows = await db.telemetryReading.findMany({
+    where: telemetryStreamHistoryWhere({
+      assetId: asset.id,
+      source,
+      providerId: asset.telematicsProviderId,
+    }, recordedAt),
     orderBy: { recordedAt: "desc" },
+    take: 100,
     select: {
       recordedAt: true, lat: true, lng: true, speedKph: true, odometerKm: true,
       fuelLevelL: true, fuelLevelPct: true, ignitionOn: true, engineHours: true,
     },
   });
+  const previous = previousRows[0] ?? null;
 
   // Reuse the provider-agnostic validator by shaping the body as a ping.
   const ping: TelemetryPing = {
@@ -163,6 +169,7 @@ async function ingestOne(body: Record<string, unknown>) {
       },
       created.id,
       asset.fuelCapacity,
+      [...previousRows].reverse() as Parameters<typeof recordTelemetryFuelAnomaly>[5],
     );
   }
 
