@@ -83,6 +83,28 @@ export function countsTowardFleetEfficiency(
   );
 }
 
+/**
+ * Calculate one fleet figure from the same eligible vehicle set in both the
+ * numerator and denominator.  Returning the included rows as well as the
+ * totals lets every screen explain exactly which live readings contributed.
+ */
+type FleetEfficiencyInput = Pick<AssetUsage, "category"> & {
+  usage: Pick<UsageSummary, "distanceKm" | "litresBurned" | "avgKmPerL" | "insufficientData">;
+};
+
+export function calculateFleetEfficiency<T extends FleetEfficiencyInput>(assets: T[]) {
+  const included = assets.filter((asset) => countsTowardFleetEfficiency(asset, asset.usage));
+  const distanceKm = included.reduce((total, asset) => total + asset.usage.distanceKm, 0);
+  const litresBurned = included.reduce((total, asset) => total + asset.usage.litresBurned, 0);
+
+  return {
+    included,
+    distanceKm,
+    litresBurned,
+    avgKmPerL: litresBurned > 0 && distanceKm > 0 ? round(distanceKm / litresBurned) : null,
+  };
+}
+
 function stableJson(value: unknown): string {
   if (value instanceof Date) return JSON.stringify(value.toISOString());
   if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "undefined";
@@ -307,10 +329,9 @@ async function computeFleetUsage(
   // non-Tata reading to dilute this number.  The numerator and denominator
   // come from this same eligible set, which prevents the old mixed-fleet
   // 0.31 km/L artefact.
-  const measurable = perAsset.filter((asset) => countsTowardFleetEfficiency(asset, asset.usage));
-
-  const distanceKm = sum(measurable.map((a) => a.usage.distanceKm));
-  const litresBurned = sum(measurable.map((a) => a.usage.litresBurned));
+  const efficiency = calculateFleetEfficiency(perAsset);
+  const measurable = efficiency.included;
+  const { distanceKm, litresBurned } = efficiency;
   const litresUnaccounted = sum(measurable.map((a) => a.usage.litresUnaccounted));
 
   return {
@@ -324,7 +345,7 @@ async function computeFleetUsage(
       litresFilled: round(sum(measurable.map((a) => a.usage.litresFilled))),
       // Fleet efficiency is total distance over total burn — never an average
       // of per-vehicle figures, which would weigh a pickup like a tipper.
-      avgKmPerL: litresBurned > 0 && distanceKm > 0 ? round(distanceKm / litresBurned) : null,
+      avgKmPerL: efficiency.avgKmPerL,
       litresUnaccounted: round(litresUnaccounted),
       valueUnaccounted: Math.round(litresUnaccounted * rate),
       suspectSegments: measurable.reduce((s, a) => s + a.usage.suspectSegments, 0),

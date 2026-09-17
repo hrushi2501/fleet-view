@@ -91,6 +91,10 @@ export async function Overview({ access }: { access: Access }) {
   const measuredKm = telemetry.totals.distanceKm;
   const measuredKmpl = telemetry.totals.avgKmPerL;
   const usingTelemetry = telemetry.totals.activeVehicles > 0;
+  const measuredLitres = telemetry.totals.litresBurned;
+  const mileageEquation = measuredKmpl != null
+    ? `${num(measuredKm)} km ÷ ${num(measuredLitres)} L · ${telemetry.totals.activeVehicles} vehicle${telemetry.totals.activeVehicles === 1 ? "" : "s"}`
+    : "no active Tata vehicle with usable mileage";
 
   // Ranked by measured efficiency when telemetry exists, since fuel slips may
   // not have been entered yet. Vehicles whose telemetry cannot support a fuel
@@ -127,10 +131,13 @@ export async function Overview({ access }: { access: Access }) {
   const detectionIncomplete = unreliableSenders.length > 0;
   const noRecordedFlagsButUnassessed = allFlagCount === 0 && scan.stale;
   const assetById = new Map(assets.map((a) => [a.id, a]));
+  const issueAmountById = new Map(issues.map((issue) => [issue.id, issue.amount]));
   const recentFills = [...issues].reverse().slice(0, 25);
 
   const flaggedLitres = fleet.highFlags.reduce((s, f) => s + f.quantity, 0);
-  const atRisk = flaggedLitres * 92.5;
+  // A recorded fill already has its actual historical amount. Repricing every
+  // old flag at today's diesel rate would invent a value that was never paid.
+  const atRisk = fleet.highFlags.reduce((total, flag) => total + (issueAmountById.get(flag.entryId) ?? 0), 0);
 
   // monthly spend
   const byMonth: Record<string, number> = {};
@@ -158,7 +165,7 @@ export async function Overview({ access }: { access: Access }) {
         <StatCard
           label="Total Recorded Diesel Spend"
           value={inr(headline.recorded.spend, { compact: true })}
-          sub={headline.sensorOnly.litres > 0 ? `logged fills only · ${num(headline.sensorOnly.litres)} L unpriced` : undefined}
+          sub={headline.sensorOnly.litres > 0 ? `all recorded history · ${num(headline.sensorOnly.litres)} L sensor-only excluded` : "all recorded history"}
           accent="brand"
           icon={<IndianRupee className="h-5 w-5" />}
         />
@@ -173,10 +180,10 @@ export async function Overview({ access }: { access: Access }) {
           accent="violet"
           icon={<Droplets className="h-5 w-5" />}
         />
-        <StatCard label="Avg Fleet Mileage" value={measuredKmpl != null ? `${measuredKmpl.toFixed(2)} km/L` : "—"} sub={usingTelemetry ? "active Tata Fleet Edge road vehicles" : "no active Tata vehicle with usable mileage"} accent={telemetry.perAsset.some((a) => a.belowNorm) ? "rose" : "emerald"} icon={<Gauge className="h-5 w-5" />} />
-        <StatCard label="Distance Covered" value={usingTelemetry ? `${num(measuredKm)} km` : "—"} sub={usingTelemetry ? "active Tata odometer delta" : "not inferred from manual entries"} accent="brand" icon={<TrendingUp className="h-5 w-5" />} />
-        <StatCard label="Theft Alerts" value={noRecordedFlagsButUnassessed ? "—" : num(highFlagCount)} sub={noRecordedFlagsButUnassessed ? "not assessed; nightly check overdue" : `${allFlagCount} total recorded flags`} accent={noRecordedFlagsButUnassessed ? "amber" : highFlagCount > 0 ? "rose" : "emerald"} icon={<ShieldAlert className="h-5 w-5" />} />
-        <StatCard label="₹ at Risk" value={noRecordedFlagsButUnassessed ? "—" : inr(atRisk + anomalyValue, { compact: true })} sub={noRecordedFlagsButUnassessed ? "not assessed; no current check" : `${num(Math.round((flaggedLitres + anomalyLitres) * 10) / 10)} L in recorded flags`} accent={noRecordedFlagsButUnassessed ? "amber" : atRisk + anomalyValue > 0 ? "rose" : "emerald"} icon={<TriangleAlert className="h-5 w-5" />} />
+        <StatCard label="Avg Fleet Mileage" value={measuredKmpl != null ? `${measuredKmpl.toFixed(2)} km/L` : "—"} sub={mileageEquation} accent={telemetry.perAsset.some((a) => a.belowNorm) ? "rose" : "emerald"} icon={<Gauge className="h-5 w-5" />} />
+        <StatCard label="Distance Covered" value={usingTelemetry ? `${num(measuredKm)} km` : "—"} sub={usingTelemetry ? `${telemetry.totals.activeVehicles} eligible Tata vehicle${telemetry.totals.activeVehicles === 1 ? "" : "s"} · last 24 hours` : "not inferred from manual entries"} accent="brand" icon={<TrendingUp className="h-5 w-5" />} />
+        <StatCard label="Theft Alerts" value={noRecordedFlagsButUnassessed ? "—" : num(highFlagCount)} sub={noRecordedFlagsButUnassessed ? "not assessed; nightly check overdue" : `${allFlagCount} total recorded flags · historical`} accent={noRecordedFlagsButUnassessed ? "amber" : highFlagCount > 0 ? "rose" : "emerald"} icon={<ShieldAlert className="h-5 w-5" />} />
+        <StatCard label="₹ at Risk" value={noRecordedFlagsButUnassessed ? "—" : inr(atRisk + anomalyValue, { compact: true })} sub={noRecordedFlagsButUnassessed ? "not assessed; no current check" : `${num(Math.round((flaggedLitres + anomalyLitres) * 10) / 10)} L · recorded transaction and anomaly values`} accent={noRecordedFlagsButUnassessed ? "amber" : atRisk + anomalyValue > 0 ? "rose" : "emerald"} icon={<TriangleAlert className="h-5 w-5" />} />
         <StatCard
           label="Unlogged Fills"
           value={unloggedFills.length === 0 && detectionIncomplete ? "—" : unloggedFills.length === 0 ? "0" : inr(unloggedValue, { compact: true })}
@@ -194,6 +201,28 @@ export async function Overview({ access }: { access: Access }) {
           icon={<Fuel className="h-5 w-5" />}
         />
       </div>
+
+      <Card className="border-brand-200 bg-brand-50/30">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-ink-900">How fleet mileage is calculated</p>
+            {measuredKmpl != null ? (
+              <p className="mt-1 text-sm text-slate-600">
+                <span className="font-semibold text-ink-900">{num(measuredKm)} km</span> measured distance ÷{" "}
+                <span className="font-semibold text-ink-900">{num(measuredLitres)} L</span> measured diesel burned ={" "}
+                <span className="font-semibold text-emerald-700">{measuredKmpl.toFixed(2)} km/L</span> over the last 24 hours.
+              </p>
+            ) : (
+              <p className="mt-1 text-sm text-slate-600">No Tata road vehicle has a complete, credible distance-and-fuel window in the last 24 hours.</p>
+            )}
+          </div>
+          <Link href="/fleet/trips" className="text-sm font-semibold text-brand-700 hover:underline">View vehicle-by-vehicle calculation</Link>
+        </div>
+        <p className="mt-2 text-xs leading-relaxed text-slate-500">
+          {telemetry.totals.activeVehicles} of {telemetry.totals.vehiclesReporting} reporting Tata vehicle{telemetry.totals.vehiclesReporting === 1 ? "" : "s"} included · {telemetry.totals.confidence.toLowerCase()} confidence
+          {telemetry.totals.vehiclesWithInsufficientData > 0 ? ` · ${telemetry.totals.vehiclesWithInsufficientData} excluded because their telemetry could not support a reliable fuel figure` : ""}.
+        </p>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
@@ -265,33 +294,21 @@ export async function Overview({ access }: { access: Access }) {
       {/* Efficiency leaderboard */}
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
-          <SectionTitle title="Best Mileage" action={<TrendingUp className="h-4 w-4 text-emerald-600" />} />
+          <SectionTitle title="Best Measured Mileage" subtitle="Eligible Tata vehicles · last 24 hours" action={<TrendingUp className="h-4 w-4 text-emerald-600" />} />
           <div className="space-y-2">
-            {fleet.best.map((r) => (
-              <div key={r.asset.id} className="flex flex-wrap items-center justify-between gap-3 text-sm">
-                <Link href={`/fleet/${r.asset.id}`} className="font-medium text-brand-700 hover:underline">{r.asset.code}</Link>
-                <span className="font-bold text-emerald-600">{r.efficiency!.toFixed(2)} km/L</span>
-              </div>
-            ))}
-            {fleet.best.length === 0 && telBest.map((a) => (
+            {telBest.map((a) => (
               <div key={a.assetId} className="flex flex-wrap items-center justify-between gap-3 text-sm">
                 <Link href={`/fleet/${a.assetId}`} className="font-medium text-brand-700 hover:underline">{a.code}</Link>
                 <span className="font-bold text-emerald-600">{a.usage.avgKmPerL!.toFixed(2)} km/L</span>
               </div>
             ))}
-            {fleet.best.length === 0 && telBest.length === 0 && <p className="text-sm text-slate-400">Not enough data yet.</p>}
+            {telBest.length === 0 && <p className="text-sm text-slate-400">Not enough measured data in the last 24 hours.</p>}
           </div>
         </Card>
         <Card>
-          <SectionTitle title="Worst Mileage — check these" action={<TrendingDown className="h-4 w-4 text-rose-600" />} />
+          <SectionTitle title="Lowest Measured Mileage" subtitle="Eligible Tata vehicles · last 24 hours" action={<TrendingDown className="h-4 w-4 text-rose-600" />} />
           <div className="space-y-2">
-            {fleet.worst.map((r) => (
-              <div key={r.asset.id} className="flex flex-wrap items-center justify-between gap-3 text-sm">
-                <Link href={`/fleet/${r.asset.id}`} className="font-medium text-brand-700 hover:underline">{r.asset.code}</Link>
-                <span className="font-bold text-rose-600">{r.efficiency!.toFixed(2)} km/L</span>
-              </div>
-            ))}
-            {fleet.worst.length === 0 && telWorst.map((a) => (
+            {telWorst.map((a) => (
               <div key={a.assetId} className="flex flex-wrap items-center justify-between gap-3 text-sm">
                 <div>
                   <Link href={`/fleet/${a.assetId}`} className="font-medium text-brand-700 hover:underline">{a.code}</Link>
@@ -300,7 +317,7 @@ export async function Overview({ access }: { access: Access }) {
                 <span className={`font-bold ${a.belowNorm ? "text-rose-600" : "text-slate-700"}`}>{a.usage.avgKmPerL!.toFixed(2)} km/L</span>
               </div>
             ))}
-            {fleet.worst.length === 0 && telWorst.length === 0 && <p className="text-sm text-slate-400">Not enough data yet.</p>}
+            {telWorst.length === 0 && <p className="text-sm text-slate-400">Not enough measured data in the last 24 hours.</p>}
           </div>
         </Card>
       </div>

@@ -44,6 +44,11 @@ test("fuel summaries distinguish not assessed from a measured zero", () => {
   assert.match(dashboard, /value=\{fuelLossPct == null \? "—"/);
   assert.match(overview, /not assessed; nightly check overdue/);
   assert.match(overview, /not assessed across all vehicles/);
+  assert.match(overview, /issueAmountById\.get\(flag\.entryId\)/);
+  assert.doesNotMatch(overview, /const atRisk = flaggedLitres \* 92\.5/);
+  assert.match(overview, /How fleet mileage is calculated/);
+  assert.match(overview, /measured distance ÷/);
+  assert.match(overview, /View vehicle-by-vehicle calculation/);
   assert.match(queue, /This does not mean every vehicle or tank was assessed/);
   assert.match(patterns, /available: boolean/);
   assert.match(patterns, /r\.status !== "insufficient"/);

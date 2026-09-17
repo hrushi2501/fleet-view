@@ -32,7 +32,7 @@ export default async function DashboardTelemetry({ assetWhere }: { assetWhere: P
         <StatCard
           label="Fleet efficiency"
           value={telemetry.totals.avgKmPerL != null ? `${telemetry.totals.avgKmPerL} km/L` : "—"}
-          sub={telemetry.totals.activeVehicles > 0 ? `Active Tata road vehicles only · ${telemetry.totals.confidence.toLowerCase()} confidence` : "No active Tata road vehicle has usable mileage"}
+          sub={telemetry.totals.avgKmPerL != null ? `${num(telemetry.totals.distanceKm)} km ÷ ${num(telemetry.totals.litresBurned)} L · ${telemetry.totals.confidence.toLowerCase()} confidence` : "No active Tata road vehicle has usable mileage"}
           accent={telemetry.perAsset.some((a) => a.belowNorm) ? "rose" : "emerald"}
           icon={<Gauge className="h-5 w-5" />}
         />

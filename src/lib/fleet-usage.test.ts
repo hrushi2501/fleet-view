@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { countsTowardFleetEfficiency } from "./fleet-usage.ts";
+import { calculateFleetEfficiency, countsTowardFleetEfficiency } from "./fleet-usage.ts";
 
 const vehicle = { category: "VEHICLE" };
 const equipment = { category: "EQUIPMENT" };
@@ -24,5 +24,28 @@ describe("fleet efficiency eligibility", () => {
     assert.equal(countsTowardFleetEfficiency(vehicle, { ...workingWindow, distanceKm: 2 }), false);
     assert.equal(countsTowardFleetEfficiency(vehicle, { ...workingWindow, avgKmPerL: null }), false);
     assert.equal(countsTowardFleetEfficiency(vehicle, { ...workingWindow, insufficientData: true }), false);
+  });
+
+  test("calculates total eligible distance divided by total eligible burn", () => {
+    const result = calculateFleetEfficiency([
+      { category: "VEHICLE", usage: workingWindow },
+      {
+        category: "VEHICLE",
+        usage: { distanceKm: 200, litresBurned: 100, avgKmPerL: 2, insufficientData: false },
+      },
+      {
+        category: "EQUIPMENT",
+        usage: { distanceKm: 500, litresBurned: 500, avgKmPerL: 1, insufficientData: false },
+      },
+      {
+        category: "VEHICLE",
+        usage: { distanceKm: 100, litresBurned: 2_000, avgKmPerL: 0.05, insufficientData: true },
+      },
+    ]);
+
+    assert.equal(result.included.length, 2);
+    assert.equal(result.distanceKm, 284);
+    assert.equal(result.litresBurned, 118);
+    assert.equal(result.avgKmPerL, 2.41);
   });
 });
