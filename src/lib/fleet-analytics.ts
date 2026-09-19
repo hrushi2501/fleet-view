@@ -105,7 +105,7 @@ export type FuelAnalysisConfig = {
   refuelPersistenceMinutes: number;
   /** A fill is only credible while the vehicle is effectively stationary. */
   refuelMaxSpeedKph: number;
-  /** Maximum credible commercial pump dispensing rate in litres per minute. */
+  /** Conservative ceiling for a high-flow diesel dispenser, litres per minute. */
   refuelMaxFillRateLpm: number;
   /**
    * Litres/hour above which a drop cannot be combustion. A large truck diesel
@@ -145,7 +145,9 @@ export const DEFAULT_FUEL_CONFIG: FuelAnalysisConfig = {
   refuelConfirmSamples: 4,
   refuelPersistenceMinutes: 5,
   refuelMaxSpeedKph: 3,
-  refuelMaxFillRateLpm: 250,
+  // High-volume truck nozzles are sold at up to ~284 L/min. Keep a little
+  // headroom for timestamp granularity while still rejecting impossible jumps.
+  refuelMaxFillRateLpm: 300,
   maxBurnRateLph: 120,
   defaultIdleLph: 4,
   normalGapMinutes: 15,
@@ -250,8 +252,9 @@ export function confirmSensorRefuel(
   const settledLevel = sortedSettled[Math.floor(sortedSettled.length / 2)]!;
   const litresAdded = round(settledLevel - baseline, 2);
 
-  // Flow rate sanity: commercial pump nozzles deliver at most cfg.refuelMaxFillRateLpm (120 L/min).
-  // Measure the actual delivery ramp from startIdx to where the level first reached the plateau.
+  // Flow-rate sanity. Measure the observed ramp from startIdx to the first
+  // sample at the plateau; if even that lower-bound rate clears the configured
+  // high-flow ceiling, the rise cannot be a credible fill.
   let plateauReachIdx = settledStart;
   for (let i = startIdx + 1; i <= settledStart; i++) {
     if (ordered[i].fuelLevelL! >= plateau - stabilityBand) {
@@ -318,6 +321,8 @@ export type SeriesHygiene = {
   impossibleLevels: number;
   /** No timestamp we can order by. */
   unusable: number;
+  /** Isolated 1-2 sample fuel impulses replaced from stable neighbours. */
+  transientFuelImpulses: number;
 };
 
 /**
@@ -339,6 +344,7 @@ export function cleanSeries(
     duplicateTimestamps: 0,
     impossibleLevels: 0,
     unusable: 0,
+    transientFuelImpulses: 0,
   };
 
   const usable = readings.filter((r) => {
@@ -377,6 +383,10 @@ export function cleanSeries(
   const rawLitres = samples.map((s) => s.fuelLevelL).filter((n): n is number => n != null);
   const isContradictory = senderContradictsItself(rawLitres, tankCapacityL);
   const despiked = isContradictory ? samples : despikeFuelSeries(samples, tankCapacityL, cfg);
+  hygiene.transientFuelImpulses = despiked.reduce(
+    (count, sample, index) => count + (sample.fuelLevelL !== samples[index]?.fuelLevelL ? 1 : 0),
+    0,
+  );
   return { samples: despiked, hygiene };
 }
 
@@ -391,80 +401,39 @@ export function despikeFuelSeries(
   tankCapacityL: number | null,
   cfg: FuelAnalysisConfig = DEFAULT_FUEL_CONFIG,
 ): AnalyticsReading[] {
-  if (samples.length < 3) return samples;
+  // Two stable observations on both sides are required. With fewer samples an
+  // isolated sender glitch is indistinguishable from a real short-lived event.
+  if (samples.length < 5) return samples;
   const { noiseBandL } = fuelThresholds(tankCapacityL, cfg);
   const spikeThresholdL = Math.max(15, noiseBandL * 2);
-
+  const shoulderBandL = noiseBandL * 2;
   const result: AnalyticsReading[] = [...samples];
 
-  // 1-sample impulse pass (e.g. 35 -> 110 -> 35 or 275 -> 68 -> 275)
-  for (let i = 1; i < result.length - 1; i++) {
-    const prev = result[i - 1]?.fuelLevelL;
-    const curr = result[i]?.fuelLevelL;
-    const next = result[i + 1]?.fuelLevelL;
+  // Detect against the immutable raw series. Mutating while detecting lets one
+  // replacement make the next oscillation look stable and can erase a broken
+  // sender one sample at a time.
+  for (const runLength of [2, 1] as const) {
+    for (let start = 2; start + runLength + 1 < samples.length; start++) {
+      const leftOuter = samples[start - 2]?.fuelLevelL;
+      const left = samples[start - 1]?.fuelLevelL;
+      const right = samples[start + runLength]?.fuelLevelL;
+      const rightOuter = samples[start + runLength + 1]?.fuelLevelL;
+      const impulse = samples.slice(start, start + runLength).map((sample) => sample.fuelLevelL);
 
-    if (prev == null || curr == null || next == null) continue;
+      if (leftOuter == null || left == null || right == null || rightOuter == null || impulse.some((level) => level == null)) continue;
+      if (Math.abs(left - leftOuter) > shoulderBandL || Math.abs(right - rightOuter) > shoulderBandL) continue;
+      if (Math.abs(right - left) > shoulderBandL) continue;
 
-    const diffPrev = curr - prev;
-    const diffNext = curr - next;
+      const upward = impulse.every((level) => level! - left > spikeThresholdL && level! - right > spikeThresholdL);
+      const downward = impulse.every((level) => left - level! > spikeThresholdL && right - level! > spikeThresholdL);
+      if (!upward && !downward) continue;
 
-    const isUpwardSpike = diffPrev > spikeThresholdL && diffNext > spikeThresholdL;
-    const isDownwardDip = -diffPrev > spikeThresholdL && -diffNext > spikeThresholdL;
-
-    if (isUpwardSpike || isDownwardDip) {
-      const baselineDiff = Math.abs(next - prev);
-      if (baselineDiff <= spikeThresholdL) {
-        // An isolated impulse occurs against an otherwise stable local baseline.
-        // If the surrounding readings are also oscillating wildly (e.g. 240, 35, 235, 31),
-        // the sender is bistable/broken; do not smooth it away so senderContradictsItself catches it.
-        const prevStable = i >= 2 && result[i - 2]?.fuelLevelL != null
-          ? Math.abs(prev - result[i - 2]!.fuelLevelL!) <= spikeThresholdL
-          : true;
-        const nextStable = i + 2 < result.length && result[i + 2]?.fuelLevelL != null
-          ? Math.abs(next - result[i + 2]!.fuelLevelL!) <= spikeThresholdL
-          : true;
-
-        if (prevStable || nextStable) {
-          result[i] = {
-            ...result[i]!,
-            fuelLevelL: round((prev + next) / 2, 2),
-          };
-        }
-      }
-    }
-  }
-
-  // 2-sample impulse pass (e.g. 35 -> 110 -> 108 -> 36)
-  for (let i = 1; i < result.length - 2; i++) {
-    const prev = result[i - 1]?.fuelLevelL;
-    const curr1 = result[i]?.fuelLevelL;
-    const curr2 = result[i + 1]?.fuelLevelL;
-    const next = result[i + 2]?.fuelLevelL;
-
-    if (prev == null || curr1 == null || curr2 == null || next == null) continue;
-
-    const diffPrev1 = curr1 - prev;
-    const diffPrev2 = curr2 - prev;
-    const diffNext1 = curr1 - next;
-    const diffNext2 = curr2 - next;
-
-    const isUpward2 = diffPrev1 > spikeThresholdL && diffPrev2 > spikeThresholdL && diffNext1 > spikeThresholdL && diffNext2 > spikeThresholdL;
-    const isDownward2 = -diffPrev1 > spikeThresholdL && -diffPrev2 > spikeThresholdL && -diffNext1 > spikeThresholdL && -diffNext2 > spikeThresholdL;
-
-    if (isUpward2 || isDownward2) {
-      const baselineDiff = Math.abs(next - prev);
-      if (baselineDiff <= spikeThresholdL) {
-        const prevStable = i >= 2 && result[i - 2]?.fuelLevelL != null
-          ? Math.abs(prev - result[i - 2]!.fuelLevelL!) <= spikeThresholdL
-          : true;
-        const nextStable = i + 3 < result.length && result[i + 3]?.fuelLevelL != null
-          ? Math.abs(next - result[i + 3]!.fuelLevelL!) <= spikeThresholdL
-          : true;
-
-        if (prevStable || nextStable) {
-          result[i] = { ...result[i]!, fuelLevelL: round(prev, 2) };
-          result[i + 1] = { ...result[i + 1]!, fuelLevelL: round(next, 2) };
-        }
+      for (let offset = 0; offset < runLength; offset++) {
+        const fraction = (offset + 1) / (runLength + 1);
+        result[start + offset] = {
+          ...samples[start + offset]!,
+          fuelLevelL: round(left + (right - left) * fraction, 2),
+        };
       }
     }
   }
@@ -1274,7 +1243,7 @@ export function analyseUsage(
   idleLph: number | null = null,
   cfg: FuelAnalysisConfig = DEFAULT_FUEL_CONFIG,
 ): { segments: Segment[]; usage: UsageSummary } {
-  const { samples, hygiene } = cleanSeries(readings, tankCapacityL);
+  const { samples, hygiene } = cleanSeries(readings, tankCapacityL, cfg);
 
   const segments: Segment[] = [];
   for (let i = 1; i < samples.length; i++) {
@@ -1286,9 +1255,14 @@ export function analyseUsage(
   const fuel = analyseFuelSeries(samples, tankCapacityL, cfg);
   const litreSeries = samples.map((sample) => sample.fuelLevelL).filter((n): n is number => n != null);
   const contradictorySender = senderContradictsItself(litreSeries, tankCapacityL);
+  // The window-level baseline deliberately ignores an unconfirmed rise. Its
+  // matching rapid fall can therefore be visible only in the pair analysis;
+  // that evidence must still withhold fuel KPIs instead of declaring the
+  // sender resolved because the window started and ended at the same level.
+  const hasImplausibleSegment = segments.some((segment) => segment.event === "IMPLAUSIBLE_DROP");
   const fuelResolution: UsageSummary["fuelResolution"] = contradictorySender
     ? "UNRESOLVED_CONTRADICTORY_SENDER"
-    : fuel.implausibleDrops.length > 0
+    : fuel.implausibleDrops.length > 0 || hasImplausibleSegment
       ? "UNRESOLVED_IMPLAUSIBLE_MOVEMENT"
       : "RESOLVED";
 
@@ -1332,6 +1306,8 @@ export function analyseUsage(
 
   if (contradictorySender) {
     reasons.unshift("Fuel sender repeatedly reported mutually incompatible rises and falls; fuel is not assessed.");
+  } else if (hasImplausibleSegment && fuel.implausibleDrops.length === 0) {
+    reasons.unshift("A pair of fuel readings implied movement no engine can produce; fuel is not assessed.");
   }
   const unresolved = fuelResolution !== "RESOLVED";
 

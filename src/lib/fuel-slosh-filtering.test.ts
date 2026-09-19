@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  analyseUsage,
   confirmSensorRefuel,
   despikeFuelSeries,
   analyseSegment,
+  DEFAULT_FUEL_CONFIG,
   type AnalyticsReading,
 } from "./fleet-analytics";
 
@@ -16,13 +18,10 @@ function reading(overrides: Partial<AnalyticsReading>): AnalyticsReading {
     lat: 27.83,
     lng: 73.92,
     speedKph: 0,
-    headingDeg: null,
     odometerKm: 97_000,
-    engineHours: null,
     fuelLevelPct: 50,
     fuelLevelL: 150,
     ignitionOn: true,
-    source: "GPS_API",
     ...overrides,
   };
 }
@@ -40,6 +39,30 @@ describe("fuel-slosh-filtering & refuel gating", () => {
     const despiked = despikeFuelSeries(raw, TANK);
     assert.equal(despiked[2]?.fuelLevelL, 35.45);
     assert.ok(despiked[2]!.fuelLevelL! < 40, "spike must be eliminated");
+  });
+
+  it("does not erase a repeating oscillation one sample at a time", () => {
+    const raw = [35, 36, 80, 35, 80, 36, 35].map((fuelLevelL, index) =>
+      reading({ recordedAt: at(index), fuelLevelL }),
+    );
+
+    const despiked = despikeFuelSeries(raw, TANK);
+    assert.deepEqual(despiked.map((sample) => sample.fuelLevelL), raw.map((sample) => sample.fuelLevelL));
+
+    const { usage } = analyseUsage(raw, null, TANK);
+    assert.equal(usage.fuelResolution, "UNRESOLVED_IMPLAUSIBLE_MOVEMENT");
+    assert.equal(usage.insufficientData, true);
+  });
+
+  it("uses the caller's fuel configuration during series cleaning", () => {
+    const raw = [35, 35, 80, 35, 35].map((fuelLevelL, index) =>
+      reading({ recordedAt: at(index), fuelLevelL }),
+    );
+    const cfg = { ...DEFAULT_FUEL_CONFIG, noiseBandMinL: 30 };
+
+    const { usage } = analyseUsage(raw, null, TANK, null, cfg);
+    assert.equal(usage.diagnostics.hygiene.transientFuelImpulses, 0);
+    assert.equal(usage.fuelResolution, "UNRESOLVED_IMPLAUSIBLE_MOVEMENT");
   });
 
   it("rejects cold-boot momentary dip-and-rebound in confirmSensorRefuel", () => {
