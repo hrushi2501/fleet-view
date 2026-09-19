@@ -84,7 +84,7 @@ describe("fuel-slosh-filtering & refuel gating", () => {
   });
 
   it("rejects fills that violate commercial pump flow rate limits", () => {
-    // 200 L rise in 20 seconds = 600 L/min, exceeding the 250 L/min maximum pump rate
+    // 200 L rise in 20 seconds = 600 L/min, exceeding the 300 L/min safety ceiling.
     const atSec = (sec: number) => new Date(Date.UTC(2026, 8, 17, 7, 0, sec));
     const readings: AnalyticsReading[] = [
       reading({ recordedAt: atSec(0), fuelLevelL: 50, ignitionOn: true, speedKph: 0 }),
