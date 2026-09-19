@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { ROLE_LABEL } from "@/lib/utils";
-import { LogOut, Search, Bell, BellRing, CircleAlert, Fuel, ShieldAlert, Wrench, FileWarning, Truck, X } from "lucide-react";
+import { LogOut, Search, Bell, BellRing, CircleAlert, Fuel, ShieldAlert, Wrench, FileWarning, Truck, X, MapPinned } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -35,11 +35,13 @@ export function Topbar({
   user,
   isDriver = false,
   notificationLogHref = null,
+  liveTrackingHref = null,
   quickActions = [],
 }: {
   user: { name: string; role: string };
   isDriver?: boolean;
   notificationLogHref?: string | null;
+  liveTrackingHref?: string | null;
   quickActions?: QuickAction[];
 }) {
   const router = useRouter();
@@ -140,6 +142,17 @@ export function Topbar({
               </kbd>
             </button>
             <QuickActionMenu actions={quickActions} />
+            {liveTrackingHref && (
+              <Link
+                href={liveTrackingHref}
+                className="group inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-2.5 text-xs font-semibold text-brand-700 shadow-xs transition-colors hover:border-brand-300 hover:bg-brand-100 hover:text-brand-800 sm:px-3"
+                title="Open live asset tracking"
+                aria-label="Open live asset tracking"
+              >
+                <MapPinned className="h-4 w-4 transition-transform group-hover:scale-110" aria-hidden="true" />
+                <span className="hidden xl:inline">Live Tracking</span>
+              </Link>
+            )}
             </>
           )}
         </div>

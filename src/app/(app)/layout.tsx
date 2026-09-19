@@ -43,6 +43,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <Topbar
             user={access.session}
             notificationLogHref={access.can("reports.view") ? "/reports/notifications" : null}
+            liveTrackingHref={access.can("fleet.view") ? "/fleet/tracking" : null}
             quickActions={quickActionsFor(access)}
             isDriver={isDriver}
           />
