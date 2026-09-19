@@ -105,6 +105,8 @@ export type FuelAnalysisConfig = {
   refuelPersistenceMinutes: number;
   /** A fill is only credible while the vehicle is effectively stationary. */
   refuelMaxSpeedKph: number;
+  /** Maximum credible commercial pump dispensing rate in litres per minute. */
+  refuelMaxFillRateLpm: number;
   /**
    * Litres/hour above which a drop cannot be combustion. A large truck diesel
    * at full load peaks near 60 L/h, so this is deliberately generous — it is
@@ -143,6 +145,7 @@ export const DEFAULT_FUEL_CONFIG: FuelAnalysisConfig = {
   refuelConfirmSamples: 4,
   refuelPersistenceMinutes: 5,
   refuelMaxSpeedKph: 3,
+  refuelMaxFillRateLpm: 250,
   maxBurnRateLph: 120,
   defaultIdleLph: 4,
   normalGapMinutes: 15,
@@ -205,6 +208,21 @@ export function confirmSensorRefuel(
     }
   }
   if (startIdx === -1 || plateau - baseline < refuelMinL) return null;
+
+  // Check the stable level before startIdx. If the tank was already at or near
+  // the plateau within the lookback window, then this was a temporary sensor
+  // dropout or cold-boot glitch rather than an empty tank being refuelled.
+  let preDipMax = baseline;
+  for (let i = startIdx - 1; i >= 0; i--) {
+    const elapsed = (endTime - ordered[i].recordedAt.getTime()) / 60_000;
+    if (elapsed > 180) break;
+    const l = ordered[i].fuelLevelL!;
+    if (l > preDipMax) preDipMax = l;
+  }
+  if (preDipMax >= plateau - stabilityBand && plateau - preDipMax < refuelMinL) {
+    return null;
+  }
+
   // After the initial jump, the readings must settle around one level. A
   // high/low/high slosh wave is not a fill even if every point clears the
   // absolute threshold.
@@ -230,13 +248,28 @@ export function confirmSensorRefuel(
   if (!stationary) return null;
 
   const settledLevel = sortedSettled[Math.floor(sortedSettled.length / 2)]!;
+  const litresAdded = round(settledLevel - baseline, 2);
+
+  // Flow rate sanity: commercial pump nozzles deliver at most cfg.refuelMaxFillRateLpm (120 L/min).
+  // Measure the actual delivery ramp from startIdx to where the level first reached the plateau.
+  let plateauReachIdx = settledStart;
+  for (let i = startIdx + 1; i <= settledStart; i++) {
+    if (ordered[i].fuelLevelL! >= plateau - stabilityBand) {
+      plateauReachIdx = i;
+      break;
+    }
+  }
+  const rampMinutes = (ordered[plateauReachIdx].recordedAt.getTime() - ordered[startIdx].recordedAt.getTime()) / 60_000;
+  if (rampMinutes > 0 && (litresAdded / rampMinutes) > cfg.refuelMaxFillRateLpm) {
+    return null;
+  }
+
   return {
     fromL: round(baseline, 2),
     toL: round(settledLevel, 2),
-    litresAdded: round(settledLevel - baseline, 2),
+    litresAdded,
     at: ordered[end].recordedAt,
   };
-  return null;
 }
 
 /** The two fuel thresholds resolved against a specific tank. */
@@ -298,6 +331,7 @@ export type SeriesHygiene = {
 export function cleanSeries(
   readings: AnalyticsReading[],
   tankCapacityL: number | null,
+  cfg: FuelAnalysisConfig = DEFAULT_FUEL_CONFIG,
 ): { samples: AnalyticsReading[]; hygiene: SeriesHygiene } {
   const hygiene: SeriesHygiene = {
     received: readings.length,
@@ -340,7 +374,102 @@ export function cleanSeries(
   }
 
   hygiene.used = samples.length;
-  return { samples, hygiene };
+  const rawLitres = samples.map((s) => s.fuelLevelL).filter((n): n is number => n != null);
+  const isContradictory = senderContradictsItself(rawLitres, tankCapacityL);
+  const despiked = isContradictory ? samples : despikeFuelSeries(samples, tankCapacityL, cfg);
+  return { samples: despiked, hygiene };
+}
+
+/**
+ * De-spikes a series of fuel level observations.
+ * Eliminates transient slosh impulses (where level spikes or drops for 1-2 samples
+ * and immediately returns to the previous baseline while the surrounding series is stable).
+ * Step changes (genuine fills or sustained drops) are preserved exactly.
+ */
+export function despikeFuelSeries(
+  samples: AnalyticsReading[],
+  tankCapacityL: number | null,
+  cfg: FuelAnalysisConfig = DEFAULT_FUEL_CONFIG,
+): AnalyticsReading[] {
+  if (samples.length < 3) return samples;
+  const { noiseBandL } = fuelThresholds(tankCapacityL, cfg);
+  const spikeThresholdL = Math.max(15, noiseBandL * 2);
+
+  const result: AnalyticsReading[] = [...samples];
+
+  // 1-sample impulse pass (e.g. 35 -> 110 -> 35 or 275 -> 68 -> 275)
+  for (let i = 1; i < result.length - 1; i++) {
+    const prev = result[i - 1]?.fuelLevelL;
+    const curr = result[i]?.fuelLevelL;
+    const next = result[i + 1]?.fuelLevelL;
+
+    if (prev == null || curr == null || next == null) continue;
+
+    const diffPrev = curr - prev;
+    const diffNext = curr - next;
+
+    const isUpwardSpike = diffPrev > spikeThresholdL && diffNext > spikeThresholdL;
+    const isDownwardDip = -diffPrev > spikeThresholdL && -diffNext > spikeThresholdL;
+
+    if (isUpwardSpike || isDownwardDip) {
+      const baselineDiff = Math.abs(next - prev);
+      if (baselineDiff <= spikeThresholdL) {
+        // An isolated impulse occurs against an otherwise stable local baseline.
+        // If the surrounding readings are also oscillating wildly (e.g. 240, 35, 235, 31),
+        // the sender is bistable/broken; do not smooth it away so senderContradictsItself catches it.
+        const prevStable = i >= 2 && result[i - 2]?.fuelLevelL != null
+          ? Math.abs(prev - result[i - 2]!.fuelLevelL!) <= spikeThresholdL
+          : true;
+        const nextStable = i + 2 < result.length && result[i + 2]?.fuelLevelL != null
+          ? Math.abs(next - result[i + 2]!.fuelLevelL!) <= spikeThresholdL
+          : true;
+
+        if (prevStable || nextStable) {
+          result[i] = {
+            ...result[i]!,
+            fuelLevelL: round((prev + next) / 2, 2),
+          };
+        }
+      }
+    }
+  }
+
+  // 2-sample impulse pass (e.g. 35 -> 110 -> 108 -> 36)
+  for (let i = 1; i < result.length - 2; i++) {
+    const prev = result[i - 1]?.fuelLevelL;
+    const curr1 = result[i]?.fuelLevelL;
+    const curr2 = result[i + 1]?.fuelLevelL;
+    const next = result[i + 2]?.fuelLevelL;
+
+    if (prev == null || curr1 == null || curr2 == null || next == null) continue;
+
+    const diffPrev1 = curr1 - prev;
+    const diffPrev2 = curr2 - prev;
+    const diffNext1 = curr1 - next;
+    const diffNext2 = curr2 - next;
+
+    const isUpward2 = diffPrev1 > spikeThresholdL && diffPrev2 > spikeThresholdL && diffNext1 > spikeThresholdL && diffNext2 > spikeThresholdL;
+    const isDownward2 = -diffPrev1 > spikeThresholdL && -diffPrev2 > spikeThresholdL && -diffNext1 > spikeThresholdL && -diffNext2 > spikeThresholdL;
+
+    if (isUpward2 || isDownward2) {
+      const baselineDiff = Math.abs(next - prev);
+      if (baselineDiff <= spikeThresholdL) {
+        const prevStable = i >= 2 && result[i - 2]?.fuelLevelL != null
+          ? Math.abs(prev - result[i - 2]!.fuelLevelL!) <= spikeThresholdL
+          : true;
+        const nextStable = i + 3 < result.length && result[i + 3]?.fuelLevelL != null
+          ? Math.abs(next - result[i + 3]!.fuelLevelL!) <= spikeThresholdL
+          : true;
+
+        if (prevStable || nextStable) {
+          result[i] = { ...result[i]!, fuelLevelL: round(prev, 2) };
+          result[i + 1] = { ...result[i + 1]!, fuelLevelL: round(next, 2) };
+        }
+      }
+    }
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -593,7 +722,9 @@ export function analyseFuelSeries(
       // A rise big enough to be a fill. Confirm it persisted: fuel that is
       // really in the tank is still there on the next sample, a splash is not.
       const confirmed = confirmRise(levelled, i, baseline + refuelMinL, cfg.refuelConfirmSamples);
-      if (confirmed) {
+      const rampMinutes = hoursSinceBaseline * 60;
+      const plausibleFlow = rampMinutes <= 0 || (delta / rampMinutes) <= cfg.refuelMaxFillRateLpm;
+      if (confirmed && plausibleFlow) {
         refuels.push({
           at: r.recordedAt,
           fromL: round(baseline, 2),
@@ -890,11 +1021,29 @@ export function analyseSegment(
   let rateImplausible = false;
 
   if (fuelDeltaL != null && fuelDeltaL >= refuelMinL) {
-    event = "REFUEL";
-    reasons.push(
-      `Tank rose ${fuelDeltaL.toFixed(1)} L, clearing the ${refuelMinL.toFixed(1)} L fill ` +
-        `threshold for a ${tankCapacityL ?? "?"} L tank — recorded as a fill, not consumption.`,
-    );
+    const movedKm = distanceKm ?? gpsDistanceKm ?? 0;
+    const speed = Math.max(Math.abs(a.speedKph ?? 0), Math.abs(b.speedKph ?? 0));
+    const isMoving = speed > cfg.refuelMaxSpeedKph || movedKm >= cfg.stationaryKm;
+    const impliedLpm = hours > 0 ? (fuelDeltaL / (hours * 60)) : Infinity;
+    const isRateImplausible = impliedLpm > cfg.refuelMaxFillRateLpm;
+
+    if (isMoving) {
+      event = "NOISE";
+      reasons.push(
+        `Tank level rose ${fuelDeltaL.toFixed(1)} L while vehicle was in motion (${speed.toFixed(0)} km/h, ${movedKm.toFixed(1)} km) — treated as liquid slosh, not a fill.`,
+      );
+    } else if (isRateImplausible) {
+      event = "NOISE";
+      reasons.push(
+        `Tank level rose ${fuelDeltaL.toFixed(1)} L in ${(hours * 60).toFixed(1)} min (${impliedLpm.toFixed(0)} L/min) — exceeds physical pump delivery rate (${cfg.refuelMaxFillRateLpm} L/min). Treated as sensor movement.`,
+      );
+    } else {
+      event = "REFUEL";
+      reasons.push(
+        `Tank rose ${fuelDeltaL.toFixed(1)} L, clearing the ${refuelMinL.toFixed(1)} L fill ` +
+          `threshold for a ${tankCapacityL ?? "?"} L tank — recorded as a fill, not consumption.`,
+      );
+    }
   } else if (fuelDeltaL != null && Math.abs(fuelDeltaL) < noiseBandL) {
     // The single most important guard in this file. A 300 L tank's sender moves
     // by more than a litre while the vehicle is switched off; treating that as
