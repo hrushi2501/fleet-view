@@ -25,9 +25,12 @@ import {
 } from "react-leaflet";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LiveStatus } from "@/lib/fleet-edge-live";
-import { iconCacheKey } from "@/lib/map-icon-key";
 import type { TrackPoint } from "@/components/FleetEdgePlayback";
+import { iconCacheKey } from "@/lib/map-icon-key";
 import { resolveOverlappingFleet } from "@/lib/map-clustering";
+import { installSmoothWheelZoom } from "@/lib/leaflet-smooth-wheel-zoom";
+
+installSmoothWheelZoom(L);
 
 export type MapView = "streets" | "satellite" | "hybrid";
 
@@ -396,7 +399,7 @@ function StreetTiles() {
         url={ESRI_STREETS}
         maxZoom={19}
         updateWhenIdle
-        keepBuffer={3}
+        keepBuffer={8}
       />
     );
   }
@@ -410,7 +413,7 @@ function StreetTiles() {
       // Fetch on settle rather than through every frame of a pan. Fewer
       // requests, which also keeps us further inside OSM's rate limits.
       updateWhenIdle
-      keepBuffer={3}
+      keepBuffer={8}
       eventHandlers={{ tileerror: onTileError }}
     />
   );
@@ -442,7 +445,11 @@ export default function FleetEdgeMap({
       center={[26.9, 74.2]}
       zoom={7}
       minZoom={3}
-      scrollWheelZoom
+      zoomSnap={0}
+      zoomDelta={0.5}
+      scrollWheelZoom={false}
+      smoothWheelZoom={true}
+      smoothSensitivity={1}
       // Leaflet's own control, bottom-right, clear of the status strip and the
       // playback bar. Pinch-zoom is not available on a laptop trackpad and the
       // console is used on one.
@@ -462,13 +469,13 @@ export default function FleetEdgeMap({
           url={ESRI_IMAGERY}
           maxZoom={19}
           updateWhenIdle
-          keepBuffer={3}
+          keepBuffer={8}
         />
       )}
       {view === "hybrid" && (
         <>
-          <TileLayer url={ESRI_ROADS} maxZoom={19} updateWhenIdle />
-          <TileLayer url={ESRI_LABELS} maxZoom={19} updateWhenIdle />
+          <TileLayer url={ESRI_ROADS} maxZoom={19} updateWhenIdle keepBuffer={8} />
+          <TileLayer url={ESRI_LABELS} maxZoom={19} updateWhenIdle keepBuffer={8} />
         </>
       )}
 

@@ -116,10 +116,13 @@ a,
   border-radius: 8px;
 }
 
-/* Smooth transitions for map markers, clusters, and spiderfying */
+/* Smooth transitions for map markers and spiderfying.
+   Deliberately omit `transform` from `.leaflet-marker-icon` transitions:
+   Leaflet animates and positions markers via matrix transforms on every animation frame.
+   Adding a CSS transition to transform delays position updates by 300ms, causing markers
+   to drift and lag behind the map during zoom. */
 .leaflet-marker-pane .leaflet-marker-icon {
-  transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  will-change: transform, opacity;
+  transition: opacity 0.2s ease-out;
 }
 
 .fleetview-cluster-badge {
