@@ -1,7 +1,8 @@
 import { db } from "@/lib/db";
 import { Card, SectionTitle, Badge, StatCard } from "@/components/ui";
 import { RunReconButton, DipForm, NormForm } from "@/components/FuelForms";
-import { reconcileTank, DIP_TOLERANCE_L, type TankLite } from "@/lib/fuel-recon";
+import { type TankLite } from "@/lib/fuel-recon";
+import { reconcileTankDynamic, resolveTankThresholds } from "@/lib/fuel-recon-engine";
 import { getDieselRate } from "@/lib/settings";
 import { inr, num, fmtDate, ASSET_CLASS_LABEL } from "@/lib/utils";
 import { Scale, TriangleAlert, CheckCircle2, HelpCircle, IndianRupee } from "lucide-react";
@@ -49,15 +50,20 @@ export async function Reconciliation() {
   const tankOpts = tanks.map((t) => ({ id: t.id, label: `${t.name} — ${t.location}` }));
 
   // Live reconciliation against every tank's full dip history.
-  const live = tanks.map((t) => {
+  const liveWithThresholds = await Promise.all(tanks.map(async (t) => {
     const lite: TankLite = { id: t.id, name: t.name, location: t.location, capacity: t.capacity, minLevel: t.minLevel };
-    return reconcileTank(
+    const thresholds = await resolveTankThresholds(t.id, t.projectId);
+    const result = reconcileTankDynamic(
       lite,
       t.receipts.map((r) => ({ id: r.id, date: r.date, qtyInvoiced: r.qtyInvoiced, qtyReceived: r.qtyReceived, amount: r.amount, supplier: r.supplier, shortfall: r.shortfall })),
       t.issues.map((i) => ({ id: i.id, date: i.date, quantity: i.quantity, assetId: i.assetId, amount: i.amount })),
-      t.dips.map((p) => ({ id: p.id, date: p.date, level: p.level }))
+      t.dips.map((p) => ({ id: p.id, date: p.date, level: p.level })),
+      thresholds,
     );
-  });
+    return { result, tolerance: thresholds.dipToleranceL };
+  }));
+  const live = liveWithThresholds.map(({ result }) => result);
+  const toleranceByTank = new Map(liveWithThresholds.map(({ result, tolerance }) => [result.tank.id, tolerance]));
 
   const missingL = live.reduce((s, r) => s + Math.max(0, -r.varianceL), 0);
   const throughput = live.reduce((s, r) => s + r.throughput, 0);
@@ -95,7 +101,7 @@ export async function Reconciliation() {
         <div className="p-5 pb-3">
           <SectionTitle
             title="Live Tank Check"
-            subtitle={`Computed between each tank's first and last dip · tolerance ±${DIP_TOLERANCE_L} L`}
+            subtitle="Computed between each tank's first and last dip · configured per tank/project"
           />
         </div>
         <div className="overflow-x-auto">
@@ -136,7 +142,7 @@ export async function Reconciliation() {
                     {r.status === "insufficient" ? (
                       <span className="text-slate-300">—</span>
                     ) : (
-                      <span className={`font-bold ${r.varianceL < -DIP_TOLERANCE_L ? "text-rose-600" : Math.abs(r.varianceL) <= DIP_TOLERANCE_L ? "text-emerald-600" : "text-amber-600"}`}>
+                      <span className={`font-bold ${r.varianceL < -(toleranceByTank.get(r.tank.id) ?? 0) ? "text-rose-600" : Math.abs(r.varianceL) <= (toleranceByTank.get(r.tank.id) ?? 0) ? "text-emerald-600" : "text-amber-600"}`}>
                         {r.varianceL > 0 ? "+" : ""}{num(r.varianceL)} L
                         <span className="block text-xs font-normal text-slate-400">{r.variancePct.toFixed(2)}%</span>
                       </span>
@@ -227,7 +233,7 @@ export async function Reconciliation() {
                   <td className="px-5 py-3 text-right text-slate-600">{num(h.expectedClosing)} L</td>
                   <td className="px-5 py-3 text-right text-slate-600">{num(h.actualClosing)} L</td>
                   <td className="px-5 py-3 text-right">
-                    <span className={`font-bold ${h.varianceL < -DIP_TOLERANCE_L ? "text-rose-600" : Math.abs(h.varianceL) <= DIP_TOLERANCE_L ? "text-emerald-600" : "text-amber-600"}`}>
+                    <span className={`font-bold ${h.varianceL < -(toleranceByTank.get(h.tankId) ?? 0) ? "text-rose-600" : Math.abs(h.varianceL) <= (toleranceByTank.get(h.tankId) ?? 0) ? "text-emerald-600" : "text-amber-600"}`}>
                       {h.varianceL > 0 ? "+" : ""}{num(h.varianceL)} L
                     </span>
                   </td>

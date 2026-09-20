@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { getDieselRate } from "@/lib/settings";
+import { getFuelRate } from "@/lib/settings";
 
 export interface SignalInput {
   id: string;
@@ -97,9 +97,11 @@ export function correlateSignals(signals: SignalInput[]): CorrelatedAnomalyCase[
  */
 export async function syncUnifiedAnomalies(rawSignals: SignalInput[]) {
   const correlated = correlateSignals(rawSignals);
-  const rate = await getDieselRate();
-
   for (const c of correlated) {
+    const asset = c.assetId
+      ? await db.asset.findUnique({ where: { id: c.assetId }, select: { fuelType: true } })
+      : null;
+    const rate = asset ? await getFuelRate(asset.fuelType) : null;
     await db.unifiedAnomaly.upsert({
 
       where: { caseNo: c.caseNo },
@@ -110,7 +112,7 @@ export async function syncUnifiedAnomalies(rawSignals: SignalInput[]) {
         score: c.score,
         confidence: c.confidence,
         litresAtRisk: c.totalLitresAtRisk,
-        valueAtRisk: c.totalValueAtRisk || c.totalLitresAtRisk * rate,
+        valueAtRisk: c.totalValueAtRisk || (rate == null ? 0 : c.totalLitresAtRisk * rate),
         signals: JSON.stringify(c.signals),
         assetId: c.assetId || null,
         tankId: c.tankId || null,
@@ -123,7 +125,7 @@ export async function syncUnifiedAnomalies(rawSignals: SignalInput[]) {
         score: c.score,
         confidence: c.confidence,
         litresAtRisk: c.totalLitresAtRisk,
-        valueAtRisk: c.totalValueAtRisk || c.totalLitresAtRisk * rate,
+        valueAtRisk: c.totalValueAtRisk || (rate == null ? 0 : c.totalLitresAtRisk * rate),
         signals: JSON.stringify(c.signals),
       },
     });

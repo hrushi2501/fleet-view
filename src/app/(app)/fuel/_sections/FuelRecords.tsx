@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { Card, SectionTitle, StatCard, Badge } from "@/components/ui";
 import { inr, num, fmtDate } from "@/lib/utils";
-import { getDieselRate } from "@/lib/settings";
+import { getFuelRates } from "@/lib/settings";
 import { Fuel, Truck, MapPin, IndianRupee, Clock, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 
@@ -21,11 +21,11 @@ import { recordScope } from "@/lib/record-access";
 export async function FuelRecords({ access }: { access: Access }) {
   // Rows, not just the page: a scoped supervisor sees their own sites.
   const visible = assetScope(access);
-  const dieselRatePromise = getDieselRate();
+  const fuelRatesPromise = getFuelRates();
   // A cold 14-day detector scan currently reads about 175,000 telemetry rows
   // and breaches the production request window. Keep this interactive screen
   // to the live 24-hour window; older persisted issues remain in Fill History.
-  const detectedPromise = dieselRatePromise.then((rate) => getDetectedFills(visible, rate, 1));
+  const detectedPromise = fuelRatesPromise.then((rates) => getDetectedFills(visible, rates, 1));
   const [issues, recordedTotals, assets, tanks, detectedResult] = await Promise.all([
     db.fuelTransaction.findMany({
       where: { type: "ISSUE", asset: visible },
@@ -58,7 +58,8 @@ export async function FuelRecords({ access }: { access: Access }) {
   const detected = detectedResult.fills.filter((fill) => fill.at >= liveWindowStart);
   const unreliableSenders = detectedResult.unreliable;
   const unlogged = detected.filter((f) => !f.logged);
-  const unloggedValue = unlogged.reduce((s, f) => s + f.estimatedValue, 0);
+  const allUnloggedPriced = unlogged.every((f) => f.estimatedValue != null);
+  const unloggedValue = unlogged.reduce((s, f) => s + (f.estimatedValue ?? 0), 0);
   // Litres the sensors saw with no entry behind them. Keep this visible beside
   // the recorded total, but do not add it to that ledger figure: it still needs
   // a person to confirm whether it was a real fill and enter its paperwork.
@@ -93,7 +94,7 @@ export async function FuelRecords({ access }: { access: Access }) {
           icon={<IndianRupee className="h-5 w-5" />}
         />
         <StatCard
-          label="Recorded Diesel Issued"
+          label="Recorded Fuel Issued"
           value={`${num(headline.recorded.litres)} L`}
           sub={headline.sensorOnly.litres > 0 ? `${num(headline.sensorOnly.litres)} L sensor-only shown separately` : "from recorded entries"}
           accent="violet"
@@ -109,8 +110,8 @@ export async function FuelRecords({ access }: { access: Access }) {
             <SectionTitle
               title={`${unlogged.length} fill${unlogged.length === 1 ? "" : "s"} nobody entered`}
               subtitle={
-                "The fuel sensor saw diesel go in over the last 24 hours, but no one entered these fills. " +
-                "Usually the bill just has not been entered yet, or the diesel came from a site tank. Best checked today." +
+                "The fuel sensor saw fuel go in over the last 24 hours, but no one entered these fills. " +
+                "Usually the bill just has not been entered yet, or the fuel came from a site tank. Best checked today." +
                 (unreliableSenders.length > 0
                   ? ` Not shown: ${unreliableSenders.map((u) => u.assetCode).join(", ")} — the fuel sensor on ${unreliableSenders.length === 1 ? "this vehicle" : "these vehicles"} is giving wrong readings, so its fills cannot be trusted.`
                   : "")
@@ -149,7 +150,7 @@ export async function FuelRecords({ access }: { access: Access }) {
                       {f.fromL != null && f.toL != null ? `${num(f.fromL)} → ${num(f.toL)} L` : "—"}
                     </td>
                     <td className="px-5 py-3 font-medium text-ink-900">
-                      {inr(f.estimatedValue, { compact: true })}
+                      {f.estimatedValue == null ? "Rate not configured" : inr(f.estimatedValue, { compact: true })}
                     </td>
                     <td className="px-5 py-3">
                       {f.lat != null && f.lng != null ? (
@@ -180,7 +181,7 @@ export async function FuelRecords({ access }: { access: Access }) {
           </div>
           <div className="border-t border-amber-100 bg-amber-50/40 px-5 py-3 text-xs text-amber-900">
             <ShieldAlert className="mr-1 inline h-3.5 w-3.5" />
-            About {inr(unloggedValue, { compact: true })} of diesel at the current rate. This is fuel that
+            {allUnloggedPriced ? `About ${inr(unloggedValue, { compact: true })}` : "Some value is unpriced because a vehicle fuel type or rate is missing"}. This is fuel that
             physically moved without paperwork behind it — not evidence of loss, but a question worth answering.
           </div>
         </Card>

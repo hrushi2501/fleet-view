@@ -243,10 +243,10 @@ export type ScoredAnomaly = {
  * Score is capped at 100 and weighted by both absolute litres and % of throughput,
  * so a 200 L gap on a small tank outranks the same gap on a depot tank.
  */
-export function scoreTankRecon(r: TankRecon, dieselRate: number): ScoredAnomaly | null {
+export function scoreTankRecon(r: TankRecon, dieselRate: number, dipToleranceL = DIP_TOLERANCE_L): ScoredAnomaly | null {
   if (r.status === "ok" || r.status === "insufficient") return null;
   const missing = Math.max(0, -r.varianceL) + r.shortDeliveryL;
-  if (missing <= 0 && r.varianceL <= DIP_TOLERANCE_L) return null;
+  if (missing <= 0 && r.varianceL <= dipToleranceL) return null;
 
   const litres = missing > 0 ? missing : Math.abs(r.varianceL);
   const pctWeight = Math.min(60, Math.abs(r.variancePct) * 15);

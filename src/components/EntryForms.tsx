@@ -17,10 +17,12 @@ import {
   saveAsset, deleteAsset, saveDriver, deleteDriver, saveFuel,
   saveWorkOrder, updateWorkOrderStatus, saveCompliance, saveProject,
   updateProject, deleteProject,
-  saveUser, deleteUser, updateFuel, deleteFuel, setDieselRate,
+  saveUser, deleteUser, updateFuel, deleteFuel, setFuelRates,
 } from "@/app/(app)/entry-actions";
+import type { FuelRates, FuelType } from "@/lib/settings";
 
 type Opt = { id: string; label: string };
+type FuelAssetOpt = Opt & { fuelType: FuelType | null };
 
 /* ----------------------------- primitives ----------------------------- */
 const inputCls = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
@@ -303,7 +305,17 @@ export function AssetEntry({ projects, asset }: { projects: Opt[]; asset?: Asset
             <Inp label="Transmission" name="transmission" defaultValue={asset?.transmission ?? ""} placeholder="G1150 9-Speed" />
             <Inp label="Engine Power (HP)" name="enginePowerHp" type="number" defaultValue={asset?.enginePowerHp ?? ""} />
             <Inp label="Torque (Nm)" name="torqueNm" type="number" defaultValue={asset?.torqueNm ?? ""} />
-            <Inp label="Fuel Type" name="fuelType" defaultValue={asset?.fuelType ?? ""} placeholder="DIESEL" />
+            <Sel
+              label="Fuel Type"
+              name="fuelType"
+              defaultValue={asset?.fuelType ?? ""}
+              required
+              options={[
+                { value: "", label: "— Select fuel type —" },
+                { value: "DIESEL", label: "Diesel" },
+                { value: "PETROL", label: "Petrol" },
+              ]}
+            />
             <Inp label="Emission Norm" name="emissionNorm" defaultValue={asset?.emissionNorm ?? ""} placeholder="BS 6" />
             <Inp label="Gross Weight — Laden (kg)" name="ladenWeightKg" type="number" defaultValue={asset?.ladenWeightKg ?? ""} />
             <Inp label="Kerb Weight — Unladen (kg)" name="unladenWeightKg" type="number" defaultValue={asset?.unladenWeightKg ?? ""} />
@@ -460,18 +472,19 @@ function PhotoField({ label, name, file, setFile }: { label: string; name: strin
   );
 }
 
-export function DieselRateSetter({ current }: { current: number }) {
+export function FuelRateSetter({ current }: { current: FuelRates }) {
   const [pending, start] = useTransition();
-  const [val, setVal] = useState(String(current));
+  const [diesel, setDiesel] = useState(current.DIESEL == null ? "" : String(current.DIESEL));
+  const [petrol, setPetrol] = useState(current.PETROL == null ? "" : String(current.PETROL));
   const router = useRouter();
   const toast = useToast();
 
   function save() {
-    const fd = new FormData(); fd.set("rate", val);
+    const fd = new FormData(); fd.set("diesel", diesel); fd.set("petrol", petrol);
     start(async () => {
       try {
-        await setDieselRate(fd);
-        toast.success(`✓ Company diesel rate updated to ₹${val}/L`);
+        await setFuelRates(fd);
+        toast.success("Fuel rates updated", `Diesel ₹${diesel}/L · Petrol ₹${petrol}/L`);
         router.refresh();
       } catch (e) {
         toast.error("Failed to update rate", e instanceof Error ? e.message : "Error");
@@ -480,9 +493,11 @@ export function DieselRateSetter({ current }: { current: number }) {
   }
 
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-xs">
-      <span className="text-xs font-medium text-slate-500">Diesel rate ₹/L</span>
-      <input value={val} onChange={(e) => setVal(e.target.value)} inputMode="decimal" className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm font-semibold outline-none focus:border-brand-400" />
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-xs">
+      <span className="text-xs font-medium text-slate-500">Diesel ₹/L</span>
+      <input value={diesel} onChange={(e) => setDiesel(e.target.value)} inputMode="decimal" className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm font-semibold outline-none focus:border-brand-400" />
+      <span className="text-xs font-medium text-slate-500">Petrol ₹/L</span>
+      <input value={petrol} onChange={(e) => setPetrol(e.target.value)} inputMode="decimal" className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm font-semibold outline-none focus:border-brand-400" />
       <button onClick={save} disabled={pending} className="rounded-lg bg-brand-500 px-3 py-1 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-60 transition-colors">
         {pending ? "…" : "Save"}
       </button>
@@ -490,7 +505,7 @@ export function DieselRateSetter({ current }: { current: number }) {
   );
 }
 
-export function FuelEntry({ assets, projects, defaultRate = 92.5 }: { assets: Opt[]; projects: Opt[]; defaultRate?: number }) {
+export function FuelEntry({ assets, projects, fuelRates }: { assets: FuelAssetOpt[]; projects: Opt[]; fuelRates: FuelRates }) {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const [err, setErr] = useState("");
@@ -499,7 +514,17 @@ export function FuelEntry({ assets, projects, defaultRate = 92.5 }: { assets: Op
   
   // Live calculation state
   const [qty, setQty] = useState("");
-  const [rate, setRate] = useState(String(defaultRate));
+  const [assetId, setAssetId] = useState("");
+  const selectedAsset = assets.find((asset) => asset.id === assetId);
+  const configuredRate = selectedAsset?.fuelType ? fuelRates[selectedAsset.fuelType] : null;
+  const [rate, setRate] = useState("");
+
+  function selectAsset(id: string) {
+    setAssetId(id);
+    const asset = assets.find((candidate) => candidate.id === id);
+    const nextRate = asset?.fuelType ? fuelRates[asset.fuelType] : null;
+    setRate(nextRate == null ? "" : String(nextRate));
+  }
 
   const router = useRouter();
   const toast = useToast();
@@ -522,7 +547,7 @@ export function FuelEntry({ assets, projects, defaultRate = 92.5 }: { assets: Op
           return;
         }
         setOpen(false); setOdo(null); setPump(null);
-        toast.success(`✓ Diesel issue of ${qty} L recorded successfully`, `Total: ${inr(totalAmount)}`);
+        toast.success(`✓ Fuel issue of ${qty} L recorded successfully`, `Total: ${inr(totalAmount)}`);
         await invalidateFuelQueries(queryClient);
         router.refresh();
       } catch (e: unknown) {
@@ -552,10 +577,10 @@ export function FuelEntry({ assets, projects, defaultRate = 92.5 }: { assets: Op
                 <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Type <span className="text-rose-500">*</span></span>
                   <select name="type" defaultValue="ISSUE" required className={sel}><option value="ISSUE">Fuel Issue (to vehicle)</option><option value="RECEIPT">Receipt (into tank)</option></select></label>
                 <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Vehicle <span className="text-rose-500">*</span></span>
-                  <select name="assetId" required className={sel}><option value="">— Select vehicle —</option>{assets.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</select></label>
+                  <select name="assetId" required value={assetId} onChange={(e) => selectAsset(e.target.value)} className={sel}><option value="">— Select vehicle —</option>{assets.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</select></label>
                 <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Project / Site</span>
                   <select name="projectId" className={sel}><option value="">— Select Project —</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>
-                <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Diesel Quantity (Litres) <span className="text-rose-500">*</span></span>
+                <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Fuel Quantity (Litres) <span className="text-rose-500">*</span></span>
                   <input
                     name="quantity"
                     type="number"
@@ -566,6 +591,11 @@ export function FuelEntry({ assets, projects, defaultRate = 92.5 }: { assets: Op
                     className={sel}
                     placeholder="e.g. 120"
                   /></label>
+                {selectedAsset && (!selectedAsset.fuelType || configuredRate == null) ? (
+                  <p className="sm:col-span-2 text-xs font-medium text-amber-700">
+                    {!selectedAsset.fuelType ? "Set this vehicle's fuel type in Asset Master." : `${selectedAsset.fuelType === "DIESEL" ? "Diesel" : "Petrol"} rate is not configured.`}
+                  </p>
+                ) : null}
                 <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Odometer / Hour-meter Reading</span>
                   <input name="meterValue" type="number" className={sel} placeholder="e.g. 45230" /></label>
                 <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Rate (₹/L)</span>
@@ -673,7 +703,7 @@ export function FuelEdit({ txn }: { txn: { id: string; label: string; quantity: 
             </div>
             <form onSubmit={submit} className="p-6">
               <div className="grid grid-cols-2 gap-4">
-                <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Diesel (Litres)</span>
+                <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Fuel (Litres)</span>
                   <input name="quantity" type="number" step="0.1" value={qty} onChange={(e) => setQty(e.target.value)} required className={cls} /></label>
                 <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Meter Reading</span>
                   <input name="meterValue" type="number" defaultValue={txn.meterValue} className={cls} /></label>
@@ -715,7 +745,7 @@ export function FuelEdit({ txn }: { txn: { id: string; label: string; quantity: 
         onClose={() => setConfirmDelete(false)}
         onConfirm={remove}
         title="Delete Fuel Entry?"
-        description="Are you sure you want to delete this diesel transaction record? This cannot be undone."
+        description="Are you sure you want to delete this fuel transaction record? This cannot be undone."
         confirmLabel="Delete Transaction"
         tone="danger"
       />

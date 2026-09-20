@@ -43,7 +43,7 @@ import {
   pickFuelScanNorm,
   prepareFuelScanEvidence,
 } from "@/lib/fuel-theft-scan-evidence";
-import { getDieselRate } from "@/lib/settings";
+import { getFuelRate } from "@/lib/settings";
 import { recordSystemAudit } from "@/lib/audit-writer";
 import { TATA_PROVIDER_CODE } from "@/lib/tata-fleet-edge";
 
@@ -92,11 +92,9 @@ export async function scanForFuelTheft(
   options: { assetId?: string; trigger?: "nightly" | "manual" } = {},
 ): Promise<ScanOutcome> {
   const since = new Date(Date.now() - sinceHours * 3_600_000);
-  const rate = await getDieselRate();
-
   const assets = await db.asset.findMany({
     where: { status: { not: "Off-hired" }, ...(options.assetId ? { id: options.assetId } : {}) },
-    select: { id: true, code: true, registrationNo: true, fuelCapacity: true, assetClass: true },
+    select: { id: true, code: true, registrationNo: true, fuelCapacity: true, assetClass: true, fuelType: true },
   });
 
   // `GPS_API` is a delivery channel, not a provider identity. More than one
@@ -139,6 +137,7 @@ export async function scanForFuelTheft(
   const out: ScanOutcome = { scanned: 0, raised: 0, duplicates: 0, notAssessed: [], findings: [] };
 
   for (const asset of assets) {
+    const rate = await getFuelRate(asset.fuelType);
     const rows = byAsset.get(asset.id) ?? [];
     const note = (reason: string) =>
       out.notAssessed.push({ code: asset.code, registrationNo: asset.registrationNo, reason });
@@ -256,7 +255,7 @@ export async function scanForFuelTheft(
           severity: seg.confidence === "HIGH" ? "HIGH" : "MEDIUM",
           score: seg.confidence === "HIGH" ? 80 : 55,
           litres,
-          valueAtRisk: Math.round(litres * rate),
+          valueAtRisk: rate == null ? 0 : Math.round(litres * rate),
           reasons:
             `${seg.event === "STATIONARY_DROP" ? "Fuel fell while the vehicle was stationary" : "Consumption beyond what the journey explains"}.` +
             endpoints +
@@ -278,7 +277,7 @@ export async function scanForFuelTheft(
         code: asset.code,
         registrationNo: asset.registrationNo,
         litres,
-        valueAtRisk: Math.round(litres * rate),
+        valueAtRisk: rate == null ? 0 : Math.round(litres * rate),
         at: seg.to,
         kind: seg.event,
         confidence: seg.confidence,

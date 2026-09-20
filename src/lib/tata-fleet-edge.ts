@@ -58,7 +58,7 @@
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { invalidateLiveFleetCache } from "@/lib/fleet-edge-live";
-import { getDieselRate } from "@/lib/settings";
+import { getFuelRate } from "@/lib/settings";
 import { withPollLock } from "@/lib/poll-lock";
 import { reserveCall, budgetStatus, startCooldown, cooldownRemaining, TATA_CALLS_PER_HOUR } from "@/lib/api-budget";
 import { TataFleetEdgeAdapter, type TelemetryPing } from "@/lib/telematics-adapters";
@@ -367,12 +367,13 @@ type ResolvedAsset = {
   hourMeterValue: number;
   primaryMeter: string;
   assetClass: string;
+  fuelType: string | null;
   /** Register's tank size, used to range-check fuel when the OEM omits one. */
   fuelCapacity: number;
 };
 
 /** The minimal registered-vehicle data required for a fuel-change assessment. */
-export type FuelAnomalyAsset = Pick<ResolvedAsset, "id" | "assetClass">;
+export type FuelAnomalyAsset = Pick<ResolvedAsset, "id" | "assetClass"> & { fuelType?: string | null };
 
 type RawFields = Record<string, unknown>;
 
@@ -408,6 +409,7 @@ async function buildAssetIndex(): Promise<Map<string, ResolvedAsset>> {
       primaryMeter: true,
       assetClass: true,
       fuelCapacity: true,
+      fuelType: true,
     },
   });
 
@@ -422,6 +424,7 @@ async function buildAssetIndex(): Promise<Map<string, ResolvedAsset>> {
       primaryMeter: a.primaryMeter,
       assetClass: a.assetClass,
       fuelCapacity: a.fuelCapacity,
+      fuelType: a.fuelType,
     };
     for (const key of [a.registrationNo, a.chassisNo, a.deviceId, a.code]) {
       const k = normaliseId(key);
@@ -494,11 +497,14 @@ export async function recordTelemetryFuelAnomaly(
   const involvedLitres = rapidSensorDrop
     ? Math.abs(segment.fuelDeltaL ?? 0)
     : segment.excessLitres;
-  const capacity = tankCapacityL && tankCapacityL > 0 ? tankCapacityL : 300;
+  // A capacity ratio cannot be assessed without the asset's real tank size.
+  // Do not turn an absent master-data value into an invented 300 L tank.
+  if (rapidSensorDrop && (!tankCapacityL || tankCapacityL <= 0)) return false;
+  const capacity = tankCapacityL ?? 0;
   const score = rapidSensorDrop
     ? Math.max(20, Math.min(50, Math.round((involvedLitres / capacity) * 100)))
     : riskScore(segment, tankCapacityL);
-  const rate = await dieselRate();
+  const rate = await getFuelRate(asset.fuelType);
 
   await db.fuelAnomaly.upsert({
     // Keyed on the reading, so re-running the sync re-scores rather than
@@ -515,12 +521,13 @@ export async function recordTelemetryFuelAnomaly(
       // Keep a fast sender drop out of monetary-loss totals until a person has
       // verified that there was a real loss. The case is a prompt to inspect,
       // not an automated allegation or recovery demand.
-      valueAtRisk: rapidSensorDrop ? 0 : Math.round(segment.excessLitres * rate),
+      valueAtRisk: rapidSensorDrop || rate == null ? 0 : Math.round(segment.excessLitres * rate),
       reasons: [
         ...segment.reasons,
         ...(rapidSensorDrop
           ? ["Rapid fuel-level change queued for inspection. Cause is unconfirmed: check for a leak, siphoning, or sender fault; no person has been implicated."]
           : []),
+        ...(rate == null ? ["Monetary value not calculated: asset fuel type or its current rate is not configured."] : []),
         `Window ${segment.from.toISOString()} → ${segment.to.toISOString()} (${segment.hours} h).`,
         `Confidence ${segment.confidence}` +
           (segment.confidence !== "HIGH"
@@ -549,13 +556,13 @@ const PAPERWORK_WINDOW_MS = 3 * 60 * 60_000;
  *    tank with no issue slip behind it is worth seeing, not discarding.
  */
 async function recordSensorRefuel(
-  asset: Pick<ResolvedAsset, "id">,
+  asset: Pick<ResolvedAsset, "id"> & { fuelType?: string | null },
   reading: AnalyticsReading,
   litres: number,
   windowHours: number,
 ): Promise<void> {
   const at = reading.recordedAt;
-  const rate = await dieselRate();
+  const rate = await getFuelRate(asset.fuelType);
   const rounded = Math.round(litres * 10) / 10;
 
   // A truck cannot be refuelled repeatedly every few seconds. This cooldown
@@ -616,8 +623,8 @@ async function recordSensorRefuel(
       assetId: asset.id,
       quantity: rounded,
       sensorRise: rounded,
-      rate,
-      amount: Math.round(rounded * rate),
+      rate: rate ?? 0,
+      amount: rate == null ? 0 : Math.round(rounded * rate),
       // `FuelTransaction.meterValue` is non-nullable with a 0 default, and 0 is
       // this column's established "no reading" sentinel — every consumer guards
       // it (`fuel.ts` mileage segments, the meter-rollback scan in
@@ -636,10 +643,6 @@ async function recordSensorRefuel(
       },
     });
   });
-}
-
-async function dieselRate(): Promise<number> {
-  return getDieselRate();
 }
 
 function resolveAsset(ping: TelemetryPing, index: Map<string, ResolvedAsset>): ResolvedAsset | null {

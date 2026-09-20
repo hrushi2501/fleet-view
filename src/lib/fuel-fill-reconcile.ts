@@ -40,6 +40,7 @@ import { analyseUsage, type AnalyticsReading } from "@/lib/fleet-analytics";
 import { senderContradictsItself } from "@/lib/fuel-cache";
 import { serverCache } from "@/lib/cache";
 import { createHash } from "node:crypto";
+import { fuelRateFor, type FuelRates } from "@/lib/settings";
 
 /**
  * How far apart a sensor event and a keyed entry may be and still be the same
@@ -72,11 +73,11 @@ function stableJson(value: unknown): string {
 
 export function detectedFillsCacheKey(
   assetWhere: Record<string, unknown>,
-  dieselRate: number,
+  fuelRates: FuelRates,
   sinceDays: number,
 ): string {
   const scope = createHash("sha256").update(stableJson(assetWhere)).digest("hex");
-  return `fuel:detected-fills:${sinceDays}:${dieselRate.toFixed(2)}:${scope}`;
+  return `fuel:detected-fills:${sinceDays}:${stableJson(fuelRates)}:${scope}`;
 }
 
 type CachedDetectedFill = Omit<DetectedFill, "at" | "logged"> & {
@@ -113,13 +114,13 @@ function deserializeDetectedFills(result: CachedDetectFillsResult): DetectFillsR
 
 export async function getDetectedFills(
   assetWhere: Record<string, unknown>,
-  dieselRate: number,
+  fuelRates: FuelRates,
   sinceDays = 7,
 ): Promise<DetectFillsResult> {
-  const key = detectedFillsCacheKey(assetWhere, dieselRate, sinceDays);
+  const key = detectedFillsCacheKey(assetWhere, fuelRates, sinceDays);
   const cached = await serverCache.wrap(
     key,
-    async () => serializeDetectedFills(await detectFills(assetWhere, dieselRate, sinceDays)),
+    async () => serializeDetectedFills(await detectFills(assetWhere, fuelRates, sinceDays)),
     DETECTED_FILLS_CACHE_SECONDS,
   );
   return deserializeDetectedFills(cached);
@@ -149,8 +150,9 @@ export type DetectedFill = {
   lat: number | null;
   lng: number | null;
   confidence: "HIGH" | "MEDIUM" | "LOW";
-  /** Value at the current diesel rate. Indicative — the real price is on the bill. */
-  estimatedValue: number;
+  fuelType: string | null;
+  /** Indicative only; null when fuel type/rate is not configured. */
+  estimatedValue: number | null;
   /** The keyed entry this was matched to, when there is one. */
   logged: { id: string; quantity: number; amount: number; date: Date } | null;
   /** Litres the sensor saw minus litres entered. Positive = more fuel than paperwork. */
@@ -165,14 +167,14 @@ export type DetectedFill = {
  */
 export async function detectFills(
   assetWhere: Record<string, unknown>,
-  dieselRate: number,
+  fuelRates: FuelRates,
   sinceDays = 7,
 ): Promise<DetectFillsResult> {
   const since = new Date(Date.now() - sinceDays * 86_400_000);
 
   const assets = await db.asset.findMany({
     where: assetWhere,
-    select: { id: true, code: true, registrationNo: true, fuelCapacity: true },
+    select: { id: true, code: true, registrationNo: true, fuelCapacity: true, fuelType: true },
   });
   if (assets.length === 0) return { fills: [], unreliable: [] };
 
@@ -282,6 +284,7 @@ export async function detectFills(
       );
       if (match) claimed.add(match.id);
 
+      const configuredRate = fuelRateFor(asset.fuelType, fuelRates);
       out.push({
         assetId: asset.id,
         assetCode: asset.code,
@@ -293,7 +296,8 @@ export async function detectFills(
         lat: r.lat ?? null,
         lng: r.lng ?? null,
         confidence: r.confidence,
-        estimatedValue: Math.round(r.litresAdded * dieselRate),
+        fuelType: asset.fuelType,
+        estimatedValue: configuredRate == null ? null : Math.round(r.litresAdded * configuredRate),
         logged: match ? { id: match.id, quantity: match.quantity, amount: match.amount, date: match.date } : null,
         varianceL: match ? Math.round((r.litresAdded - match.quantity) * 10) / 10 : null,
       });

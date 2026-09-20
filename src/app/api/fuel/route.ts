@@ -4,7 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireApi, assetScope, projectIdScope } from "@/lib/access";
 import { fleetUsage } from "@/lib/fleet-usage";
-import { getDieselRate } from "@/lib/settings";
+import { getDieselRate, getFuelRate, getFuelRates } from "@/lib/settings";
 import { reserveRateLimit, rateLimitResponse } from "@/lib/request-rate-limit";
 import { requireSameOrigin, isPrivateFileReference } from "@/lib/request-security";
 
@@ -65,7 +65,7 @@ async function handleGET(req: Request) {
     const sinceDays = Math.min(365, Math.max(1, Number(url.searchParams.get("days")) || 30));
     const ids = await scopedFuelIds(auth.access);
     const usage = await fleetUsage(sinceDays, assetScope(auth.access) as Prisma.AssetWhereInput);
-    const [anomalies, tanks, recentTxns, dieselRate] = await db.$transaction([
+    const [anomalies, tanks, recentTxns, fuelRates] = await Promise.all([
       db.fuelAnomaly.findMany({
         where: { AND: [{ status: "OPEN" }, scopedFuelRows(ids) as Prisma.FuelAnomalyWhereInput] },
         orderBy: { detectedAt: "desc" },
@@ -92,13 +92,13 @@ async function handleGET(req: Request) {
           asset: { select: { id: true, code: true, registrationNo: true, name: true } },
         },
       }),
-      db.setting.findUnique({ where: { key: "dieselRate" } }),
+      getFuelRates(),
     ]);
-    const effectiveDieselRate = Number(dieselRate?.value) > 0 ? Number(dieselRate?.value) : await getDieselRate();
 
     return NextResponse.json({
       ok: true,
-      dieselRate: effectiveDieselRate,
+      fuelRates,
+      dieselRate: fuelRates.DIESEL,
       totals: usage.totals,
       vehicles: usage.perAsset.map((a) => ({
         assetId: a.assetId,
@@ -177,7 +177,7 @@ async function handlePOST(req: Request) {
     }
 
     const asset = assetId
-      ? await db.asset.findFirst({ where: { id: String(assetId), ...assetScope(auth.access) }, select: { id: true, projectId: true, meterValue: true } })
+      ? await db.asset.findFirst({ where: { id: String(assetId), ...assetScope(auth.access) }, select: { id: true, projectId: true, meterValue: true, fuelType: true } })
       : null;
     if (assetId && !asset) return NextResponse.json({ error: "Asset not found" }, { status: 404 });
 
@@ -202,8 +202,11 @@ async function handlePOST(req: Request) {
       }
     }
 
-    const defaultRate = await getDieselRate();
+    const defaultRate = asset ? await getFuelRate(asset.fuelType) : await getDieselRate();
     const effectiveRate = Number(rate) > 0 ? Number(rate) : defaultRate;
+    if (effectiveRate == null) {
+      return NextResponse.json({ error: "Asset fuel type or current fuel rate is not configured" }, { status: 400 });
+    }
     if (!Number.isFinite(effectiveRate) || effectiveRate > 10_000) {
       return NextResponse.json({ error: "Valid fuel rate required" }, { status: 400 });
     }

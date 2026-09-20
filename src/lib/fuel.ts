@@ -10,16 +10,12 @@ export type AssetLite = {
   id: string; code: string; name: string; assetClass: string; category: string;
   primaryMeter: string; fuelCapacity: number;
 };
-
-// km per litre for road vehicles
-const KMPL_BENCH: Record<string, [number, number]> = {
-  DUMPER: [2.2, 4.0], TIPPER: [2.2, 3.8], TRUCK: [3.0, 5.5], WATER_TANKER: [3.0, 5.5],
-  TRANSIT_MIXER: [2.2, 4.0], PICKUP: [8, 15], CAR: [9, 18], BIKE: [35, 65], TRACTOR: [3, 6],
-};
-// litres per engine-hour for equipment
-const LPH_BENCH: Record<string, [number, number]> = {
-  EXCAVATOR: [10, 20], GRADER: [12, 25], ROLLER: [5, 12], BACKHOE: [4, 9], CRANE: [6, 16],
-  PLANT: [15, 40], CRUSHER: [20, 50],
+export type ConsumptionNormLite = {
+  assetId: string | null;
+  assetClass: string | null;
+  unit: string;
+  normLow: number;
+  normHigh: number;
 };
 /**
  * Largest meter movement between two fills that is still credible — 700 km for
@@ -29,7 +25,7 @@ const LPH_BENCH: Record<string, [number, number]> = {
  * paperwork. Segments above it are excluded from efficiency *and* from the
  * spend that efficiency is measured against.
  */
-const MAX_SEG = (cls: string) => (LPH_BENCH[cls] ? 24 : 700);
+const MAX_SEG = (isEquipment: boolean) => (isEquipment ? 24 : 700);
 
 export type AssetFuel = {
   asset: AssetLite;
@@ -48,8 +44,13 @@ export type AssetFuel = {
 };
 export type FuelFlag = { entryId: string; date: Date; quantity: number; level: "high" | "medium"; reasons: string[] };
 
-export function analyzeAsset(asset: AssetLite, txnsAll: FuelTxn[]): AssetFuel {
-  const isEquip = !!LPH_BENCH[asset.assetClass];
+export function analyzeAsset(asset: AssetLite, txnsAll: FuelTxn[], norms: ConsumptionNormLite[] = []): AssetFuel {
+  const isEquip = asset.category === "EQUIPMENT";
+  const expectedUnit = isEquip ? "LPH" : "KMPL";
+  const configuredNorm =
+    norms.find((norm) => norm.assetId === asset.id && norm.unit === expectedUnit) ??
+    norms.find((norm) => !norm.assetId && norm.assetClass === asset.assetClass && norm.unit === expectedUnit) ??
+    null;
   const unit: "km/L" | "L/hr" = isEquip ? "L/hr" : "km/L";
   const txns = [...txnsAll].sort((a, b) => a.date.getTime() - b.date.getTime());
   const litres = txns.reduce((s, t) => s + t.quantity, 0);
@@ -79,7 +80,7 @@ export function analyzeAsset(asset: AssetLite, txnsAll: FuelTxn[]): AssetFuel {
       const delta = t.meterValue - p.meterValue;
       if (t.meterValue > 0 && p.meterValue > 0) {
         if (delta < 0) { reasons.push(isEquip ? "Hour-meter went backwards" : "Odometer rollback"); high = true; }
-        else if (delta > MAX_SEG(asset.assetClass)) reasons.push(`Meter jump ${Math.round(delta)} (check reading)`);
+        else if (delta > MAX_SEG(isEquip)) reasons.push(`Meter jump ${Math.round(delta)} (check reading)`);
         else if (delta > 0 && p.quantity > 0) {
           const eff = isEquip ? p.quantity / delta : delta / p.quantity; // L/hr or km/L
           if (eff > 0 && isFinite(eff)) {
@@ -105,7 +106,7 @@ export function analyzeAsset(asset: AssetLite, txnsAll: FuelTxn[]): AssetFuel {
     txns.forEach((t, i) => {
       if (i === 0) return;
       const p = txns[i - 1]; const delta = t.meterValue - p.meterValue;
-      if (delta > 0 && p.quantity > 0 && delta <= MAX_SEG(asset.assetClass)) {
+      if (delta > 0 && p.quantity > 0 && delta <= MAX_SEG(isEquip)) {
         const eff = isEquip ? p.quantity / delta : delta / p.quantity;
         const bad = isEquip ? eff > avg * 1.5 : eff < avg * 0.6; // burns much more than usual
         if (bad) {
@@ -118,7 +119,7 @@ export function analyzeAsset(asset: AssetLite, txnsAll: FuelTxn[]): AssetFuel {
     });
   }
 
-  const bench = isEquip ? LPH_BENCH[asset.assetClass] : KMPL_BENCH[asset.assetClass] ?? [0, 0];
+  const bench: [number, number] = configuredNorm ? [configuredNorm.normLow, configuredNorm.normHigh] : [0, 0];
   let status: AssetFuel["status"] = "na";
   if (efficiency && bench[1] > 0) {
     // Equipment is measured in L/hr, where lower is better, so only burning
@@ -140,10 +141,10 @@ export function analyzeAsset(asset: AssetLite, txnsAll: FuelTxn[]): AssetFuel {
   };
 }
 
-export function analyzeFleet(assets: AssetLite[], txns: FuelTxn[]) {
+export function analyzeFleet(assets: AssetLite[], txns: FuelTxn[], norms: ConsumptionNormLite[] = []) {
   const byAsset: Record<string, FuelTxn[]> = {};
   for (const t of txns) if (t.assetId) (byAsset[t.assetId] ||= []).push(t);
-  const rows = assets.map((a) => analyzeAsset(a, byAsset[a.id] || [])).filter((r) => r.fills > 0);
+  const rows = assets.map((a) => analyzeAsset(a, byAsset[a.id] || [], norms)).filter((r) => r.fills > 0);
 
   const totalSpend = rows.reduce((s, r) => s + r.spend, 0);
   const totalLitres = rows.reduce((s, r) => s + r.litres, 0);

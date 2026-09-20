@@ -20,7 +20,13 @@ import { assertRecordAccess, assertFormAccess, assertGlobalAccess } from "@/lib/
 import { changeWorkOrderStatus } from "@/lib/work-order-service";
 import { revalidatePath } from "next/cache";
 import { hashPassword, verifyPassword, getSession, passwordPolicyError, revokeSessions } from "@/lib/auth";
-import { DIESEL_RATE_CACHE_KEY, getDieselRate } from "@/lib/settings";
+import {
+  FUEL_RATES_CACHE_KEY,
+  fuelRateSettingKey,
+  getFuelRate,
+  normalizeFuelType,
+  type FuelType,
+} from "@/lib/settings";
 import { serverCache } from "@/lib/cache";
 import { requireAction, requireUser, ActionError, safe } from "@/lib/guard";
 import { audit } from "@/lib/audit";
@@ -131,6 +137,8 @@ async function saveAsset__impl(id: string | null, fd: FormData) {
   const registrationDate = safeParseDate(fd.get("registrationDate"), "Registration date", { minYear: 1950, maxYear: 2100 });
 
   const coords = coordinatePair(fd.get("lat"), fd.get("lng"), "Vehicle location");
+  const fuelType = normalizeFuelType(fd.get("fuelType"));
+  if (!fuelType) throw new ActionError("Choose Diesel or Petrol for this asset.");
 
   const data = {
     code,
@@ -154,7 +162,7 @@ async function saveAsset__impl(id: string | null, fd: FormData) {
     projectId: s(fd, "projectId") || null,
     chassisNo: sOrNull(fd, "chassisNo"),
     engineNo: sOrNull(fd, "engineNo"),
-    fuelType: sOrNull(fd, "fuelType"),
+    fuelType,
     emissionNorm: sOrNull(fd, "emissionNorm"),
     segment: sOrNull(fd, "segment"),
     vehicleApplication: sOrNull(fd, "vehicleApplication"),
@@ -384,10 +392,6 @@ async function saveFuel__impl(fd: FormData) {
   const amountFromDriver = postedAmount
     ? finiteNumber(postedAmount, "Fuel amount", { min: 0.01, max: 500_000 })
     : null;
-  const financials = access.group === "DRIVER"
-    ? driverFuelDetails(quantity, amountFromDriver ?? 0)
-    : { rate: n(fd, "rate") || (await getDieselRate()), amount: 0 };
-  const rate = financials.rate;
   const hasSensor = type === "ISSUE" && String(fd.get("sensorRise") ?? "").trim() !== "";
   const sensorRise = hasSensor ? n(fd, "sensorRise") : 0;
   const variancePct = hasSensor && quantity ? Math.round(((quantity - sensorRise) / quantity) * 1000) / 10 : 0;
@@ -401,6 +405,21 @@ async function saveFuel__impl(fd: FormData) {
 
   const tankId = s(fd, "tankId") || null;
   const asset = assetId ? await db.asset.findUnique({ where: { id: assetId } }) : null;
+  if (!asset) throw new ActionError("Select a valid vehicle before recording fuel.");
+  const postedRate = String(fd.get("rate") ?? "").trim();
+  const configuredRate = postedRate ? null : await getFuelRate(asset.fuelType);
+  if (access.group !== "DRIVER" && !postedRate && configuredRate == null) {
+    throw new ActionError("Set this asset's fuel type and current fuel rate before recording fuel.");
+  }
+  const financials = access.group === "DRIVER"
+    ? driverFuelDetails(quantity, amountFromDriver ?? 0)
+    : {
+        rate: postedRate
+          ? positiveNumber(postedRate, "Fuel rate", { max: 500 })
+          : configuredRate!,
+        amount: 0,
+      };
+  const rate = financials.rate;
   if (asset && asset.fuelCapacity > 0 && quantity > asset.fuelCapacity * 1.5) {
     throw new ActionError(`Fuel quantity (${quantity} L) exceeds plausible tank capacity (${asset.fuelCapacity} L).`);
   }
@@ -577,15 +596,19 @@ async function saveServicePhotos__impl(fd: FormData) {
   revalidatePath("/driver");
 }
 
-async function setDieselRate__impl(fd: FormData) {
+async function setFuelRates__impl(fd: FormData) {
   const scopeAccess = await requireAction("admin.settings");
   await assertFormAccess(scopeAccess, fd);
   assertGlobalAccess(scopeAccess);
   const session = await getSession();
-  if (session?.role !== "Admin") throw new ActionError("Only admins can set the rate.");
-  const rate = boundedNumber(fd.get("rate"), "Diesel rate", { min: 30, max: 200 });
-  await db.setting.upsert({ where: { key: "dieselRate" }, update: { value: String(rate) }, create: { key: "dieselRate", value: String(rate) } });
-  await serverCache.del(DIESEL_RATE_CACHE_KEY);
+  if (session?.role !== "Admin") throw new ActionError("Only admins can set fuel rates.");
+  const updates = (["DIESEL", "PETROL"] as FuelType[]).map((fuelType) => {
+    const rate = boundedNumber(fd.get(fuelType.toLowerCase()), `${fuelType} rate`, { min: 30, max: 300 });
+    const key = fuelRateSettingKey(fuelType);
+    return db.setting.upsert({ where: { key }, update: { value: String(rate) }, create: { key, value: String(rate) } });
+  });
+  await db.$transaction(updates);
+  await serverCache.del(FUEL_RATES_CACHE_KEY);
   revalidatePath("/fuel");
   revalidatePath("/driver");
 }
@@ -595,7 +618,10 @@ async function updateFuel__impl(id: string, fd: FormData) {
   await assertFormAccess(scopeAccess, fd);
   await assertRecordAccess(scopeAccess, "fuelTransaction", id);
   const quantity = positiveNumber(fd.get("quantity"), "Fuel quantity", { max: 100_000 });
-  const rate = positiveNumber(fd.get("rate") || 92.5, "Fuel rate", { max: 500 });
+  const existing = await db.fuelTransaction.findUnique({ where: { id }, select: { rate: true } });
+  if (!existing) throw new ActionError("Fuel transaction not found.");
+  const postedRate = String(fd.get("rate") ?? "").trim();
+  const rate = postedRate ? positiveNumber(postedRate, "Fuel rate", { max: 500 }) : existing.rate;
   const meterValue = boundedNumber(fd.get("meterValue"), "Meter reading", { min: 0, max: 10_000_000, fallback: 0 });
   const data: { quantity: number; rate: number; amount: number; meterValue: number; date?: Date } = {
     quantity, rate, amount: Math.round(quantity * rate), meterValue,
@@ -1026,7 +1052,7 @@ export const saveDriver = safe(saveDriver__impl);
 export const deleteDriver = safe(deleteDriver__impl);
 export const saveFuel = safe(saveFuel__impl);
 export const saveServicePhotos = safe(saveServicePhotos__impl);
-export const setDieselRate = safe(setDieselRate__impl);
+export const setFuelRates = safe(setFuelRates__impl);
 export const updateFuel = safe(updateFuel__impl);
 export const deleteFuel = safe(deleteFuel__impl);
 export const saveWorkOrder = safe(saveWorkOrder__impl);

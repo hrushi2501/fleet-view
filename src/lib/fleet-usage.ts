@@ -9,6 +9,7 @@
 import { db } from "@/lib/db";
 import { serverCache } from "@/lib/cache";
 import { createHash } from "node:crypto";
+import { fuelRateFor, getFuelRates } from "@/lib/settings";
 import { Prisma } from "@prisma/client";
 import {
   analyseUsage,
@@ -53,7 +54,7 @@ export type FleetUsage = {
     litresFilled: number;
     avgKmPerL: number | null;
     litresUnaccounted: number;
-    valueUnaccounted: number;
+    valueUnaccounted: number | null;
     suspectSegments: number;
     worstGapHours: number;
     /** The weakest confidence among the vehicles rolled up here. */
@@ -178,9 +179,10 @@ async function computeFleetUsage(
   // a Tata-attributed GPS reading inside this window. `providerId` on the
   // reading is the source of truth: legacy imports can have valid Tata history
   // before `Asset.telematicsProviderId` is backfilled.
-  // Concurrently fetch provider metadata, the candidate assets, norms, and diesel rate.
+  // Concurrently fetch provider metadata, candidate assets, norms, and the
+  // administrator-maintained fuel prices.
   // Overlapping these round trips keeps the transaction pool slots free.
-  const [provider, assets, norms, dieselSetting] = await Promise.all([
+  const [provider, assets, norms, fuelRates] = await Promise.all([
     db.telematicsProvider.findUnique({
       where: { code: FLEET_EFFICIENCY_PROVIDER },
       select: { id: true },
@@ -192,11 +194,11 @@ async function computeFleetUsage(
       where: assetWhere,
       select: {
         id: true, code: true, name: true, registrationNo: true,
-        assetClass: true, category: true, lastSeen: true, fuelLevelPct: true, fuelCapacity: true,
+        assetClass: true, category: true, lastSeen: true, fuelLevelPct: true, fuelCapacity: true, fuelType: true,
       },
     }),
     db.consumptionNorm.findMany(),
-    db.setting.findUnique({ where: { key: "dieselRate" } }),
+    getFuelRates(),
   ]);
 
   if (!provider || assets.length === 0) {
@@ -251,8 +253,6 @@ async function computeFleetUsage(
       AND "providerId" = ${provider.id}
     ORDER BY "recordedAt" ASC
   `);
-
-  const rate = Number(dieselSetting?.value) > 0 ? Number(dieselSetting?.value) : 95;
 
   const byAsset = new Map<string, typeof readings>();
   for (const r of readings) {
@@ -334,6 +334,14 @@ async function computeFleetUsage(
   const { distanceKm, litresBurned } = efficiency;
   const litresUnaccounted = sum(measurable.map((a) => a.usage.litresUnaccounted));
 
+  const assetFuelType = new Map(assets.map((asset) => [asset.id, asset.fuelType]));
+  const unpricedUnaccounted = measurable.some((item) =>
+    item.usage.litresUnaccounted > 0 && fuelRateFor(assetFuelType.get(item.assetId), fuelRates) == null
+  );
+  const valueUnaccounted = measurable.reduce((total, item) => {
+    const rate = fuelRateFor(assetFuelType.get(item.assetId), fuelRates);
+    return total + (rate == null ? 0 : item.usage.litresUnaccounted * rate);
+  }, 0);
   return {
     perAsset,
     totals: {
@@ -347,7 +355,7 @@ async function computeFleetUsage(
       // of per-vehicle figures, which would weigh a pickup like a tipper.
       avgKmPerL: efficiency.avgKmPerL,
       litresUnaccounted: round(litresUnaccounted),
-      valueUnaccounted: Math.round(litresUnaccounted * rate),
+      valueUnaccounted: unpricedUnaccounted ? null : Math.round(valueUnaccounted),
       suspectSegments: measurable.reduce((s, a) => s + a.usage.suspectSegments, 0),
       worstGapHours: measurable.reduce((m, a) => Math.max(m, a.usage.worstGapHours), 0),
       confidence: weakest(measurable.map((a) => a.usage.confidence)),

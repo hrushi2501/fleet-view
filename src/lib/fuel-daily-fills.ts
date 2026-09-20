@@ -36,6 +36,7 @@ import { businessDay } from "@/lib/business-time";
 import { detectFills, type DetectFillsResult } from "@/lib/fuel-fill-reconcile";
 import { serverCache } from "@/lib/cache";
 import { createHash } from "node:crypto";
+import type { FuelRates } from "@/lib/settings";
 
 function stableJson(value: unknown): string {
   if (value instanceof Date) return JSON.stringify(value.toISOString());
@@ -47,11 +48,11 @@ function stableJson(value: unknown): string {
 
 export function dailyFillsCacheKey(
   assetWhere: Record<string, unknown>,
-  dieselRate: number,
+  fuelRates: FuelRates,
   days: number,
 ): string {
   const scope = createHash("sha256").update(stableJson(assetWhere)).digest("hex");
-  return `fuel:daily-fills:${days}:${dieselRate.toFixed(2)}:${scope}`;
+  return `fuel:daily-fills:${days}:${stableJson(fuelRates)}:${scope}`;
 }
 
 const DAILY_FILLS_CACHE_SECONDS = 60;
@@ -64,7 +65,7 @@ export type VehicleDayFill = {
   registrationNo: string | null;
   litres: number;
   /** Rupees. Exact for a logged fill, estimated at the current rate otherwise. */
-  value: number;
+  value: number | null;
   /** How many separate fills made up the day's total for this vehicle. */
   fills: number;
   source: FillSource;
@@ -76,7 +77,7 @@ export type DayFills = {
   /** `YYYY-MM-DD` in the business timezone. */
   day: string;
   litres: number;
-  value: number;
+  value: number | null;
   vehicles: VehicleDayFill[];
 };
 
@@ -84,7 +85,7 @@ export type DailyFillsResult = {
   days: DayFills[];
   /** Senders whose readings cannot be believed, so their fills are not shown. */
   excluded: { assetCode: string; registrationNo: string | null }[];
-  totals: { litres: number; value: number; vehicles: number; loggedLitres: number; sensorLitres: number };
+  totals: { litres: number; value: number; vehicles: number; loggedLitres: number; sensorLitres: number; unpricedLitres: number };
 };
 
 /**
@@ -96,28 +97,28 @@ export type DailyFillsResult = {
  */
 export async function dailyFillsByVehicle(
   assetWhere: Record<string, unknown>,
-  dieselRate: number,
+  fuelRates: FuelRates,
   days = 14,
   detectedResult?: DetectFillsResult | Promise<DetectFillsResult>,
 ): Promise<DailyFillsResult> {
-  const key = dailyFillsCacheKey(assetWhere, dieselRate, days);
+  const key = dailyFillsCacheKey(assetWhere, fuelRates, days);
   return serverCache.wrap(
     key,
-    () => computeDailyFillsByVehicle(assetWhere, dieselRate, days, detectedResult),
+    () => computeDailyFillsByVehicle(assetWhere, fuelRates, days, detectedResult),
     DAILY_FILLS_CACHE_SECONDS,
   );
 }
 
 async function computeDailyFillsByVehicle(
   assetWhere: Record<string, unknown>,
-  dieselRate: number,
+  fuelRates: FuelRates,
   days = 14,
   detectedResult?: DetectFillsResult | Promise<DetectFillsResult>,
 ): Promise<DailyFillsResult> {
   const since = new Date(Date.now() - days * 86_400_000);
 
   const [{ fills: detected, unreliable }, logged] = await Promise.all([
-    detectedResult ?? detectFills(assetWhere, dieselRate, days),
+    detectedResult ?? detectFills(assetWhere, fuelRates, days),
     db.fuelTransaction.findMany({
       where: { type: "ISSUE", asset: assetWhere, date: { gte: since } },
       select: {
@@ -134,7 +135,7 @@ async function computeDailyFillsByVehicle(
 
   type Row = {
     day: string; assetId: string; assetCode: string; registrationNo: string | null;
-    litres: number; value: number; priced: boolean;
+    litres: number; value: number | null; priced: boolean;
   };
   const rows: Row[] = [];
 
@@ -172,7 +173,7 @@ async function computeDailyFillsByVehicle(
     const cur = perVehicle.get(r.assetId);
     if (cur) {
       cur.litres += r.litres;
-      cur.value += r.value;
+      cur.value = cur.value == null || r.value == null ? null : cur.value + r.value;
       cur.fills += 1;
       cur.priced = cur.priced && r.priced;
       if (!r.priced) cur.source = "SENSOR";
@@ -194,12 +195,12 @@ async function computeDailyFillsByVehicle(
   const out: DayFills[] = [...byDay.entries()]
     .map(([day, perVehicle]) => {
       const vehicles = [...perVehicle.values()]
-        .map((v) => ({ ...v, litres: Math.round(v.litres), value: Math.round(v.value) }))
+        .map((v) => ({ ...v, litres: Math.round(v.litres), value: v.value == null ? null : Math.round(v.value) }))
         .sort((a, b) => b.litres - a.litres);
       return {
         day,
         litres: vehicles.reduce((s, v) => s + v.litres, 0),
-        value: vehicles.reduce((s, v) => s + v.value, 0),
+        value: vehicles.every((v) => v.value != null) ? vehicles.reduce((s, v) => s + (v.value ?? 0), 0) : null,
         vehicles,
       };
     })
@@ -210,11 +211,13 @@ async function computeDailyFillsByVehicle(
   const seen = new Set<string>();
   let loggedLitres = 0;
   let sensorLitres = 0;
+  let unpricedLitres = 0;
   for (const d of out) {
     for (const v of d.vehicles) {
       seen.add(v.assetId);
       if (v.priced) loggedLitres += v.litres;
       else sensorLitres += v.litres;
+      if (v.value == null) unpricedLitres += v.litres;
     }
   }
 
@@ -223,10 +226,11 @@ async function computeDailyFillsByVehicle(
     excluded: unreliable.map((u) => ({ assetCode: u.assetCode, registrationNo: u.registrationNo })),
     totals: {
       litres: out.reduce((s, d) => s + d.litres, 0),
-      value: out.reduce((s, d) => s + d.value, 0),
+      value: out.every((d) => d.value != null) ? out.reduce((s, d) => s + (d.value ?? 0), 0) : 0,
       vehicles: seen.size,
       loggedLitres,
       sensorLitres,
+      unpricedLitres,
     },
   };
 }

@@ -2,9 +2,9 @@ import { db } from "@/lib/db";
 import { fleetUsage } from "@/lib/fleet-usage";
 import { StatCard, Card, SectionTitle, Badge, Progress } from "@/components/ui";
 import { SimpleBar } from "@/components/charts";
-import { FuelEntry, FuelEdit } from "@/components/EntryForms";
+import { FuelEntry, FuelEdit, FuelRateSetter } from "@/components/EntryForms";
 import { analyzeFleet } from "@/lib/fuel";
-import { getDieselRate } from "@/lib/settings";
+import { getFuelRates, normalizeFuelType } from "@/lib/settings";
 import { inr, num, fmtDate, ASSET_CLASS_LABEL, distanceKm } from "@/lib/utils";
 import { Fuel, TriangleAlert, Droplets, Gauge, ShieldAlert, IndianRupee, TrendingUp, TrendingDown, MapPin, CalendarDays } from "lucide-react";
 import Link from "next/link";
@@ -29,16 +29,16 @@ import { fuelAnomalyScope, recordScope } from "@/lib/record-access";
 export async function Overview({ access }: { access: Access }) {
   // Rows, not just the page: a scoped supervisor sees their own sites.
   const visible = assetScope(access);
-  const dieselRatePromise = getDieselRate();
+  const fuelRatesPromise = getFuelRates();
   // Keep interactive navigation on a bounded live window. The telemetry table
   // currently receives roughly 12,000 rows per day; scanning 14-30 days here
   // made a cold Fuel request process 175k-200k rows and exceed the production
   // function timeout. Historical incidents remain available from the persisted
   // anomaly records and nightly theft scan below.
   const liveWindowDays = 1;
-  const detectedPromise = dieselRatePromise.then((rate) => getDetectedFills(visible, rate, liveWindowDays));
-  const dailyPromise = dieselRatePromise.then((rate) =>
-    dailyFillsByVehicle(visible, rate, liveWindowDays, detectedPromise),
+  const detectedPromise = fuelRatesPromise.then((rates) => getDetectedFills(visible, rates, liveWindowDays));
+  const dailyPromise = fuelRatesPromise.then((rates) =>
+    dailyFillsByVehicle(visible, rates, liveWindowDays, detectedPromise),
   );
   const anomalyPromise = fuelAnomalyScope(access).then((scope) =>
     db.fuelAnomaly.findMany({
@@ -51,7 +51,7 @@ export async function Overview({ access }: { access: Access }) {
   // batch and then waited through telemetry, anomalies, settings, two complete
   // fill scans, the daily roll-up and scan status in sequence. On a remote
   // transaction pooler, those waits accumulated into several seconds.
-  const [issues, tanks, assets, projects, telemetry, openAnomalies, dieselRate, detectedLive, daily, scan] =
+  const [issues, tanks, assets, projects, norms, telemetry, openAnomalies, fuelRates, detectedLive, daily, scan] =
     await Promise.all([
       db.fuelTransaction.findMany({
         where: { type: "ISSUE", asset: visible },
@@ -61,20 +61,22 @@ export async function Overview({ access }: { access: Access }) {
       db.fuelTank.findMany({ where: recordScope("fuelTank", access) }),
       db.asset.findMany({ where: visible, orderBy: { code: "asc" } }),
       db.project.findMany({ where: projectScope(access), orderBy: { code: "asc" } }),
+      db.consumptionNorm.findMany(),
       fleetUsage(liveWindowDays, visible),
       anomalyPromise,
-      dieselRatePromise,
+      fuelRatesPromise,
       detectedPromise,
       dailyPromise,
       lastTheftScan(),
     ]);
 
-  const assetOpts = assets.map((a) => ({ id: a.id, label: `${a.code} — ${a.registrationNo ?? a.name}` }));
+  const assetOpts = assets.map((a) => ({ id: a.id, label: `${a.code} — ${a.registrationNo ?? a.name}`, fuelType: normalizeFuelType(a.fuelType) }));
   const projOpts = projects.map((p) => ({ id: p.id, label: `${p.code} — ${p.name}` }));
 
   const fleet = analyzeFleet(
     assets.map((a) => ({ id: a.id, code: a.code, name: a.name, assetClass: a.assetClass, category: a.category, primaryMeter: a.primaryMeter, fuelCapacity: a.fuelCapacity })),
-    issues.map((t) => ({ id: t.id, assetId: t.assetId, quantity: t.quantity, meterValue: t.meterValue, rate: t.rate, amount: t.amount, date: t.date, odometerPhoto: t.odometerPhoto, pumpPhoto: t.pumpPhoto, sensorRise: t.sensorRise, anomaly: t.anomaly, captureMethod: t.captureMethod, captureConfidence: t.captureConfidence, variancePct: t.variancePct, geofenceOk: t.geofenceOk, lat: t.lat, lng: t.lng }))
+    issues.map((t) => ({ id: t.id, assetId: t.assetId, quantity: t.quantity, meterValue: t.meterValue, rate: t.rate, amount: t.amount, date: t.date, odometerPhoto: t.odometerPhoto, pumpPhoto: t.pumpPhoto, sensorRise: t.sensorRise, anomaly: t.anomaly, captureMethod: t.captureMethod, captureConfidence: t.captureConfidence, variancePct: t.variancePct, geofenceOk: t.geofenceOk, lat: t.lat, lng: t.lng })),
+    norms,
   );
 
   // Measured from the OEM feed. Manual fuel entries answer "what did we buy";
@@ -123,7 +125,8 @@ export async function Overview({ access }: { access: Access }) {
   // findings cannot be mistaken for a clean fleet.
   const unloggedFills = detectedFills.filter((f) => !f.logged);
   const unloggedLitres = unloggedFills.reduce((s, f) => s + f.litresAdded, 0);
-  const unloggedValue = unloggedFills.reduce((s, f) => s + f.estimatedValue, 0);
+  const allUnloggedPriced = unloggedFills.every((fill) => fill.estimatedValue != null);
+  const unloggedValue = unloggedFills.reduce((s, f) => s + (f.estimatedValue ?? 0), 0);
   const headline = fuelHeadline(
     { litres: fleet.totalLitres, spend: fleet.totalSpend, entries: issues.length },
     { litres: unloggedLitres, fills: unloggedFills.length },
@@ -154,7 +157,10 @@ export async function Overview({ access }: { access: Access }) {
           <h2 className="text-lg font-bold text-ink-900">Fuel Use &amp; Mileage</h2>
           <p className="text-sm text-slate-500"><Txt text="Mileage and cost per km for each vehicle, and fills that look wrong" /></p>
         </div>
-        <FuelEntry assets={assetOpts} projects={projOpts} defaultRate={dieselRate} />
+        <div className="flex flex-wrap items-center gap-2">
+          {access.can("admin.settings") ? <FuelRateSetter current={fuelRates} /> : null}
+          <FuelEntry assets={assetOpts} projects={projOpts} fuelRates={fuelRates} />
+        </div>
       </div>
 
 
@@ -163,14 +169,14 @@ export async function Overview({ access }: { access: Access }) {
             visible below as an operational lead, but it cannot alter litres or
             rupees until someone confirms the fill and records the paperwork. */}
         <StatCard
-          label="Total Recorded Diesel Spend"
+          label="Total Recorded Fuel Spend"
           value={inr(headline.recorded.spend, { compact: true })}
           sub={headline.sensorOnly.litres > 0 ? `all recorded history · ${num(headline.sensorOnly.litres)} L sensor-only excluded` : "all recorded history"}
           accent="brand"
           icon={<IndianRupee className="h-5 w-5" />}
         />
         <StatCard
-          label="Recorded Diesel Issued"
+          label="Recorded Fuel Issued"
           value={`${num(headline.recorded.litres)} L`}
           sub={
             headline.sensorOnly.litres > 0
@@ -186,7 +192,7 @@ export async function Overview({ access }: { access: Access }) {
         <StatCard label="₹ at Risk" value={noRecordedFlagsButUnassessed ? "—" : inr(atRisk + anomalyValue, { compact: true })} sub={noRecordedFlagsButUnassessed ? "not assessed; no current check" : `${num(Math.round((flaggedLitres + anomalyLitres) * 10) / 10)} L · recorded transaction and anomaly values`} accent={noRecordedFlagsButUnassessed ? "amber" : atRisk + anomalyValue > 0 ? "rose" : "emerald"} icon={<TriangleAlert className="h-5 w-5" />} />
         <StatCard
           label="Unlogged Fills"
-          value={unloggedFills.length === 0 && detectionIncomplete ? "—" : unloggedFills.length === 0 ? "0" : inr(unloggedValue, { compact: true })}
+          value={unloggedFills.length === 0 && detectionIncomplete ? "—" : unloggedFills.length === 0 ? "0" : allUnloggedPriced ? inr(unloggedValue, { compact: true }) : "Rate needed"}
           sub={
             unreliableSenders.length > 0
               // Say so on the tile itself. A quietly reduced count reads as
@@ -209,7 +215,7 @@ export async function Overview({ access }: { access: Access }) {
             {measuredKmpl != null ? (
               <p className="mt-1 text-sm text-slate-600">
                 <span className="font-semibold text-ink-900">{num(measuredKm)} km</span> measured distance ÷{" "}
-                <span className="font-semibold text-ink-900">{num(measuredLitres)} L</span> measured diesel burned ={" "}
+                <span className="font-semibold text-ink-900">{num(measuredLitres)} L</span> measured fuel burned ={" "}
                 <span className="font-semibold text-emerald-700">{measuredKmpl.toFixed(2)} km/L</span> over the last 24 hours.
               </p>
             ) : (
@@ -226,7 +232,7 @@ export async function Overview({ access }: { access: Access }) {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <SectionTitle title="Monthly Diesel Spend" subtitle="Last 6 months" />
+          <SectionTitle title="Monthly Fuel Spend" subtitle="Last 6 months" />
           <SimpleBar data={spendTrend} dataKey="spend" xKey="month" />
         </Card>
         <Card>
@@ -402,7 +408,7 @@ export async function Overview({ access }: { access: Access }) {
         <div className="flex items-center gap-2 p-5 pb-3">
           <CalendarDays className="h-5 w-5 text-brand-600" />
           <SectionTitle
-            title="Diesel Filled Today — All Vehicles"
+            title="Fuel Filled Today — All Vehicles"
             subtitle="Last 24 hours — from the fuel sensor and from fills entered by hand"
           />
         </div>
@@ -468,7 +474,7 @@ export async function Overview({ access }: { access: Access }) {
                           ))}
                         </div>
                       </td>
-                      <td className="whitespace-nowrap px-5 py-3 text-slate-600">{inr(d.value, { compact: true })}</td>
+                      <td className="whitespace-nowrap px-5 py-3 text-slate-600">{d.value == null ? "Rate not configured" : inr(d.value, { compact: true })}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -480,8 +486,8 @@ export async function Overview({ access }: { access: Access }) {
                 <span className="mr-1 inline-block h-2 w-2 rounded-full bg-emerald-400 align-middle" />
 Green means a bill was entered — the litres and the money are both correct.
                 <span className="ml-3 mr-1 inline-block h-2 w-2 rounded-full bg-slate-400 align-middle" />
-                Grey was seen by the fuel sensor only. The litres are correct, but the money is an estimate
-                at {inr(dieselRate)}/L.
+                Grey was seen by the fuel sensor only. The litres are measured; money uses that vehicle&apos;s
+                configured diesel or petrol rate, and stays blank when either is missing.
               </p>
               {daily.excluded.length > 0 ? (
                 <p>
@@ -505,7 +511,7 @@ Green means a bill was entered — the litres and the money are both correct.
                 <th className="px-5 py-3 font-medium"><Txt text="Vehicle" /></th>
                 <th className="px-5 py-3 font-medium"><Txt text="Class" /></th>
                 <th className="px-5 py-3 font-medium"><Txt text="Fills" /></th>
-                <th className="px-5 py-3 font-medium"><Txt text="Diesel" /></th>
+                <th className="px-5 py-3 font-medium"><Txt text="Fuel" /></th>
                 <th className="px-5 py-3 font-medium"><Txt text="Distance / Hours" /></th>
                 <th className="px-5 py-3 font-medium"><Txt text="Mileage" /></th>
                 <th className="px-5 py-3 font-medium"><Txt text="Benchmark" /></th>

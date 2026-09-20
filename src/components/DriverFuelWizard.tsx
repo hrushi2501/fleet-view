@@ -175,8 +175,8 @@ function StepHeader({ back, hindi, eng, step }: { back: () => void; hindi: strin
   );
 }
 
-export function DriverFuelWizard({ vehicles, defaultProjectId, dieselRate = 92.5 }: {
-  vehicles: Vehicle[]; defaultProjectId: string | null; dieselRate?: number;
+export function DriverFuelWizard({ vehicles, defaultProjectId, fuelRate }: {
+  vehicles: Vehicle[]; defaultProjectId: string | null; fuelRate: number | null;
 }) {
 
   const [step, setStep] = useState<Step>(vehicles.length === 1 ? "review" : "vehicle");
@@ -187,7 +187,7 @@ export function DriverFuelWizard({ vehicles, defaultProjectId, dieselRate = 92.5
   const [afterOdo, setAfterOdo] = useState<File | null>(null);
   const [odoValue, setOdoValue] = useState("");
   const [litres, setLitres] = useState("");
-  const [rate, setRate] = useState(String(dieselRate));
+  const [rate, setRate] = useState(fuelRate == null ? "" : String(fuelRate));
   const [amount, setAmount] = useState("");
   const [odoConf, setOdoConf] = useState<number | null>(null);
   const [pumpConf, setPumpConf] = useState<number | null>(null);
@@ -230,7 +230,7 @@ export function DriverFuelWizard({ vehicles, defaultProjectId, dieselRate = 92.5
       const draft = loadFuelDraft(vehicles);
       if (draft) {
         setVehicle(vehicles.find((v) => v.id === draft.vehicleId) ?? null);
-        setOdoValue(draft.odoValue); setLitres(draft.litres); setRate(draft.rate || String(dieselRate)); setAmount(draft.amount);
+        setOdoValue(draft.odoValue); setLitres(draft.litres); setRate(draft.rate || (fuelRate == null ? "" : String(fuelRate))); setAmount(draft.amount);
       }
       setStep(vehicles.length === 1 ? "review" : "vehicle");
     } else if (a === "repair") {
@@ -238,7 +238,7 @@ export function DriverFuelWizard({ vehicles, defaultProjectId, dieselRate = 92.5
       setMode("repair");
       setStep("vehicle");
     }
-  }, [vehicles, dieselRate]);
+  }, [vehicles, fuelRate]);
   // Keep typed fuel details safe across a reload or a signal loss. Images stay
   // out of localStorage: browser quotas are too small and stale photos should
   // never be silently submitted later.
@@ -304,8 +304,8 @@ export function DriverFuelWizard({ vehicles, defaultProjectId, dieselRate = 92.5
         if (r.litres && Number(r.litres) > 0) setRate(String(Math.round((Number(r.amount) / Number(r.litres)) * 100) / 100));
       }
       else if (r.litres) {
-        const detectedRate = Number(r.rate) > 0 ? Number(r.rate) : dieselRate;
-        setAmount(String(Math.round(Number(r.litres) * detectedRate * 100) / 100));
+        const detectedRate = Number(r.rate) > 0 ? Number(r.rate) : fuelRate;
+        if (detectedRate != null) setAmount(String(Math.round(Number(r.litres) * detectedRate * 100) / 100));
       }
       setPumpConf(r.numericConfidence);
       setPumpAction(r.recommendedUiAction);
@@ -433,7 +433,7 @@ export function DriverFuelWizard({ vehicles, defaultProjectId, dieselRate = 92.5
               setVehicle(v);
               if (mode === "fuel") {
                 const draft = loadFuelDraftForVehicle(v.id);
-                if (draft) { setOdoValue(draft.odoValue); setLitres(draft.litres); setRate(draft.rate || String(dieselRate)); setAmount(draft.amount); }
+                if (draft) { setOdoValue(draft.odoValue); setLitres(draft.litres); setRate(draft.rate || (fuelRate == null ? "" : String(fuelRate))); setAmount(draft.amount); }
               }
               setStep(mode === "fuel" ? "review" : "rold");
             }} className="flex flex-col items-center gap-2 rounded-2xl bg-white p-4 shadow-sm active:scale-95 active:bg-brand-50">

@@ -3,7 +3,6 @@ import { StatCard, Card, SectionTitle, Badge } from "@/components/ui";
 import { inr, num, fmtDate, ASSET_CLASS_LABEL } from "@/lib/utils";
 import { resolveTankThresholds, reconcileTankDynamic, calculateSupplierScorecard } from "@/lib/fuel-recon-engine";
 import { analyzeFleet } from "@/lib/fuel";
-import { getDieselRate } from "@/lib/settings";
 import { NormForm, DipForm, TankForm } from "@/components/FuelForms";
 import { ShieldAlert, IndianRupee, Fuel, HandCoins, ArrowRight, Scale, TrendingUp, TrendingDown } from "lucide-react";
 import Link from "next/link";
@@ -29,7 +28,7 @@ export async function FuelInsights() {
   // Rows, not just the page: a scoped supervisor sees their own sites.
   const visible = assetScope(access);
   const _visibleProjects = projectScope(access);
-  const [tanks, issues, receipts, assets, normsResult, dieselRate] = await Promise.all([
+  const [tanks, issues, receipts, assets, normsResult] = await Promise.all([
     db.fuelTank.findMany({
       include: {
         receipts: true,
@@ -42,7 +41,6 @@ export async function FuelInsights() {
     db.fuelReceipt.findMany({ orderBy: { date: "desc" } }),
     db.asset.findMany({ where: visible, orderBy: { code: "asc" } }),
     safeFindMany(() => db.consumptionNorm.findMany({ orderBy: [{ unit: "asc" }, { assetClass: "asc" }] })),
-    getDieselRate(),
   ]);
   const norms = normsResult.data;
 
@@ -79,7 +77,8 @@ export async function FuelInsights() {
 
   const fleet = analyzeFleet(
     assets.map((a) => ({ id: a.id, code: a.code, name: a.name, assetClass: a.assetClass, category: a.category, primaryMeter: a.primaryMeter, fuelCapacity: a.fuelCapacity })),
-    issues.map((t) => ({ id: t.id, assetId: t.assetId, quantity: t.quantity, meterValue: t.meterValue, rate: t.rate, amount: t.amount, date: t.date, odometerPhoto: t.odometerPhoto, pumpPhoto: t.pumpPhoto, sensorRise: t.sensorRise, anomaly: t.anomaly, variancePct: t.variancePct, geofenceOk: t.geofenceOk, lat: t.lat, lng: t.lng }))
+    issues.map((t) => ({ id: t.id, assetId: t.assetId, quantity: t.quantity, meterValue: t.meterValue, rate: t.rate, amount: t.amount, date: t.date, odometerPhoto: t.odometerPhoto, pumpPhoto: t.pumpPhoto, sensorRise: t.sensorRise, anomaly: t.anomaly, variancePct: t.variancePct, geofenceOk: t.geofenceOk, lat: t.lat, lng: t.lng })),
+    norms,
   );
 
   const supplierScorecard = calculateSupplierScorecard(receipts);
@@ -107,7 +106,7 @@ export async function FuelInsights() {
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
         <StatCard label="Open Risk Cases" value={unifiedResult.available ? num(openCases.length) : "—"} sub={unifiedResult.available ? `${num(unifiedAnomalies.length)} total cases` : "case data unavailable"} accent={unifiedResult.available ? "rose" : "amber"} icon={<ShieldAlert className="h-5 w-5" />} />
         <StatCard label="Litres Unaccounted" value={totalUnaccountedL == null ? "—" : `${num(totalUnaccountedL)} L`} sub={totalUnaccountedL == null ? "not assessed; two dips required" : "assessed tank variance"} accent="amber" icon={<Fuel className="h-5 w-5" />} />
-        <StatCard label="Value at Risk" value={unifiedResult.available ? inr(valueAtRisk, { compact: true }) : "—"} sub={unifiedResult.available ? `@ ₹${dieselRate}/L` : "case data unavailable"} accent={unifiedResult.available ? "rose" : "amber"} icon={<IndianRupee className="h-5 w-5" />} />
+        <StatCard label="Value at Risk" value={unifiedResult.available ? inr(valueAtRisk, { compact: true }) : "—"} sub={unifiedResult.available ? "asset-specific or recorded fuel values" : "case data unavailable"} accent={unifiedResult.available ? "rose" : "amber"} icon={<IndianRupee className="h-5 w-5" />} />
         <StatCard label="Recovered Value" value={unifiedResult.available ? inr(recoveredInr, { compact: true }) : "—"} sub={unifiedResult.available ? "closed cases" : "case data unavailable"} accent={unifiedResult.available ? "emerald" : "amber"} icon={<HandCoins className="h-5 w-5" />} />
       </div>
 

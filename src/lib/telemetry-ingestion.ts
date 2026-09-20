@@ -74,6 +74,11 @@ export class DummyDataGenerator implements ITelemetryIngestionAdapter {
   }
 }
 
+class UnavailableTelemetryAdapter implements ITelemetryIngestionAdapter {
+  readonly simulated = false;
+  async fetchStream(): Promise<TelemetryReading[]> { return []; }
+}
+
 /**
  * Live Tata Fleet Edge pull. Reads the same normalised pings the cron sync
  * stores, so the fraud scanner sees exactly what the map and the fuel
@@ -110,7 +115,12 @@ export class TataApiAdapter implements ITelemetryIngestionAdapter {
  * shown as real is worse than showing nothing at all.
  */
 export function createTelemetryAdapter(mode: 'A' | 'B' | 'AUTO' = 'AUTO'): ITelemetryIngestionAdapter {
-  if (mode === 'A') return new DummyDataGenerator();
+  const demoAllowed = process.env.NODE_ENV !== "production" && process.env.TELEMETRY_DEMO_ENABLED === "true";
+  if (mode === 'A') {
+    if (!demoAllowed) throw new Error("Synthetic telemetry is disabled. Enable TELEMETRY_DEMO_ENABLED only in development.");
+    return new DummyDataGenerator();
+  }
   if (mode === 'B') return new TataApiAdapter();
-  return isTataEnabled() ? new TataApiAdapter() : new DummyDataGenerator();
+  if (isTataEnabled()) return new TataApiAdapter();
+  return demoAllowed ? new DummyDataGenerator() : new UnavailableTelemetryAdapter();
 }

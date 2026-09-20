@@ -16,7 +16,8 @@ import { assertRecordAccess, assertFormAccess, assertGlobalAccess, fuelAnomalySc
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { getDieselRate } from "@/lib/settings";
-import { reconcileTank, scoreTankRecon, type TankLite } from "@/lib/fuel-recon";
+import { scoreTankRecon, type TankLite } from "@/lib/fuel-recon";
+import { reconcileTankDynamic, resolveTankThresholds } from "@/lib/fuel-recon-engine";
 import { requireAction, ActionError, safe } from "@/lib/guard";
 import { transition } from "@/lib/transition";
 import { uploadPrivateFile } from "@/lib/private-upload";
@@ -233,20 +234,21 @@ async function runReconciliation__impl(tankId: string, fromStr?: string, toStr?:
   if (!tank) throw new ActionError("Tank not found");
 
   const lite: TankLite = { id: tank.id, name: tank.name, location: tank.location, capacity: tank.capacity, minLevel: tank.minLevel };
-  const recon = reconcileTank(
+  const thresholds = await resolveTankThresholds(tank.id, tank.projectId);
+  const inWindow = <T extends { date: Date }>(rows: T[]) => rows.filter((row) => (!from || row.date >= from) && (!to || row.date <= to));
+  const recon = reconcileTankDynamic(
     lite,
-    tank.receipts.map((r) => ({ id: r.id, date: r.date, qtyInvoiced: r.qtyInvoiced, qtyReceived: r.qtyReceived, amount: r.amount, supplier: r.supplier, shortfall: r.shortfall })),
-    tank.issues.map((i) => ({ id: i.id, date: i.date, quantity: i.quantity, assetId: i.assetId, amount: i.amount })),
-    tank.dips.map((p) => ({ id: p.id, date: p.date, level: p.level })),
-    from,
-    to
+    inWindow(tank.receipts).map((r) => ({ id: r.id, date: r.date, qtyInvoiced: r.qtyInvoiced, qtyReceived: r.qtyReceived, amount: r.amount, supplier: r.supplier, shortfall: r.shortfall })),
+    inWindow(tank.issues).map((i) => ({ id: i.id, date: i.date, quantity: i.quantity, assetId: i.assetId, amount: i.amount })),
+    inWindow(tank.dips).map((p) => ({ id: p.id, date: p.date, level: p.level })),
+    thresholds,
   );
 
   if (recon.status === "insufficient") return { ok: false as const, message: recon.reasons[0] };
 
   const session = await getSession();
   const rate = await getDieselRate();
-  const anomaly = scoreTankRecon(recon, rate);
+  const anomaly = scoreTankRecon(recon, rate, thresholds.dipToleranceL);
 
   await businessTransaction(scopeAccess.session, async (tx) => {
 

@@ -29,19 +29,20 @@ async function handleGET() {
     db.asset.groupBy({ by: ["status"], where: visibleAssets, _count: true }),
     // Only two columns are reduced over below; the row also carries notes,
     // photo URLs and geo — needless bytes for every fuel issue ever recorded.
-    db.fuelTransaction.findMany({ where: { type: "ISSUE", asset: visibleAssets }, select: { quantity: true, sensorRise: true } }),
+    db.fuelTransaction.findMany({ where: { type: "ISSUE", asset: visibleAssets }, select: { quantity: true, sensorRise: true, rate: true } }),
     db.alert.count({ where: { status: "Open", ...(Object.keys(visibleAssets).length ? { asset: visibleAssets } : {}) } }),
     db.complianceDoc.count({ where: { status: { in: ["Expiring", "Expired"] }, ...(Object.keys(visibleAssets).length ? { asset: visibleAssets } : {}) } }),
     db.costTransaction.aggregate({ where: byProject, _sum: { amount: true } }),
   ]);
 
   const lossL = fuelIssues.reduce((s, f) => s + Math.max(0, f.quantity - f.sensorRise), 0);
+  const lossValue = fuelIssues.reduce((s, f) => s + Math.max(0, f.quantity - f.sensorRise) * f.rate, 0);
   const issuedL = fuelIssues.reduce((s, f) => s + f.quantity, 0);
 
   return NextResponse.json({
     assets,
     byStatus: Object.fromEntries(statusGroups.map((g) => [g.status, g._count])),
-    fuel: { issuedLitres: Math.round(issuedL), estimatedLossLitres: Math.round(lossL), lossPct: issuedL > 0 ? +((lossL / issuedL) * 100).toFixed(1) : 0, estimatedLossValue: Math.round(lossL * 92.5) },
+    fuel: { issuedLitres: Math.round(issuedL), estimatedLossLitres: Math.round(lossL), lossPct: issuedL > 0 ? +((lossL / issuedL) * 100).toFixed(1) : 0, estimatedLossValue: Math.round(lossValue) },
     openAlerts,
     docsExpiring: expiring,
     operatingCost6mo: costs._sum.amount ?? 0,

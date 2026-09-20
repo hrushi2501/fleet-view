@@ -32,7 +32,6 @@ export default async function Dashboard() {
     breakdownsCount,
     urgentWorkOrders,
     unmarkedDriversCount,
-    dieselSetting,
   ] = await Promise.all([
     db.asset.findMany({
       where: visible,
@@ -49,7 +48,7 @@ export default async function Dashboard() {
     }),
     db.fuelTransaction.findMany({
       where: { type: "ISSUE", date: { gte: fuelSince }, asset: visible },
-      select: { quantity: true, sensorRise: true, anomaly: true, date: true },
+      select: { quantity: true, sensorRise: true, anomaly: true, date: true, rate: true },
     }),
     db.alert.count({ where: { status: "Open", severity: "Critical" } }),
     db.complianceDoc.count({ where: { status: { in: ["Expiring", "Expired"] } } }),
@@ -73,14 +72,7 @@ export default async function Dashboard() {
       orderBy: { reportedAt: "desc" },
     }),
     db.driver.count({ where: { status: "Active" } }),
-    // The rate an administrator actually set. This page used to hardcode 92.5,
-    // so the moment anyone updated the setting the dashboard's rupee figure
-    // quietly disagreed with every other screen that priced the same litres.
-    db.setting.findUnique({ where: { key: "dieselRate" }, select: { value: true } }),
   ]);
-
-  const configuredRate = Number(dieselSetting?.value);
-  const dieselRate = Number.isFinite(configuredRate) && configuredRate > 0 ? configuredRate : 92.5;
 
   const totalAssets = assets.length;
   const activeCount = assets.filter((a) => a.status === "Active").length;
@@ -96,7 +88,12 @@ export default async function Dashboard() {
   // legacy/manual entries. Only assessed rows may support a loss figure.
   const assessedFuelIssues = fuelIssues.filter((f) => f.sensorRise > 0 || f.anomaly);
   const fuelLossL = assessedFuelIssues.reduce((s, f) => s + Math.max(0, f.quantity - f.sensorRise), 0);
-  const fuelLossValue = fuelLossL * dieselRate;
+  // Each transaction carries the price paid at that time. Summing its loss at
+  // that historical rate avoids repricing diesel and petrol at one current rate.
+  const fuelLossValue = assessedFuelIssues.reduce(
+    (sum, issue) => sum + Math.max(0, issue.quantity - issue.sensorRise) * issue.rate,
+    0,
+  );
   const assessedIssuedL = assessedFuelIssues.reduce((s, f) => s + f.quantity, 0);
   const fuelLossPct = assessedIssuedL ? (fuelLossL / assessedIssuedL) * 100 : null;
   const fuelAnomaliesCount = assessedFuelIssues.filter((f) => f.quantity > f.sensorRise + 5).length;
@@ -246,7 +243,7 @@ export default async function Dashboard() {
       <section className="space-y-4">
         <SectionTitle
           title="Money and paperwork"
-          subtitle={`From entered records · diesel priced at ₹${dieselRate}/L`}
+          subtitle="From entered records · each fill valued at its recorded rate"
         />
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
           <StatCard

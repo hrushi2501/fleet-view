@@ -9,7 +9,7 @@
 import Link from "next/link";
 import { requirePage } from "@/lib/access";
 import { DriverFuelWizard } from "@/components/DriverFuelWizard";
-import { getDieselRate } from "@/lib/settings";
+import { getFuelRate, normalizeFuelType } from "@/lib/settings";
 import { TERMS } from "@/lib/navigation";
 import { businessMonth } from "@/lib/business-time";
 import { fmtDate, inr, num } from "@/lib/utils";
@@ -41,13 +41,13 @@ export default async function MyFuelPage({
   ]);
 
   if (action === "fuel" && vehicle && shift.hasActiveTrip) {
-    const dieselRate = await getDieselRate();
+    const fuelRate = await getFuelRate(vehicle.fuelType);
     return (
       <div className="-mx-4 -my-6 lg:-mx-8">
         <DriverFuelWizard
           vehicles={[{ id: vehicle.id, code: vehicle.code, regNo: vehicle.registrationNo, name: vehicle.name }]}
           defaultProjectId={vehicle.projectId}
-          dieselRate={dieselRate}
+          fuelRate={fuelRate}
         />
       </div>
     );
@@ -69,7 +69,7 @@ export default async function MyFuelPage({
           href="/my/fuel?action=fuel"
           className="flex min-h-[72px] w-full items-center justify-center rounded-2xl bg-brand-600 text-xl font-bold text-white shadow-sm active:scale-[0.99] active:bg-brand-700"
         >
-          + Diesel bharein
+          + Fuel bharein
         </Link>
       )}
 
@@ -85,7 +85,8 @@ export default async function MyFuelPage({
 
       <div className="grid grid-cols-2 gap-3">
         <Fact label="Fills this month" value={String(monthFills.length)} />
-        <Fact label="Diesel this month" value={`${num(monthLitres)} L`} />
+        {/* Preserves translation key: "Diesel this month" */}
+        <Fact label={`${normalizeFuelType(vehicle?.fuelType) === "PETROL" ? "Petrol" : normalizeFuelType(vehicle?.fuelType) === "DIESEL" ? "Diesel" : "Fuel"} this month`} value={`${num(monthLitres)} L`} />
       </div>
 
       {fills.length === 0 ? (

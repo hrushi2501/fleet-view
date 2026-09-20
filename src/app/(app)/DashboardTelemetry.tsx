@@ -39,7 +39,7 @@ export default async function DashboardTelemetry({ assetWhere }: { assetWhere: P
         <StatCard
           label="Unaccounted diesel"
           value={`${num(telemetry.totals.litresUnaccounted)} L`}
-          sub={telemetry.totals.litresUnaccounted > 0 ? `${inr(telemetry.totals.valueUnaccounted, { compact: true })} at risk` : "Nothing unexplained"}
+          sub={telemetry.totals.litresUnaccounted > 0 ? telemetry.totals.valueUnaccounted == null ? "Fuel type or rate not configured" : `${inr(telemetry.totals.valueUnaccounted, { compact: true })} at risk` : "Nothing unexplained"}
           accent={telemetry.totals.litresUnaccounted > 0 ? "rose" : "emerald"}
           icon={<TriangleAlert className="h-5 w-5" />}
         />

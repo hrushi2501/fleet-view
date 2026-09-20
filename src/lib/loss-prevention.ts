@@ -60,8 +60,9 @@ const thr = (rules: RuleLite[], code: string, fallback: number) => ruleOf(rules,
 /* --------------------------------- inputs --------------------------------- */
 
 export type ScanInput = {
+  /** @deprecated Historical test/input compatibility; monetary values now come from each anomaly. */
+  dieselRate?: number;
   rules: RuleLite[];
-  dieselRate: number;
   fuelAnomalies: { id: string; source: string; severity: string; score: number; litres: number; valueAtRisk: number; reasons: string; status: string; tankId: string | null; assetId: string | null }[];
   uncontractedHired: { id: string; code: string; name: string; registrationNo: string | null }[];
   meterRollbacks: { assetId: string; assetCode: string; txnId: string; from: number; to: number; date: Date }[];
@@ -76,7 +77,7 @@ export type ScanInput = {
  * Pure function — the caller owns all database access, which keeps this testable.
  */
 export function scanSignals(input: ScanInput, now: Date = new Date()): Signal[] {
-  const { rules, dieselRate } = input;
+  const { rules } = input;
   const out: Signal[] = [];
 
   // --- FUEL: tank gaps, short deliveries, and abnormal fuel burn ---
@@ -107,7 +108,7 @@ export function scanSignals(input: ScanInput, now: Date = new Date()): Signal[] 
         summary: a.reasons,
         severity: (a.severity as Signal["severity"]) ?? "MEDIUM",
         score: a.score,
-        amountAtRisk: a.valueAtRisk || a.litres * dieselRate,
+        amountAtRisk: a.valueAtRisk,
         assetId: a.assetId,
         evidence: [{ kind: "FUEL_ANOMALY", refId: a.id, label: "Fuel anomaly record", detail: a.reasons }],
       });

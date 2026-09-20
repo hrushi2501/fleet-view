@@ -35,10 +35,10 @@ test("interactive fuel tabs keep telemetry analysis inside a one-day request win
 
   assert.match(overview, /const liveWindowDays = 1/);
   assert.match(overview, /fleetUsage\(liveWindowDays, visible\)/);
-  assert.match(overview, /getDetectedFills\(visible, rate, liveWindowDays\)/);
-  assert.match(records, /getDetectedFills\(visible, rate, 1\)/);
+  assert.match(overview, /getDetectedFills\(visible, rates?, liveWindowDays\)/);
+  assert.match(records, /getDetectedFills\(visible, rates?, 1\)/);
   assert.doesNotMatch(overview, /fleetUsage\((?:14|30), visible\)/);
-  assert.doesNotMatch(records, /getDetectedFills\(visible, rate, 14\)/);
+  assert.doesNotMatch(records, /getDetectedFills\(visible, rates?, 14\)/);
 });
 
 test("interactive telemetry pages stay scoped and avoid historical scans", () => {

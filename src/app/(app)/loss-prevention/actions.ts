@@ -5,7 +5,6 @@ import { boundedNumber, nonNegativeNumber, oneOf, safeParseDate, sanitizeString,
 import { fuelAnomalyScope, recordScope, assertGlobalAccess, assertFormAccess, assertRecordAccess } from "@/lib/record-access";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
-import { getDieselRate } from "@/lib/settings";
 import { scanSignals, DEFAULT_RULES, nextCaseNo, type RuleLite, type ScanInput } from "@/lib/loss-prevention";
 import { requireAction, ActionError, safe } from "@/lib/guard";
 import { transition } from "@/lib/transition";
@@ -62,7 +61,6 @@ async function runScan__impl() {
   const scopeAccess = await requireAction("loss.investigate");
   assertGlobalAccess(scopeAccess);
   const session = await getSession();
-  const dieselRate = await getDieselRate();
 
   let rules = await db.controlRule.findMany();
   if (rules.length === 0) {
@@ -116,7 +114,6 @@ async function runScan__impl() {
 
   const signals = scanSignals({
     rules: ruleLites,
-    dieselRate,
     fuelAnomalies: fuelAnomalies.map((a) => ({ id: a.id, source: a.source, severity: a.severity, score: a.score, litres: a.litres, valueAtRisk: a.valueAtRisk, reasons: a.reasons, status: a.status, tankId: a.tankId, assetId: a.assetId })),
     uncontractedHired,
     meterRollbacks,
