@@ -11,11 +11,23 @@
  */
 
 import L from "leaflet";
-import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, ZoomControl, Popup, Tooltip, useMap } from "react-leaflet";
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Polyline,
+  CircleMarker,
+  ZoomControl,
+  Popup,
+  Tooltip,
+  useMap,
+  useMapEvents,
+} from "react-leaflet";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LiveStatus } from "@/lib/fleet-edge-live";
 import { iconCacheKey } from "@/lib/map-icon-key";
 import type { TrackPoint } from "@/components/FleetEdgePlayback";
+import { resolveOverlappingFleet } from "@/lib/map-clustering";
 
 export type MapView = "streets" | "satellite" | "hybrid";
 
@@ -98,14 +110,27 @@ function escapeHtml(s: string): string {
 const iconCache = new Map<string, L.DivIcon>();
 
 
-function vehicleIcon(m: FleetEdgeMapMarker, active: boolean, showLabel: boolean): L.DivIcon {
-  const key = iconCacheKey(m, active, showLabel);
+function vehicleIcon(
+  m: FleetEdgeMapMarker,
+  active: boolean,
+  showLabel: boolean,
+  isSpiderfied = false,
+  stackCount = 1,
+): L.DivIcon {
+  const key = `${iconCacheKey(m, active, showLabel)}|${isSpiderfied ? 1 : 0}|${stackCount}`;
   const bucket = key.split("|")[1];
 
   const cached = iconCache.get(key);
   if (cached) return cached;
 
-  const built = buildVehicleIcon(m, active, showLabel, bucket === "none" ? null : Number(bucket));
+  const built = buildVehicleIcon(
+    m,
+    active,
+    showLabel,
+    bucket === "none" ? null : Number(bucket),
+    isSpiderfied,
+    stackCount,
+  );
 
   // The fleet is bounded and so is the set of appearances, but a long session
   // with many selections should not grow this without limit.
@@ -119,9 +144,11 @@ function buildVehicleIcon(
   active: boolean,
   showLabel: boolean,
   bucketedHeading: number | null,
+  isSpiderfied = false,
+  stackCount = 1,
 ): L.DivIcon {
   const color = STATUS_HEX[m.status];
-  const size = active ? 40 : 32;
+  const size = active ? 42 : 32;
   const hasHeading = bucketedHeading != null;
   const rotation = bucketedHeading ?? 0;
 
@@ -137,10 +164,16 @@ function buildVehicleIcon(
     ? `<span style="display:block;margin-top:1px;font-size:9px;font-weight:700;color:#047857">👤 ${escapeHtml(m.driverName)}</span>`
     : `<span style="display:block;margin-top:1px;font-size:9px;font-weight:600;color:#b45309">No Driver Assigned</span>`;
 
+  const stackBadge =
+    stackCount > 1
+      ? `<span style="position:absolute;top:-5px;right:-5px;background:#0f172a;border:1.5px solid #38bdf8;color:#38bdf8;font:800 9px ui-sans-serif,system-ui,sans-serif;padding:0 4px;border-radius:9999px;box-shadow:0 1px 4px rgba(0,0,0,0.5);line-height:14px;height:14px">+${stackCount - 1}</span>`
+      : "";
+
   const html = `
-    <div style="display:flex;flex-direction:column;align-items:center;pointer-events:none">
-      <div style="display:flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;border-radius:9999px;background:${color};border:${active ? 3 : 2}px solid #fff;box-shadow:0 2px 8px rgba(15,23,42,.45)${active ? `;outline:3px solid ${color}55` : ""}">
+    <div class="${isSpiderfied ? "fleetview-spider-marker" : ""}" style="display:flex;flex-direction:column;align-items:center;pointer-events:none;position:relative">
+      <div style="position:relative;display:flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;border-radius:9999px;background:${color};border:${active ? 3 : 2}px solid #fff;box-shadow:0 2px 8px rgba(15,23,42,.45)${active ? `;outline:3px solid ${color}66;box-shadow:0 0 16px ${color}aa` : ""}">
         ${glyph}
+        ${stackBadge}
       </div>
       ${
         showLabel
@@ -453,66 +486,264 @@ export default function FleetEdgeMap({
         </>
       )}
 
-      {markers.map((m) => (
-        <Marker
-          key={m.id}
-          position={[m.lat, m.lng]}
-          icon={vehicleIcon(m, selectedId === m.id, zoom >= LABEL_MIN_ZOOM)}
-          // The icon is `pointer-events:none` so the label cannot swallow clicks;
-          // the marker itself stays clickable, which is what selects a vehicle.
-          interactive
-          eventHandlers={{ click: () => onSelect(m.id) }}
-        >
-          <Tooltip direction="top" offset={[0, -20]} opacity={0.95}>
-            <div style={{ font: "600 11px ui-sans-serif,system-ui,sans-serif", color: "#0f172a" }}>
-              <strong>{m.label}</strong> ({m.status})<br />
-              <span style={{ color: m.driverName ? "#047857" : "#b45309" }}>
-                Driver: {m.driverName ? m.driverName : "No Driver Assigned"}
-              </span>
-              {m.speedKph != null && (
-                <span style={{ color: "#64748b" }}> · {Math.round(m.speedKph)} km/h</span>
-              )}
-            </div>
-          </Tooltip>
-          <Popup>
-            <div style={{ minWidth: 190, fontFamily: "ui-sans-serif,system-ui,sans-serif", padding: "2px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: "4px" }}>
-                <strong style={{ fontSize: "13px", color: "#0f172a" }}>{m.label}</strong>
-                <span style={{ fontSize: "10px", fontWeight: "700", padding: "2px 6px", borderRadius: "4px", color: "#fff", background: STATUS_HEX[m.status] }}>
-                  {m.status}
-                </span>
-              </div>
-              <div style={{ marginTop: "6px", fontSize: "11px", lineHeight: 1.6 }}>
-                <div style={{ margin: "3px 0" }}>
-                  <span style={{ color: "#64748b" }}>Driver: </span>
-                  <strong style={{ color: m.driverName ? "#047857" : "#b45309" }}>
-                    {m.driverName ? m.driverName : "No Driver Assigned"}
-                  </strong>
-                </div>
-                {m.speedKph != null && (
-                  <div>
-                    <span style={{ color: "#64748b" }}>Speed: </span>
-                    <strong>{Math.round(m.speedKph)} km/h</strong>
-                  </div>
-                )}
-                <div style={{ color: "#64748b", fontFamily: "monospace", fontSize: "10px", marginTop: "4px" }}>
-                  {m.lat.toFixed(5)}, {m.lng.toFixed(5)}
-                </div>
-              </div>
-              <button
-                onClick={() => onSelect(m.id)}
-                style={{
-                  marginTop: "8px", width: "100%", padding: "5px 0",
-                  background: "#1f47e6", color: "#fff", border: "none",
-                  borderRadius: "6px", fontWeight: 600, fontSize: "11px", cursor: "pointer",
-                }}
-              >
-                Inspect Vehicle Details →
-              </button>
-            </div>
-          </Popup>
-        </Marker>
-      ))}
+      <FleetMarkersLayer
+        markers={markers}
+        selectedId={selectedId}
+        zoom={zoom}
+        onSelect={onSelect}
+      />
     </MapContainer>
+  );
+}
+
+function VehicleMarker({
+  m,
+  active,
+  showLabel,
+  onSelect,
+  position,
+  isSpiderfied,
+  stackCount = 1,
+  siblings = [],
+  onSpiderfyGroup,
+}: {
+  m: FleetEdgeMapMarker;
+  active: boolean;
+  showLabel: boolean;
+  onSelect: (id: string) => void;
+  position: [number, number];
+  isSpiderfied?: boolean;
+  stackCount?: number;
+  siblings?: FleetEdgeMapMarker[];
+  onSpiderfyGroup?: () => void;
+}) {
+  return (
+    <Marker
+      position={position}
+      icon={vehicleIcon(m, active, showLabel, isSpiderfied, stackCount)}
+      interactive
+      zIndexOffset={active ? 1000 : undefined}
+      eventHandlers={{
+        click: (e) => {
+          L.DomEvent.stopPropagation(e);
+          onSelect(m.id);
+        },
+      }}
+    >
+      <Tooltip direction="top" offset={[0, -20]} opacity={0.95}>
+        <div style={{ font: "600 11px ui-sans-serif,system-ui,sans-serif", color: "#0f172a" }}>
+          <strong>{m.label}</strong> ({m.status})
+          {stackCount > 1 && (
+            <span style={{ color: "#0284c7", marginLeft: 4 }}>· {stackCount} at this spot</span>
+          )}
+          <br />
+          <span style={{ color: m.driverName ? "#047857" : "#b45309" }}>
+            Driver: {m.driverName ? m.driverName : "No Driver Assigned"}
+          </span>
+          {m.speedKph != null && (
+            <span style={{ color: "#64748b" }}> · {Math.round(m.speedKph)} km/h</span>
+          )}
+        </div>
+      </Tooltip>
+      <Popup>
+        <div style={{ minWidth: 210, maxHeight: 320, overflowY: "auto", fontFamily: "ui-sans-serif,system-ui,sans-serif", padding: "2px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: "4px" }}>
+            <strong style={{ fontSize: "13px", color: "#0f172a" }}>{m.label}</strong>
+            <span style={{ fontSize: "10px", fontWeight: "700", padding: "2px 6px", borderRadius: "4px", color: "#fff", background: STATUS_HEX[m.status] }}>
+              {m.status}
+            </span>
+          </div>
+          <div style={{ marginTop: "6px", fontSize: "11px", lineHeight: 1.6 }}>
+            <div style={{ margin: "3px 0" }}>
+              <span style={{ color: "#64748b" }}>Driver: </span>
+              <strong style={{ color: m.driverName ? "#047857" : "#b45309" }}>
+                {m.driverName ? m.driverName : "No Driver Assigned"}
+              </strong>
+            </div>
+            {m.speedKph != null && (
+              <div>
+                <span style={{ color: "#64748b" }}>Speed: </span>
+                <strong>{Math.round(m.speedKph)} km/h</strong>
+              </div>
+            )}
+            <div style={{ color: "#64748b", fontFamily: "monospace", fontSize: "10px", marginTop: "4px" }}>
+              {m.lat.toFixed(5)}, {m.lng.toFixed(5)}
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: "flex", gap: "6px", marginTop: "8px" }}>
+            <button
+              onClick={() => onSelect(m.id)}
+              style={{
+                flex: 1, padding: "5px 0",
+                background: "#1f47e6", color: "#fff", border: "none",
+                borderRadius: "6px", fontWeight: 600, fontSize: "11px", cursor: "pointer",
+              }}
+            >
+              Inspect Vehicle →
+            </button>
+            {siblings.length > 0 && onSpiderfyGroup && (
+              <button
+                onClick={onSpiderfyGroup}
+                style={{
+                  padding: "5px 8px", background: "#f1f5f9", color: "#334155",
+                  border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "11px", fontWeight: 600, cursor: "pointer",
+                }}
+                title="Spread out all vehicles at this spot"
+              >
+                Spread ({siblings.length + 1})
+              </button>
+            )}
+          </div>
+
+          {/* Other vehicles sharing this exact coordinate */}
+          {siblings.length > 0 && (
+            <div style={{ marginTop: "10px", borderTop: "1px solid #e2e8f0", paddingTop: "6px" }}>
+              <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "4px" }}>
+                Also at this location ({siblings.length}):
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                {siblings.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => onSelect(s.id)}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "4px 6px", borderRadius: "5px", border: "1px solid #f1f5f9",
+                      background: "#f8fafc", textAlign: "left", cursor: "pointer",
+                    }}
+                  >
+                    <span style={{ fontWeight: 600, fontSize: "11px", color: "#0f172a" }}>{s.label}</span>
+                    <span style={{ fontSize: "9px", fontWeight: 700, padding: "1px 5px", borderRadius: "3px", color: "#fff", background: STATUS_HEX[s.status] }}>
+                      {s.status}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </Popup>
+    </Marker>
+  );
+}
+
+function FleetMarkersLayer({
+  markers,
+  selectedId,
+  zoom,
+  onSelect,
+}: {
+  markers: FleetEdgeMapMarker[];
+  selectedId: string | null;
+  zoom: number;
+  onSelect: (id: string) => void;
+}) {
+  const [manualSpiderGroupId, setManualSpiderGroupId] = useState<string | null>(null);
+  const [prevSelectedId, setPrevSelectedId] = useState<string | null>(selectedId);
+
+  // If selectedId changed, reset manual override during render so auto-expansion activates
+  if (selectedId !== prevSelectedId) {
+    setPrevSelectedId(selectedId);
+    setManualSpiderGroupId(null);
+  }
+
+  const roundedZoom = Math.round(zoom);
+
+  // 1. Resolve base groups without spiderfying
+  const baseResolution = useMemo(
+    () => resolveOverlappingFleet(markers, roundedZoom, null),
+    [markers, roundedZoom],
+  );
+
+  // 2. Determine active spider group (manual override or auto-selected)
+  const activeSpiderGroupId = useMemo(() => {
+    if (manualSpiderGroupId === "NONE") return null;
+    if (manualSpiderGroupId) return manualSpiderGroupId;
+    if (selectedId) {
+      const parent = baseResolution.groups.find(
+        (g) => g.count > 4 && g.markers.some((m) => m.id === selectedId),
+      );
+      return parent?.id ?? null;
+    }
+    return null;
+  }, [manualSpiderGroupId, selectedId, baseResolution.groups]);
+
+  // 3. Final placed markers if spiderfied
+  const { placed, groups } = useMemo(() => {
+    if (!activeSpiderGroupId) {
+      return baseResolution;
+    }
+    return resolveOverlappingFleet(markers, roundedZoom, activeSpiderGroupId);
+  }, [markers, roundedZoom, activeSpiderGroupId, baseResolution]);
+
+  // Map background click closes spiderfy
+  useMapEvents({
+    click: () => {
+      setManualSpiderGroupId("NONE");
+    },
+  });
+
+  return (
+    <>
+      {/* Spider connector lines */}
+      {placed.map((p) => {
+        if (!p.isSpiderfied || !p.spiderLine) return null;
+        const isSelected = selectedId === p.marker.id;
+        return (
+          <Polyline
+            key={`spider-line-${p.marker.id}`}
+            positions={p.spiderLine}
+            pathOptions={{
+              color: isSelected ? "#0284c7" : "#64748b",
+              weight: isSelected ? 3 : 1.5,
+              dashArray: isSelected ? undefined : "3 3",
+              opacity: isSelected ? 1 : 0.75,
+            }}
+          />
+        );
+      })}
+
+      {/* Origin hub dots for spiderfied groups */}
+      {groups.map((g) => {
+        if (g.id !== activeSpiderGroupId) return null;
+        return (
+          <CircleMarker
+            key={`hub-${g.id}`}
+            center={[g.center.lat, g.center.lng]}
+            radius={5}
+            pathOptions={{
+              color: "#38bdf8",
+              weight: 2,
+              fillColor: "#0f172a",
+              fillOpacity: 1,
+            }}
+          />
+        );
+      })}
+
+      {/* Direct-view vehicle markers */}
+      {placed.map((p) => {
+        const isSelected = selectedId === p.marker.id;
+        const group = p.groupId ? groups.find((g) => g.id === p.groupId) : null;
+        const siblings = group ? group.markers.filter((m) => m.id !== p.marker.id) : [];
+
+        return (
+          <VehicleMarker
+            key={p.marker.id}
+            m={p.marker}
+            active={isSelected}
+            showLabel={zoom >= LABEL_MIN_ZOOM}
+            onSelect={onSelect}
+            position={[p.displayLat, p.displayLng]}
+            isSpiderfied={p.isSpiderfied}
+            stackCount={!p.isOffset && !p.isSpiderfied && p.groupCount > 1 ? p.groupCount : 1}
+            siblings={siblings}
+            onSpiderfyGroup={group ? () => setManualSpiderGroupId(group.id) : undefined}
+          />
+        );
+      })}
+    </>
   );
 }

@@ -151,11 +151,14 @@ export class AiFraudDetectionService {
     // 1. Create Loss Prevention Incident
     const seq = await db.fraudCase.count();
     const caseTitle = `AI Detection: Fuel Siphoning (${lostLitres.toFixed(0)}L)`;
-    // The configured diesel rate, not a hardcoded guess. This number goes on a
+    // The configured asset-specific fuel rate, not a hardcoded guess. This number goes on a
     // case as "amount at risk" and may be quoted at a recovery conversation, so
     // it has to be the rate the business actually pays.
     const rate = await getFuelRate(asset.fuelType);
     const valueAtRisk = rate == null ? 0 : Math.round(lostLitres * rate);
+    const pricingNote = rate == null
+      ? " Monetary value is unavailable because the asset fuel type or its current rate is not configured."
+      : "";
     
     const fraudCase = await db.fraudCase.create({
       data: {
@@ -167,7 +170,7 @@ export class AiFraudDetectionService {
         score: Math.round(score * 100),
         amountAtRisk: valueAtRisk,
         assetId: asset.id,
-        summary: reason,
+        summary: `${reason}${pricingNote}`,
         signalKey: `AI_FUEL_THEFT:${asset.id}:${Date.now()}`,
         openedBy: "AI Fraud Engine",
         evidence: {
@@ -175,8 +178,8 @@ export class AiFraudDetectionService {
             kind: "TELEMETRY",
             label: "Telemetry Analysis",
             detail: gps
-              ? `Lat: ${gps.lat.toFixed(4)}, Lng: ${gps.lng.toFixed(4)} - ${reason}`
-              : `Location unknown (no GPS fix on the readings involved) - ${reason}`,
+              ? `Lat: ${gps.lat.toFixed(4)}, Lng: ${gps.lng.toFixed(4)} - ${reason}${pricingNote}`
+              : `Location unknown (no GPS fix on the readings involved) - ${reason}${pricingNote}`,
           }]
         },
         actions: {
@@ -191,7 +194,9 @@ export class AiFraudDetectionService {
         category: "Loss",
         severity: "Critical",
         title: caseTitle,
-        message: `${vehicleId}: ${reason} Value at risk: ₹${valueAtRisk.toLocaleString("en-IN")}`,
+        message: rate == null
+          ? `${vehicleId}: ${reason} Value at risk is not priced because fuel configuration is incomplete.`
+          : `${vehicleId}: ${reason} Value at risk: ₹${valueAtRisk.toLocaleString("en-IN")}`,
         status: "Open",
         assetId: asset.id,
         actionUrl: `/loss-prevention/${fraudCase.id}`

@@ -116,6 +116,40 @@ a,
   border-radius: 8px;
 }
 
+/* Smooth transitions for map markers, clusters, and spiderfying */
+.leaflet-marker-pane .leaflet-marker-icon {
+  transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, opacity;
+}
+
+.fleetview-cluster-badge {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+  will-change: transform;
+}
+.fleetview-cluster-badge:hover {
+  transform: scale(1.05);
+  filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.5));
+}
+
+@keyframes spiderBloom {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  65% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.fleetview-spider-marker {
+  animation: spiderBloom 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 /* Someone who has asked their system to stop moving things means it. */
 @media (prefers-reduced-motion: reduce) {
   *,

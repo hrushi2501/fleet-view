@@ -28,7 +28,7 @@ const ACTIONS: QuickAction[] = [
     permissions: ["fleet.view", "fleet.edit"],
   },
   {
-    id: "issue_diesel", title: "Issue Diesel", subtitle: "Log diesel issued to a vehicle or tank",
+    id: "issue_diesel", title: "Issue Fuel", subtitle: "Log fuel issued to a vehicle or tank",
     href: "/fuel", icon: "Fuel", color: "bg-amber-500 text-white shadow-amber-500/25", badge: "Fuel",
     permissions: ["fuel.view", "fuel.issue"],
   },

@@ -483,7 +483,11 @@ export function FuelRateSetter({ current }: { current: FuelRates }) {
     const fd = new FormData(); fd.set("diesel", diesel); fd.set("petrol", petrol);
     start(async () => {
       try {
-        await setFuelRates(fd);
+        const result = await setFuelRates(fd);
+        if (isActionError(result)) {
+          toast.error("Failed to update fuel rates", result.error);
+          return;
+        }
         toast.success("Fuel rates updated", `Diesel ₹${diesel}/L · Petrol ₹${petrol}/L`);
         router.refresh();
       } catch (e) {
@@ -495,9 +499,9 @@ export function FuelRateSetter({ current }: { current: FuelRates }) {
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-xs">
       <span className="text-xs font-medium text-slate-500">Diesel ₹/L</span>
-      <input value={diesel} onChange={(e) => setDiesel(e.target.value)} inputMode="decimal" className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm font-semibold outline-none focus:border-brand-400" />
+      <input value={diesel} onChange={(e) => setDiesel(e.target.value)} type="number" min="30" max="300" step="0.01" required className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm font-semibold outline-none focus:border-brand-400" />
       <span className="text-xs font-medium text-slate-500">Petrol ₹/L</span>
-      <input value={petrol} onChange={(e) => setPetrol(e.target.value)} inputMode="decimal" className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm font-semibold outline-none focus:border-brand-400" />
+      <input value={petrol} onChange={(e) => setPetrol(e.target.value)} type="number" min="30" max="300" step="0.01" required className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm font-semibold outline-none focus:border-brand-400" />
       <button onClick={save} disabled={pending} className="rounded-lg bg-brand-500 px-3 py-1 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-60 transition-colors">
         {pending ? "…" : "Save"}
       </button>
