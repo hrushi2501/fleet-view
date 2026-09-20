@@ -580,17 +580,20 @@ async function saveServicePhotos__impl(fd: FormData) {
   };
   const oldUrls = await collect("oldPhotos", "oldpart");
   const newUrls = await collect("newPhotos", "newpart");
-  await db.workOrder.create({
-    data: {
-      woNo: `SR-${Date.now().toString().slice(-8)}`,
-      assetId,
-      type: "REPAIR",
-      priority: "Medium",
-      status: "Completed",
-      description: s(fd, "note") || "Repair part photos (old + new) uploaded by driver",
-      partPhotos: JSON.stringify({ old: oldUrls, new: newUrls }),
-      completedAt: new Date(),
-    },
+  await businessTransaction(scopeAccess.session, async (tx) => {
+    await tx.workOrder.create({
+      data: {
+        woNo: `SR-${Date.now().toString().slice(-8)}`,
+        assetId,
+        projectId: asset.projectId,
+        type: "REPAIR",
+        priority: "Medium",
+        status: "Open",
+        description: s(fd, "note") || "Repair part photos (old + new) submitted for workshop review",
+        partPhotos: JSON.stringify({ old: oldUrls, new: newUrls }),
+        reportedAt: new Date(),
+      },
+    });
   });
   revalidatePath("/maintenance");
   revalidatePath("/driver");

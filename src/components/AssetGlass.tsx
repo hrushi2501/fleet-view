@@ -287,7 +287,7 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                       sub={data.usage.distanceSource === "ODOMETER" ? "from odometer" : data.usage.distanceSource === "GPS" ? "from GPS track" : "no source"}
                     />
                     <Stat
-                      label="Diesel burned"
+                      label="Fuel burned"
                       value={data.usage.insufficientData || data.usage.litresBurned == null ? "—" : `${data.usage.litresBurned} L`}
                       sub={data.usage.insufficientData ? "not measurable" : `±${data.usage.litresBurnedUncertainty} L sender tolerance`}
                     />
@@ -334,7 +334,7 @@ export function AssetGlass({ assetId, onClose }: { assetId: string; onClose: () 
                         {data.usage.norm.low}–{data.usage.norm.high} km/L — roughly{" "}
                         <strong>{Math.round((1 - data.usage.avgKmPerL / data.usage.norm.low) * 100)}% worse</strong>{" "}
                         than the worst the norm allows. Either the vehicle is working far harder than the norm
-                        assumes, or diesel is leaving the tank without moving it.
+                        assumes, or fuel is leaving the tank without moving it.
                       </p>
                     )}
 

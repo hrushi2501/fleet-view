@@ -197,6 +197,15 @@ export function FleetEdgeConsole({ initial }: { initial: LiveFleet }) {
     setFocusRequest((request) => request + 1);
   }, []);
 
+  // Synchronized sidebar: when selectedId changes, scroll the active vehicle card into view smoothly
+  useEffect(() => {
+    if (!selectedId || !sidebarOpen) return;
+    const el = document.getElementById(`vehicle-card-${selectedId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [selectedId, sidebarOpen]);
+
   const selected = useMemo(
     () => fleet.vehicles.find((v) => v.id === selectedId) ?? null,
     [fleet.vehicles, selectedId],
@@ -614,9 +623,10 @@ function VehicleCard({
 }) {
   return (
     <div
+      id={`vehicle-card-${v.id}`}
       className={cn(
         "border-b border-slate-100 transition-colors",
-        active ? "bg-brand-50/70" : "hover:bg-slate-50/70",
+        active ? "bg-brand-50/80 ring-2 ring-brand-500/25 shadow-xs" : "hover:bg-slate-50/70",
       )}
     >
       <button onClick={onSelect} className="flex w-full gap-2.5 px-3 py-3 text-left">

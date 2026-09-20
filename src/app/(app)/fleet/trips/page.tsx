@@ -104,7 +104,7 @@ export default async function TripsPage() {
                 <tr>
                   <th className="px-5 py-3 font-medium"><Txt text="Vehicle" /></th>
                   <th className="px-5 py-3 font-medium"><Txt text="Distance" /></th>
-                  <th className="px-5 py-3 font-medium"><Txt text="Diesel burned" /></th>
+                  <th className="px-5 py-3 font-medium"><Txt text="Fuel burned" /></th>
                   <th className="px-5 py-3 font-medium"><Txt text="Efficiency" /></th>
                   <th className="px-5 py-3 font-medium"><Txt text="Norm" /></th>
                   <th className="px-5 py-3 font-medium"><Txt text="Unaccounted" /></th>
@@ -155,7 +155,7 @@ export default async function TripsPage() {
             </table>
           </div>
           <p className="px-5 pb-4 pt-1 text-[11px] text-slate-500">
-            Efficiency is distance ÷ diesel burned over the window. &ldquo;Unaccounted&rdquo; is fuel that left the
+            Efficiency is distance ÷ fuel burned over the window. &ldquo;Unaccounted&rdquo; is fuel that left the
             tank beyond what the journey and idling explain — a prompt to investigate, not proof of loss.
           </p>
         </Card>

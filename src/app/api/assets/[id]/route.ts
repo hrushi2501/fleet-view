@@ -46,7 +46,6 @@ async function handleGET(_req: Request, { params }: { params: Promise<{ id: stri
       compliance: { orderBy: { expiryDate: "asc" } },
       workOrders: { orderBy: { reportedAt: "desc" }, take: 5 },
       fuelTxns: { where: { type: "ISSUE" }, orderBy: { date: "desc" }, take: 5 },
-      costs: true,
     },
   });
   if (!asset) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -55,7 +54,7 @@ async function handleGET(_req: Request, { params }: { params: Promise<{ id: stri
   // the typed columns, while `raw` — the whole provider payload, the largest
   // column in the schema — is shown for the newest sample alone. Fetching 200
   // raw blobs to display one was the single heaviest read in the app.
-  const [history, latest, assetNorm, classNorm, idleNorm] = await db.$transaction([
+  const [history, latest, assetNorm, classNorm, idleNorm, costGroups] = await db.$transaction([
     db.telemetryReading.findMany({
       where: { assetId: asset.id },
       orderBy: { recordedAt: "desc" },
@@ -78,6 +77,12 @@ async function handleGET(_req: Request, { params }: { params: Promise<{ id: stri
     db.consumptionNorm.findFirst({ where: { assetId: asset.id, unit: "KMPL" } }),
     db.consumptionNorm.findFirst({ where: { assetClass: asset.assetClass, unit: "KMPL" } }),
     db.consumptionNorm.findFirst({ where: { assetClass: asset.assetClass, unit: "LPH" } }),
+    db.costTransaction.groupBy({
+      by: ["costHead"],
+      where: { assetId: asset.id },
+      _sum: { amount: true },
+      orderBy: { costHead: "asc" },
+    }),
   ]);
 
   // Derived usage: distance, burn, efficiency and unexplained loss, measured
@@ -102,7 +107,7 @@ async function handleGET(_req: Request, { params }: { params: Promise<{ id: stri
   }
 
   const costByHead: Record<string, number> = {};
-  for (const c of asset.costs) costByHead[c.costHead] = (costByHead[c.costHead] || 0) + c.amount;
+  for (const g of costGroups) costByHead[g.costHead] = g._sum?.amount ?? 0;
   const totalCost = Object.values(costByHead).reduce((s, v) => s + v, 0);
 
   const activeDriver = asset.tripSessions[0]?.driver ?? asset.driver;

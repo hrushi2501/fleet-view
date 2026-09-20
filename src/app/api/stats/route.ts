@@ -23,16 +23,19 @@ async function handleGET() {
   // and "the company runs 60" are different disclosures.
   const visibleAssets = assetScope(auth.access);
   const byProject = projectIdScope(auth.access);
+  const sixMonthsAgo = new Date(Date.now() - 180 * 86_400_000);
 
   const [assets, statusGroups, fuelIssues, openAlerts, expiring, costs] = await Promise.all([
     db.asset.count({ where: visibleAssets }),
     db.asset.groupBy({ by: ["status"], where: visibleAssets, _count: true }),
-    // Only two columns are reduced over below; the row also carries notes,
-    // photo URLs and geo — needless bytes for every fuel issue ever recorded.
-    db.fuelTransaction.findMany({ where: { type: "ISSUE", asset: visibleAssets }, select: { quantity: true, sensorRise: true, rate: true } }),
+    // Scoped to the 6-month reporting window to bound payload and runtime
+    db.fuelTransaction.findMany({
+      where: { type: "ISSUE", asset: visibleAssets, date: { gte: sixMonthsAgo } },
+      select: { quantity: true, sensorRise: true, rate: true },
+    }),
     db.alert.count({ where: { status: "Open", ...(Object.keys(visibleAssets).length ? { asset: visibleAssets } : {}) } }),
     db.complianceDoc.count({ where: { status: { in: ["Expiring", "Expired"] }, ...(Object.keys(visibleAssets).length ? { asset: visibleAssets } : {}) } }),
-    db.costTransaction.aggregate({ where: byProject, _sum: { amount: true } }),
+    db.costTransaction.aggregate({ where: { ...byProject, date: { gte: sixMonthsAgo } }, _sum: { amount: true } }),
   ]);
 
   const lossL = fuelIssues.reduce((s, f) => s + Math.max(0, f.quantity - f.sensorRise), 0);

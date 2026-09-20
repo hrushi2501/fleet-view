@@ -19,7 +19,7 @@ export function driverFuelFillNotification(input: DriverEvent & { quantity: numb
     category: "Fuel",
     severity: "Info",
     title: `Fuel fill recorded — ${input.assetCode}`,
-    message: `${input.driverName} recorded ${input.quantity.toFixed(1)} L of diesel (₹${amount.toLocaleString("en-IN")}) from the driver app.`,
+    message: `${input.driverName} recorded ${input.quantity.toFixed(1)} L of fuel (₹${amount.toLocaleString("en-IN")}) from the driver app.`,
     assetId: input.assetId,
     driverId: input.driverId,
     actionUrl: "/reports/notifications",

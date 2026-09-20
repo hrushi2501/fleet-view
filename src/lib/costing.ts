@@ -59,15 +59,15 @@ export type Depreciation = {
 export function depreciation(a: DepInput, asOf = new Date()): Depreciation {
   const cost = a.acquisitionCost;
   const life = Math.max(1, a.usefulLifeYears);
-  const salvage = Math.min(a.salvageValue, cost);
+  const salvage = Math.max(0, Math.min(a.salvageValue, cost));
 
   // `new Date(year, 0, 1)` builds 1 January in the *server's* timezone, which is
   // UTC on Vercel and IST on a laptop — the same asset then ages by different
   // amounts depending on where the page rendered. Anchor it to the business
   // calendar instead.
   const start = a.inServiceDate ?? (a.yearMfg > 1970 ? parseBusinessDay(`${a.yearMfg}-01-01`) : null);
-  if (!cost || !start) {
-    return { annual: 0, monthly: 0, accumulated: 0, bookValue: cost, ageYears: 0, fullyDepreciated: false, known: false };
+  if (cost <= 0 || !start) {
+    return { annual: 0, monthly: 0, accumulated: 0, bookValue: Math.max(0, cost), ageYears: 0, fullyDepreciated: false, known: false };
   }
 
   const ageYears = Math.max(0, (asOf.getTime() - start.getTime()) / (365.25 * 86400000));

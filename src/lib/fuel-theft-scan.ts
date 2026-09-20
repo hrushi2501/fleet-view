@@ -43,7 +43,7 @@ import {
   pickFuelScanNorm,
   prepareFuelScanEvidence,
 } from "@/lib/fuel-theft-scan-evidence";
-import { getFuelRate } from "@/lib/settings";
+import { fuelRateFor, getFuelRates } from "@/lib/settings";
 import { recordSystemAudit } from "@/lib/audit-writer";
 import { TATA_PROVIDER_CODE } from "@/lib/tata-fleet-edge";
 
@@ -96,6 +96,7 @@ export async function scanForFuelTheft(
     where: { status: { not: "Off-hired" }, ...(options.assetId ? { id: options.assetId } : {}) },
     select: { id: true, code: true, registrationNo: true, fuelCapacity: true, assetClass: true, fuelType: true },
   });
+  const fuelRates = await getFuelRates();
 
   // `GPS_API` is a delivery channel, not a provider identity. More than one
   // integration can use it, so the reading-level relation is the authority.
@@ -137,7 +138,7 @@ export async function scanForFuelTheft(
   const out: ScanOutcome = { scanned: 0, raised: 0, duplicates: 0, notAssessed: [], findings: [] };
 
   for (const asset of assets) {
-    const rate = await getFuelRate(asset.fuelType);
+    const rate = fuelRateFor(asset.fuelType, fuelRates);
     const rows = byAsset.get(asset.id) ?? [];
     const note = (reason: string) =>
       out.notAssessed.push({ code: asset.code, registrationNo: asset.registrationNo, reason });
@@ -261,6 +262,7 @@ export async function scanForFuelTheft(
             endpoints +
             where +
             `\n${seg.reasons.join("\n")}` +
+            (rate == null ? "\nMonetary value not calculated: asset fuel type or its current rate is not configured." : "") +
             `\nRaised by the ${options.trigger === "manual" ? "manual" : "nightly"} scan; ${seg.confidence.toLowerCase()} confidence.`,
           },
         });

@@ -7,24 +7,56 @@ import { useRouter } from "next/navigation";
  * Periodically hits the AI ingestion pipeline and refreshes the router
  * to pull the latest AI detections into the Server Components.
  */
-export function LiveAiPoller({ intervalMs = 15000 }: { intervalMs?: number }) {
+export function LiveAiPoller({ intervalMs = 300_000 }: { intervalMs?: number }) {
   const router = useRouter();
 
   useEffect(() => {
-    const poll = async () => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let isMounted = true;
+
+    const scheduleNext = (delayMs: number) => {
+      if (!isMounted) return;
+      timeoutId = setTimeout(runPoll, delayMs);
+    };
+
+    const runPoll = async () => {
+      let nextDelay = intervalMs;
       try {
-        await fetch("/api/insight/ai-scan", { method: "POST" });
-        router.refresh();
+        const res = await fetch("/api/insight/ai-scan", { method: "POST" });
+        if (res.ok) {
+          router.refresh();
+        } else if (res.status === 429) {
+          const retryHeader = res.headers.get("Retry-After");
+          if (retryHeader) {
+            const retrySec = parseInt(retryHeader, 10);
+            if (!isNaN(retrySec) && retrySec > 0) {
+              nextDelay = Math.max(intervalMs, retrySec * 1000);
+            }
+          } else {
+            try {
+              const body = await res.json();
+              if (body?.retryInSeconds && body.retryInSeconds > 0) {
+                nextDelay = Math.max(intervalMs, body.retryInSeconds * 1000);
+              }
+            } catch {
+              // Ignore json parsing error
+            }
+          }
+        }
       } catch (err) {
         console.error("Failed to poll AI ingestion stream", err);
+      } finally {
+        scheduleNext(nextDelay);
       }
     };
 
     // Initial poll
-    poll();
-    
-    const id = setInterval(poll, intervalMs);
-    return () => clearInterval(id);
+    runPoll();
+
+    return () => {
+      isMounted = false;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, [router, intervalMs]);
 
   return (

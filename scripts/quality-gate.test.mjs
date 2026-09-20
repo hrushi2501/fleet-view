@@ -6,7 +6,7 @@ const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url
 const workflow = await readFile(new URL("../.github/workflows/dependency-audit.yml", import.meta.url), "utf8");
 
 test("quality commands keep the required checks in one predictable order", () => {
-  assert.equal(pkg.scripts.test, "node --import ./scripts/test-setup.mjs --test 'src/**/*.test.ts'");
+  assert.equal(pkg.scripts.test, "node --import ./scripts/test-setup.mjs --test \"src/**/*.test.ts\"");
   assert.equal(pkg.scripts["test:all"], "npm test && npm run test:deploy");
   assert.match(pkg.scripts["test:deploy"], /rls-policy-contract\.test\.mjs/);
   assert.equal(pkg.scripts.check, "npm run lint && tsc --noEmit && npm run test:all");

@@ -69,8 +69,15 @@ export function supportedQty(contract: ContractLite, logs: LogLite[]): { qty: nu
   switch (contract.rateType) {
     case "PER_DAY": {
       // A day with no worked hours and no distance isn't a billable day, even if
-      // someone marked the machine "present".
-      qty = present.filter((l) => l.workedHours > 0 || l.km > 0 || l.trips > 0 || (contract.idleBillable && l.idleHours > 0)).length;
+      // someone marked the machine "present". If idle is billable, standby presence
+      // is billable provided the machine was not broken down.
+      qty = present.filter((l) =>
+        l.workedHours > 0 ||
+        l.km > 0 ||
+        l.trips > 0 ||
+        (contract.idleBillable && (l.idleHours > 0 || (l.breakdownHours === 0 && !l.workedHours))) ||
+        (contract.breakdownBillable && l.breakdownHours > 0)
+      ).length;
       break;
     }
     case "PER_HOUR": {

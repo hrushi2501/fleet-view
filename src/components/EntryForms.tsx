@@ -6,6 +6,7 @@ import { X, Plus, Pencil, Trash2, Loader2, Camera, Calculator, RotateCcw } from 
 import { cn, ASSET_CLASS_LABEL, inr } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { MachineSelect, MachineOption } from "@/components/MachineSelect";
 import { isActionError } from "@/lib/action-result";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -483,7 +484,11 @@ export function FuelRateSetter({ current }: { current: FuelRates }) {
     const fd = new FormData(); fd.set("diesel", diesel); fd.set("petrol", petrol);
     start(async () => {
       try {
-        await setFuelRates(fd);
+        const result = await setFuelRates(fd);
+        if (isActionError(result)) {
+          toast.error("Failed to update fuel rates", result.error);
+          return;
+        }
         toast.success("Fuel rates updated", `Diesel ₹${diesel}/L · Petrol ₹${petrol}/L`);
         router.refresh();
       } catch (e) {
@@ -495,9 +500,9 @@ export function FuelRateSetter({ current }: { current: FuelRates }) {
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-xs">
       <span className="text-xs font-medium text-slate-500">Diesel ₹/L</span>
-      <input value={diesel} onChange={(e) => setDiesel(e.target.value)} inputMode="decimal" className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm font-semibold outline-none focus:border-brand-400" />
+      <input value={diesel} onChange={(e) => setDiesel(e.target.value)} type="number" min="30" max="300" step="0.01" required className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm font-semibold outline-none focus:border-brand-400" />
       <span className="text-xs font-medium text-slate-500">Petrol ₹/L</span>
-      <input value={petrol} onChange={(e) => setPetrol(e.target.value)} inputMode="decimal" className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm font-semibold outline-none focus:border-brand-400" />
+      <input value={petrol} onChange={(e) => setPetrol(e.target.value)} type="number" min="30" max="300" step="0.01" required className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm font-semibold outline-none focus:border-brand-400" />
       <button onClick={save} disabled={pending} className="rounded-lg bg-brand-500 px-3 py-1 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-60 transition-colors">
         {pending ? "…" : "Save"}
       </button>
@@ -754,8 +759,7 @@ export function FuelEdit({ txn }: { txn: { id: string; label: string; quantity: 
 }
 
 /* ----------------------------- WORK ORDER ----------------------------- */
-export function WorkOrderEntry({ assets }: { assets: Opt[] }) {
-  const assetOpts = [{ value: "", label: "— Select asset —" }, ...assets.map((a) => ({ value: a.id, label: a.label }))];
+export function WorkOrderEntry({ assets }: { assets: (Opt | MachineOption)[] }) {
   return (
     <Modal
       title="Create Work Order"
@@ -764,7 +768,16 @@ export function WorkOrderEntry({ assets }: { assets: Opt[] }) {
       action={saveWorkOrder}
       successMessage="✓ Work order created successfully"
     >
-      <Sel label="Machine" name="assetId" options={assetOpts} required />
+      <div className="sm:col-span-2">
+        <MachineSelect
+          assets={assets}
+          label="Machine"
+          name="assetId"
+          required
+          showDuplicateWarning={true}
+          placeholder="— Select Machine (or search by code / category) —"
+        />
+      </div>
       <Sel label="Type" name="type" options={["PM", "BREAKDOWN", "REPAIR"].map((v) => ({ value: v, label: v }))} defaultValue="PM" />
       <Sel label="Priority" name="priority" options={["Low", "Medium", "High", "Critical"].map((v) => ({ value: v, label: v }))} defaultValue="Medium" />
       <Sel label="Status" name="status" options={["Open", "In-Progress", "Completed", "Closed"].map((v) => ({ value: v, label: v }))} defaultValue="Open" />

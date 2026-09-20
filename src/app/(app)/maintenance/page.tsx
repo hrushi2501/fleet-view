@@ -54,7 +54,36 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
     db.inventoryWarehouse.findMany({ where: { active: true, ...recordScope("inventoryWarehouse", access) }, orderBy: { code: "asc" } }),
   ]);
 
-  const assetOpts = assets.map((a) => ({ id: a.id, label: `${a.code} — ${a.name}` }));
+  // Map active work orders by assetId and by scheduleId
+  const activeWosByAsset = new Map<string, Array<{ id: string; woNo: string; description: string; status: string }>>();
+  const activeWoBySchedule = new Map<string, { woNo: string; description: string; status: string }>();
+  for (const w of openWos) {
+    const list = activeWosByAsset.get(w.assetId) ?? [];
+    list.push({ id: w.id, woNo: w.woNo, description: w.description, status: w.status });
+    activeWosByAsset.set(w.assetId, list);
+  }
+  for (const s of schedules) {
+    const match = openWos.find(
+      (w) =>
+        (w.scheduleId && w.scheduleId === s.id) ||
+        (w.assetId === s.assetId && w.description.trim().toLowerCase() === s.taskName.trim().toLowerCase())
+    );
+    if (match) {
+      activeWoBySchedule.set(s.id, { woNo: match.woNo, description: match.description, status: match.status });
+    }
+  }
+
+  const assetOpts = assets.map((a) => ({
+    id: a.id,
+    code: a.code,
+    name: a.name,
+    registrationNo: a.registrationNo,
+    assetClass: a.assetClass,
+    category: (ASSET_CLASS_LABEL[a.assetClass as keyof typeof ASSET_CLASS_LABEL] || a.assetClass || "Other"),
+    status: a.status,
+    label: `${a.code} — ${a.name}`,
+    activeWorkOrders: activeWosByAsset.get(a.id) || [],
+  }));
   const classOpts = Object.entries(ASSET_CLASS_LABEL).map(([value, label]) => ({ value, label }));
   const inventoryItemOpts = inventoryItems.map((i) => ({
     id: i.id,
@@ -506,7 +535,14 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
                         <td className="px-5 py-3"><Badge color={DUE_BADGE[due.status]}>{DUE_LABEL[due.status]}</Badge></td>
                         <td className="px-5 py-3">
                           <div className="flex items-center justify-end gap-2">
-                            {(due.status === "overdue" || due.status === "due") && <RaiseWoButton scheduleId={s.id} />}
+                            {(due.status === "overdue" || due.status === "due") && (
+                              <RaiseWoButton
+                                scheduleId={s.id}
+                                existingWo={activeWoBySchedule.get(s.id)}
+                                taskName={s.taskName}
+                                assetCode={s.asset?.code}
+                              />
+                            )}
                             <DeleteRow id={s.id} kind="schedule" />
                           </div>
                         </td>
@@ -551,7 +587,12 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
                       <td className="px-5 py-3 text-slate-600">{fmtDate(f.estDate)}</td>
                       <td className="px-5 py-3 text-right text-slate-600">{f.schedule.estimatedCost ? inr(f.schedule.estimatedCost, { compact: true }) : "—"}</td>
                       <td className="px-5 py-3 text-right">
-                        <RaiseWoButton scheduleId={f.schedule.id} />
+                        <RaiseWoButton
+                          scheduleId={f.schedule.id}
+                          existingWo={activeWoBySchedule.get(f.schedule.id)}
+                          taskName={f.schedule.taskName}
+                          assetCode={f.schedule.asset?.code}
+                        />
                       </td>
                     </tr>
                   ))}
