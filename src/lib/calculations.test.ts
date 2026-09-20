@@ -18,6 +18,7 @@ import assert from "node:assert/strict";
 import { pmDue, reliability, type ScheduleLite, type WoLite } from "./maintenance.ts";
 import { attendanceSummary } from "./master.ts";
 import { projectPnL, replaceVsRepair, depreciation } from "./costing.ts";
+import { supportedQty, type ContractLite, type LogLite } from "./hire.ts";
 import { scorecard, scanSignals, DEFAULT_RULES } from "./loss-prevention.ts";
 import { calendarDaysUntil } from "./utils.ts";
 
@@ -99,6 +100,22 @@ describe("preventive maintenance — an unknown meter cannot certify a machine",
   test("with no interval configured at all, nothing is assessable", () => {
     const d = pmDue(schedule({ intervalKm: 0, intervalHours: 0, intervalDays: 0 }), 89_000, false, now);
     assert.equal(d.assessable, false);
+  });
+
+  test("day-based PM interval calculates progress and remaining days", () => {
+    const lastDone = new Date(now.getTime() - 45 * 86400000); // 45 days ago
+    const d = pmDue(schedule({ intervalKm: 0, intervalDays: 90, lastDoneDate: lastDone }), 80_000, false, now);
+    assert.equal(d.assessable, true);
+    assert.equal(d.daysRemaining, 45);
+    assert.equal(d.progressPct, 50);
+
+    // If intervalDays is configured but lastDoneDate is null, it cannot be assessed
+    const unassessed = pmDue(schedule({ intervalKm: 0, intervalDays: 90, lastDoneDate: null }), 80_000, false, now);
+    assert.equal(unassessed.assessable, false);
+
+    // If intervalDays is 0 even if lastDoneDate is present, day basis is ignored
+    const zeroDays = pmDue(schedule({ intervalKm: 0, intervalDays: 0, lastDoneDate: lastDone }), 80_000, false, now);
+    assert.equal(zeroDays.assessable, false);
   });
 });
 
@@ -210,6 +227,94 @@ describe("depreciation is bounded by physical reality", () => {
     const d = depreciation({ ...base, method: "WDV" }, new Date("2036-01-01T00:00:00Z"));
     assert.ok(Number.isFinite(d.bookValue) && d.bookValue >= 0);
     assert.ok(Number.isFinite(d.annual));
+  });
+
+  test("calculates active straight-line and WDV depreciation from acquisition cost and yearMfg", () => {
+    const slm = depreciation({
+      acquisitionCost: 5_000_000,
+      salvageValue: 500_000,
+      usefulLifeYears: 10,
+      method: "SLM",
+      inServiceDate: null,
+      yearMfg: 2021,
+    }, new Date("2026-01-01T00:00:00Z"));
+
+    assert.equal(slm.known, true);
+    assert.equal(slm.annual, 450_000);
+    assert.equal(slm.monthly, 37_500);
+    assert.ok(slm.bookValue < 5_000_000);
+    assert.ok(slm.bookValue > 500_000);
+    assert.equal(slm.fullyDepreciated, false);
+
+    // Depreciation edge cases
+    assert.equal(depreciation({ acquisitionCost: 0, salvageValue: 0, usefulLifeYears: 10, method: "SLM", yearMfg: 2020, inServiceDate: new Date() }, now).known, false);
+    assert.equal(depreciation({ acquisitionCost: 1000, salvageValue: 0, usefulLifeYears: 10, method: "SLM", inServiceDate: null, yearMfg: 0 }, now).known, false);
+
+    const wdv = depreciation({
+      acquisitionCost: 5_000_000,
+      salvageValue: 500_000,
+      usefulLifeYears: 10,
+      method: "WDV",
+      inServiceDate: new Date("2021-01-01T00:00:00Z"),
+      yearMfg: 2021,
+    }, new Date("2026-01-01T00:00:00Z"));
+    assert.equal(wdv.known, true);
+    assert.ok(wdv.bookValue > 500_000);
+    assert.ok(Math.abs(wdv.bookValue - 1_581_388) < 2000, "WDV book value matches exponential salvage rate");
+    assert.ok(Math.abs(wdv.annual - 325_246) < 2000, "WDV annual depreciation reflects calculated rate from salvage ratio");
+  });
+});
+
+describe("hire contract billing supportedQty", () => {
+  test("bills worked hours and standby hours when PER_HOUR is configured", () => {
+    const contract: ContractLite = {
+      id: "c1",
+      vendor: "Vendor A",
+      rateType: "PER_HOUR",
+      rate: 1200,
+      overtimeRate: 1500,
+      idleBillable: true,
+      breakdownBillable: false,
+      minGuarantee: 0,
+      guaranteeUnit: "NONE",
+      fuelBorneBy: "CLIENT",
+    };
+    const logs: LogLite[] = [
+      { date: new Date("2026-08-01"), source: "SITE", present: true, workedHours: 6, idleHours: 2, breakdownHours: 1, km: 120, trips: 4 },
+      { date: new Date("2026-08-02"), source: "SITE", present: true, workedHours: 8, idleHours: 0, breakdownHours: 0, km: 160, trips: 6 },
+    ];
+    const res = supportedQty(contract, logs);
+    assert.equal(res.workedHours, 14);
+    assert.equal(res.idleHours, 2);
+    assert.equal(res.breakdownHours, 1);
+    assert.equal(res.km, 280, "accumulates total km across present days");
+    assert.equal(res.trips, 10, "accumulates total trips across present days");
+    assert.equal(res.qty, 16, "14 worked + 2 idle = 16 billable hours");
+  });
+
+  test("bills day rates when PER_DAY is configured", () => {
+    const contract: ContractLite = {
+      id: "c2",
+      vendor: "Vendor B",
+      rateType: "PER_DAY",
+      rate: 8000,
+      overtimeRate: 1000,
+      idleBillable: false,
+      breakdownBillable: false,
+      minGuarantee: 0,
+      guaranteeUnit: "NONE",
+      fuelBorneBy: "CLIENT",
+    };
+    const logs: LogLite[] = [
+      { date: new Date("2026-08-01"), source: "SITE", present: true, workedHours: 5, idleHours: 0, breakdownHours: 0, km: 50, trips: 2 },
+      { date: new Date("2026-08-02"), source: "SITE", present: true, workedHours: 0, idleHours: 4, breakdownHours: 4, km: 0, trips: 0 },
+      { date: new Date("2026-08-03"), source: "SITE", present: false, workedHours: 0, idleHours: 0, breakdownHours: 0, km: 0, trips: 0 },
+    ];
+    const res = supportedQty(contract, logs);
+    assert.equal(res.presentDays, 2);
+    assert.equal(res.km, 50);
+    assert.equal(res.trips, 2);
+    assert.equal(res.qty, 1, "only 1 day worked > 0; idle day without worked hours is non-billable when idleBillable is false");
   });
 });
 
