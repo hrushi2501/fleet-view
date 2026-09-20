@@ -6,6 +6,7 @@ import { X, Plus, Pencil, Trash2, Loader2, Camera, Calculator, RotateCcw } from 
 import { cn, ASSET_CLASS_LABEL, inr } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { MachineSelect, MachineOption } from "@/components/MachineSelect";
 import { isActionError } from "@/lib/action-result";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -758,8 +759,7 @@ export function FuelEdit({ txn }: { txn: { id: string; label: string; quantity: 
 }
 
 /* ----------------------------- WORK ORDER ----------------------------- */
-export function WorkOrderEntry({ assets }: { assets: Opt[] }) {
-  const assetOpts = [{ value: "", label: "— Select asset —" }, ...assets.map((a) => ({ value: a.id, label: a.label }))];
+export function WorkOrderEntry({ assets }: { assets: (Opt | MachineOption)[] }) {
   return (
     <Modal
       title="Create Work Order"
@@ -768,7 +768,16 @@ export function WorkOrderEntry({ assets }: { assets: Opt[] }) {
       action={saveWorkOrder}
       successMessage="✓ Work order created successfully"
     >
-      <Sel label="Machine" name="assetId" options={assetOpts} required />
+      <div className="sm:col-span-2">
+        <MachineSelect
+          assets={assets}
+          label="Machine"
+          name="assetId"
+          required
+          showDuplicateWarning={true}
+          placeholder="— Select Machine (or search by code / category) —"
+        />
+      </div>
       <Sel label="Type" name="type" options={["PM", "BREAKDOWN", "REPAIR"].map((v) => ({ value: v, label: v }))} defaultValue="PM" />
       <Sel label="Priority" name="priority" options={["Low", "Medium", "High", "Critical"].map((v) => ({ value: v, label: v }))} defaultValue="Medium" />
       <Sel label="Status" name="status" options={["Open", "In-Progress", "Completed", "Closed"].map((v) => ({ value: v, label: v }))} defaultValue="Open" />

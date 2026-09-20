@@ -2,10 +2,11 @@
 
 import { useState, useTransition, ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { X, Plus, Loader2, Trash2, Wrench, Check } from "lucide-react";
+import { X, Plus, Loader2, Trash2, Wrench, Check, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { MachineSelect, MachineOption } from "@/components/MachineSelect";
 import { isActionError } from "@/lib/action-result";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateMaintenanceQueries, invalidateFleetQueries } from "@/lib/query-invalidation";
@@ -218,9 +219,10 @@ function Trigger({
 
 export function ScheduleForm({
   assets,
+  classes: _classes,
   schedule,
 }: {
-  assets: Opt[];
+  assets: (Opt | MachineOption)[];
   classes?: { value: string; label: string }[];
   schedule?: {
     id: string;
@@ -265,13 +267,17 @@ export function ScheduleForm({
           }
           className="grid gap-4 sm:grid-cols-2"
         >
-          <Sel
-            label="Machine"
-            name="assetId"
-            required
-            defaultValue={schedule?.assetId ?? ""}
-            options={assets.map((a) => ({ value: a.id, label: a.label }))}
-          />
+          <div className="sm:col-span-2">
+            <MachineSelect
+              assets={assets}
+              name="assetId"
+              label="Machine"
+              required
+              defaultValue={schedule?.assetId ?? ""}
+              showDuplicateWarning={false}
+              placeholder="— Select Machine (or search by code / category) —"
+            />
+          </div>
           <Inp
             label="Task Name"
             name="taskName"
@@ -377,28 +383,78 @@ export function SeedPmButton() {
   );
 }
 
-export function RaiseWoButton({ scheduleId }: { scheduleId: string }) {
+export function RaiseWoButton({
+  scheduleId,
+  existingWo,
+  taskName,
+  assetCode,
+}: {
+  scheduleId: string;
+  existingWo?: { woNo: string; status: string; description: string } | null;
+  taskName?: string;
+  assetCode?: string;
+}) {
   const [pending, start] = useTransition();
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const router = useRouter();
   const queryClient = useQueryClient();
   const toast = useToast();
 
+  const handleExecute = () => {
+    start(async () => {
+      const result = await raiseWoFromSchedule(scheduleId);
+      if (isActionError(result)) { toast.error(result.error); return; }
+      await invalidateMaintenanceQueries(queryClient);
+      router.refresh();
+    });
+  };
+
   return (
-    <button
-      onClick={() =>
-        start(async () => {
-          const result = await raiseWoFromSchedule(scheduleId);
-          if (isActionError(result)) { toast.error(result.error); return; }
-          await invalidateMaintenanceQueries(queryClient);
-          router.refresh();
-        })
-      }
-      disabled={pending}
-      className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
-    >
-      {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wrench className="h-3.5 w-3.5" />} Raise
-      WO (with Parts Kit)
-    </button>
+    <>
+      <button
+        onClick={() => {
+          if (existingWo) {
+            setConfirmOpen(true);
+          } else {
+            handleExecute();
+          }
+        }}
+        disabled={pending}
+        title={
+          existingWo
+            ? `Active work order already open (${existingWo.woNo}). Click to review duplicate warning.`
+            : undefined
+        }
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-60 transition-colors",
+          existingWo
+            ? "bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 ring-1 ring-amber-200"
+            : "bg-brand-600 text-white hover:bg-brand-700"
+        )}
+      >
+        {pending ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : existingWo ? (
+          <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+        ) : (
+          <Wrench className="h-3.5 w-3.5" />
+        )}
+        {existingWo ? "Active WO Exists · Raise" : "Raise WO (with Parts Kit)"}
+      </button>
+
+      {existingWo && (
+        <ConfirmDialog
+          isOpen={confirmOpen}
+          onClose={() => setConfirmOpen(false)}
+          onConfirm={handleExecute}
+          title="Duplicate Work Order Warning"
+          description={`An active work order (${existingWo.woNo} - "${existingWo.description}" [${existingWo.status}]) is already open for ${assetCode ? assetCode + " · " : ""}${taskName || "this schedule"}. Duplicate work orders are allowed if required. Would you like to proceed and create another one?`}
+          confirmLabel="Raise Duplicate WO"
+          cancelLabel="Cancel"
+          tone="warning"
+        />
+      )}
+    </>
   );
 }
 
@@ -504,7 +560,7 @@ export function CompleteWoForm({
   );
 }
 
-export function PreOpChecklistForm({ assets }: { assets: Opt[] }) {
+export function PreOpChecklistForm({ assets }: { assets: (Opt | MachineOption)[] }) {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const [resultMsg, setResultMsg] = useState<{ type: "success" | "warn"; text: string } | null>(null);
@@ -549,14 +605,12 @@ export function PreOpChecklistForm({ assets }: { assets: Opt[] }) {
           }
           className="space-y-4"
         >
-          <Sel
+          <MachineSelect
+            assets={assets}
             label="Select Machine *"
             name="assetId"
             required
-            options={[
-              { value: "", label: "— Select Machine —" },
-              ...assets.map((a) => ({ value: a.id, label: a.label })),
-            ]}
+            placeholder="— Select Machine (or search by code / category) —"
           />
 
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">

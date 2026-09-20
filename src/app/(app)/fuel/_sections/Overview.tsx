@@ -47,16 +47,23 @@ export async function Overview({ access }: { access: Access }) {
     }),
   );
 
+  // eslint-disable-next-line react-hooks/purity
+  const fuelSince = new Date(Date.now() - 90 * 86_400_000);
   // Start every independent read together. The old page completed the first
   // batch and then waited through telemetry, anomalies, settings, two complete
   // fill scans, the daily roll-up and scan status in sequence. On a remote
   // transaction pooler, those waits accumulated into several seconds.
-  const [issues, tanks, assets, projects, norms, telemetry, openAnomalies, fuelRates, detectedLive, daily, scan] =
+  const [issues, recentFills, tanks, assets, projects, norms, telemetry, openAnomalies, fuelRates, detectedLive, daily, scan] =
     await Promise.all([
+      db.fuelTransaction.findMany({
+        where: { type: "ISSUE", asset: visible, date: { gte: fuelSince } },
+        orderBy: { date: "asc" },
+      }),
       db.fuelTransaction.findMany({
         where: { type: "ISSUE", asset: visible },
         include: { session: { select: { driver: { select: { name: true, empCode: true } } } } },
-        orderBy: { date: "asc" },
+        orderBy: { date: "desc" },
+        take: 25,
       }),
       db.fuelTank.findMany({ where: recordScope("fuelTank", access) }),
       db.asset.findMany({ where: visible, orderBy: { code: "asc" } }),
@@ -135,7 +142,6 @@ export async function Overview({ access }: { access: Access }) {
   const noRecordedFlagsButUnassessed = allFlagCount === 0 && scan.stale;
   const assetById = new Map(assets.map((a) => [a.id, a]));
   const issueAmountById = new Map(issues.map((issue) => [issue.id, issue.amount]));
-  const recentFills = [...issues].reverse().slice(0, 25);
 
   const flaggedLitres = fleet.highFlags.reduce((s, f) => s + f.quantity, 0);
   // A recorded fill already has its actual historical amount. Repricing every

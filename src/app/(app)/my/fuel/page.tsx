@@ -67,7 +67,7 @@ export default async function MyFuelPage({
       {vehicle && shift.hasActiveTrip && (
         <Link
           href="/my/fuel?action=fuel"
-          className="flex min-h-[72px] w-full items-center justify-center rounded-2xl bg-brand-600 text-xl font-bold text-white shadow-sm active:scale-[0.99] active:bg-brand-700"
+          className="flex min-h-18 w-full items-center justify-center rounded-2xl bg-brand-600 text-xl font-bold text-white shadow-sm active:scale-[0.99] active:bg-brand-700"
         >
           + Fuel bharein
         </Link>

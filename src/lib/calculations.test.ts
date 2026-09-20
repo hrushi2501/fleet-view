@@ -18,6 +18,7 @@ import assert from "node:assert/strict";
 import { pmDue, reliability, type ScheduleLite, type WoLite } from "./maintenance.ts";
 import { attendanceSummary } from "./master.ts";
 import { projectPnL, replaceVsRepair, depreciation } from "./costing.ts";
+import { supportedQty } from "./hire.ts";
 import { scorecard, scanSignals, DEFAULT_RULES } from "./loss-prevention.ts";
 import { calendarDaysUntil } from "./utils.ts";
 
@@ -206,10 +207,60 @@ describe("depreciation is bounded by physical reality", () => {
     assert.ok(Number.isFinite(d.bookValue));
   });
 
+  test("negative acquisition cost or negative salvage does not produce corrupt depreciation", () => {
+    const dNegCost = depreciation({ ...base, acquisitionCost: -50_000 });
+    assert.equal(dNegCost.known, false);
+    assert.equal(dNegCost.annual, 0);
+
+    const dNegSalvage = depreciation({ ...base, salvageValue: -10_000 });
+    assert.ok(dNegSalvage.accumulated <= base.acquisitionCost);
+  });
+
   test("WDV never produces a negative or NaN book value", () => {
     const d = depreciation({ ...base, method: "WDV" }, new Date("2036-01-01T00:00:00Z"));
     assert.ok(Number.isFinite(d.bookValue) && d.bookValue >= 0);
     assert.ok(Number.isFinite(d.annual));
+  });
+});
+
+describe("hire supportedQty accounts for standby without misbilling breakdowns", () => {
+  const contract = {
+    id: "c-1",
+    vendor: "Test Vendor",
+    rateType: "PER_DAY" as const,
+    rate: 5000,
+    overtimeRate: 0,
+    minGuarantee: 0,
+    guaranteeUnit: null,
+    fuelBorneBy: "OWNER",
+    breakdownBillable: false,
+    idleBillable: true,
+  };
+
+  const baseLog = {
+    date: new Date("2026-08-01"),
+    present: true,
+    workedHours: 0,
+    idleHours: 0,
+    breakdownHours: 0,
+    km: 0,
+    trips: 0,
+    source: "MANUAL",
+  };
+
+  test("standby day with 0 hours is billable when idle is billable and not broken down", () => {
+    const res = supportedQty(contract, [baseLog]);
+    assert.equal(res.qty, 1);
+  });
+
+  test("breakdown day with 0 worked hours is not billable when breakdown is not billable", () => {
+    const res = supportedQty(contract, [{ ...baseLog, breakdownHours: 8 }]);
+    assert.equal(res.qty, 0);
+  });
+
+  test("breakdown day is billable if contract explicitly marks breakdown billable", () => {
+    const res = supportedQty({ ...contract, breakdownBillable: true }, [{ ...baseLog, breakdownHours: 8 }]);
+    assert.equal(res.qty, 1);
   });
 });
 

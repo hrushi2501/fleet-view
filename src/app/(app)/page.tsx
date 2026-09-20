@@ -5,7 +5,7 @@ import { inr, num, timeAgo, ASSET_CLASS_LABEL, SEVERITY_COLOR, healthColor } fro
 import { Fuel, TriangleAlert, ShieldAlert, ArrowRight, IndianRupee } from "lucide-react";
 import Link from "next/link";
 import { businessDayShort } from "@/lib/business-time";
-import { requirePage, assetScope } from "@/lib/access";
+import { requirePage, assetScope, projectIdScope } from "@/lib/access";
 import { MorningActionCenter } from "@/components/MorningActionCenter";
 import { Txt } from "@/components/Txt";
 import { Suspense } from "react";
@@ -20,8 +20,8 @@ export default async function Dashboard() {
   const access = await requirePage(null);
   // Rows, not just the page: a scoped supervisor sees their own sites.
   const visible = assetScope(access);
-  // eslint-disable-next-line react-hooks/purity
   const fuelSince = new Date(Date.now() - 30 * 86_400_000);
+  const costSince = new Date(Date.now() - 365 * 86_400_000);
   const [
     assets,
     fuelIssues,
@@ -52,7 +52,10 @@ export default async function Dashboard() {
     }),
     db.alert.count({ where: { status: "Open", severity: "Critical" } }),
     db.complianceDoc.count({ where: { status: { in: ["Expiring", "Expired"] } } }),
-    db.costTransaction.findMany({ select: { period: true, costHead: true, amount: true } }),
+    db.costTransaction.findMany({
+      where: { ...projectIdScope(access), date: { gte: costSince } },
+      select: { period: true, costHead: true, amount: true },
+    }),
     db.alert.findMany({
       orderBy: { createdAt: "desc" },
       take: 6,
@@ -122,21 +125,27 @@ export default async function Dashboard() {
   }, {});
   const statusOrder = Object.entries(statusCounts).sort((a, b) => b[1] - a[1]);
 
-  // Cost by month & head
-  const months = [...new Set(costs.map((c) => c.period))].sort();
+  // Cost by month & head (single-pass O(N) accumulator)
   const heads = ["FUEL", "MAINTENANCE", "OPERATOR", "DEPRECIATION", "HIRE", "EMI", "INSURANCE", "TYRE", "TOLL"];
-  const costByMonth = months.map((m) => {
-    const row: Record<string, number | string> = { month: m.slice(2) };
-    for (const h of heads) {
-      row[h] = costs.filter((c) => c.period === m && c.costHead === h).reduce((s, c) => s + c.amount, 0);
+  const costMap = new Map<string, Record<string, number | string>>();
+  for (const c of costs) {
+    let row = costMap.get(c.period);
+    if (!row) {
+      row = { month: c.period.slice(2) };
+      for (const h of heads) row[h] = 0;
+      costMap.set(c.period, row);
     }
-    return row;
-  });
+    if (c.costHead in row) {
+      (row[c.costHead] as number) += c.amount;
+    }
+  }
+  const costByMonth = Array.from(costMap.keys())
+    .sort()
+    .map((period) => costMap.get(period)!);
 
   // Fuel issued last 14 days
   const fuelByDay: Record<string, number> = {};
   for (let i = 13; i >= 0; i--) {
-  // eslint-disable-next-line react-hooks/purity
     const d = businessDayShort(new Date(Date.now() - i * 86400000));
     fuelByDay[d] = 0;
   }
