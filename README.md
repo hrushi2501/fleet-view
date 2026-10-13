@@ -128,3 +128,7 @@ Those comments exist because the obvious implementation was wrong in production.
 
 Add a test for any calculation you touch. Every existing test states something the
 business must never see.
+
+## Author
+
+[Hrushi Bhanvadiya](https://hrushi-bhanvadiya.vercel.app) (ઋષિ ભાણવડીયા), also known as Rushi and Hrushi2501. See the portfolio for project context and contact links.
